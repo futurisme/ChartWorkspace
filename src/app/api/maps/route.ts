@@ -33,9 +33,11 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     );
   } catch (error) {
-    console.error('Failed to create map:', error);
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error('Failed to create map:', errorMsg);
+    console.error('DATABASE_URL set:', !!process.env.DATABASE_URL);
     return NextResponse.json(
-      { error: 'Failed to create map' },
+      { error: 'Failed to create map', details: errorMsg },
       { status: 500 }
     );
   }
