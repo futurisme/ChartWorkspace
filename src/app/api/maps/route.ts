@@ -4,7 +4,17 @@ import { createDocWithSnapshot, getCurrentSnapshot } from '@/lib/snapshot';
 
 export async function POST(request: NextRequest) {
   try {
-    const { title } = await request.json();
+    // Validate env
+    if (!process.env.DATABASE_URL) {
+      console.error('DATABASE_URL is not set in environment variables');
+      return NextResponse.json(
+        { error: 'Database configuration missing' },
+        { status: 500 }
+      );
+    }
+
+    const body = await request.json();
+    const { title } = body;
 
     if (!title || typeof title !== 'string' || !title.trim()) {
       return NextResponse.json(
@@ -34,10 +44,20 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
-    console.error('Failed to create map:', errorMsg);
+    const errorStack = error instanceof Error ? error.stack : '';
+    
+    console.error('=== API /maps POST Error ===');
+    console.error('Message:', errorMsg);
+    console.error('Stack:', errorStack);
     console.error('DATABASE_URL set:', !!process.env.DATABASE_URL);
+    console.error('NODE_ENV:', process.env.NODE_ENV);
+    
     return NextResponse.json(
-      { error: 'Failed to create map', details: errorMsg },
+      { 
+        error: 'Failed to create map',
+        message: errorMsg,
+        timestamp: new Date().toISOString()
+      },
       { status: 500 }
     );
   }

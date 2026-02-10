@@ -4,7 +4,17 @@ import * as Y from 'yjs';
 
 export async function POST(request: NextRequest) {
   try {
-    const { id, snapshot, version } = await request.json();
+    // Validate env
+    if (!process.env.DATABASE_URL) {
+      console.error('DATABASE_URL is not set in environment variables');
+      return NextResponse.json(
+        { error: 'Database configuration missing' },
+        { status: 500 }
+      );
+    }
+
+    const body = await request.json();
+    const { id, snapshot, version } = body;
 
     if (!id || typeof id !== 'string') {
       return NextResponse.json(
@@ -76,9 +86,20 @@ export async function POST(request: NextRequest) {
       updatedAt: updated.updatedAt,
     });
   } catch (error) {
-    console.error('Failed to save map:', error);
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : '';
+    
+    console.error('=== API /maps/save POST Error ===');
+    console.error('Message:', errorMsg);
+    console.error('Stack:', errorStack);
+    console.error('DATABASE_URL set:', !!process.env.DATABASE_URL);
+    
     return NextResponse.json(
-      { error: 'Failed to save map' },
+      { 
+        error: 'Failed to save map',
+        message: errorMsg,
+        timestamp: new Date().toISOString()
+      },
       { status: 500 }
     );
   }
