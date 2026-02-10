@@ -1,14 +1,14 @@
 # ChartMaker — Panduan Deploy Produksi Global (Tanpa Instruksi Lokal)
 
-Panduan ini ditujukan agar siapa saja di dunia dapat memulai ChartMaker secara mandiri dan publik (production-ready) tanpa perlu akses lokal dari Anda. Fokus: layanan terkelola (GitHub, Supabase, Vercel) sehingga pengguna/kontributor bisa memulai sendiri.
+Panduan ini ditujukan agar siapa saja di dunia dapat memulai ChartMaker secara mandiri dan publik (production-ready) tanpa perlu akses lokal dari Anda. Fokus: layanan terkelola (GitHub, Railway, Vercel) sehingga pengguna/kontributor bisa memulai sendiri.
 
 Ringkasan singkat:
 - Frontend & API: `Vercel` (hosting Next.js App Router)
-- Database: `Supabase` (Postgres managed, free tier tersedia)
+- Database: `Railway` (PostgreSQL managed, free tier tersedia + IPv4)
 - Signaling WebRTC: default `wss://signaling.yjs.dev` (public). Opsional: self-hosted signaling untuk privasi.
 - CI: `GitHub Actions` untuk menjalankan migrasi Prisma otomatis di production.
 
-Prasyarat akun (gratis/terkelola): GitHub, Vercel, Supabase.
+Prasyarat akun (gratis/terkelola): GitHub, Vercel, Railway.
 
 ----
 
@@ -23,46 +23,47 @@ git branch -M main
 git push -u origin main
 ```
 
-2) Buat project Supabase (Postgres managed) — Panduan Terperinci
+2) Buat project Railway (PostgreSQL managed) — Panduan Terperinci
 
 **A. Login & Buat Project**
 
-1. Buka https://app.supabase.com (atau https://supabase.com jika belum punya akun).
-2. Klik **"Start your project"** atau **"New project"** jika sudah login.
-3. Isi form:
-   - **Project name**: misal `chartmaker-prod` atau nama pilihan Anda
-   - **Database password**: simpan password ini (Anda akan butuhkan nanti)
-   - **Region**: pilih region terdekat dengan pengguna (Asia tenggara: Singapore)
-   - **Pricing plan**: pilih **Free** untuk memulai
-4. Klik **"Create new project"**.
-
-Tunggu 1-2 menit hingga project siap. Dashboard akan menampilkan `Status: All systems operational`.
+1. Buka https://railway.app (atau https://app.railway.app jika belum punya akun).
+2. Sign up (gratis).
+3. Setelah login, klik **"New Project"** → pilih **"Database"** → pilih **"PostgreSQL"**.
+4. Tunggu deployment selesai (1-2 menit). Status akan berubah menjadi "Running".
 
 **B. Ambil Connection String**
 
-1. Di sisi kiri menu Supabase, klik **"Settings"** (icon gear / roda gigi).
-2. Pilih tab **"Database"**.
-3. Scroll ke bagian **"Connection string"**.
-4. Pilih **"URI"** (bukan "psql").
-5. Copy string yang terlihat seperti:
+1. Di Dashboard Railway, klik plugin **"PostgreSQL"** yang baru dibuat.
+2. Pilih tab **"Connect"**.
+3. Pilih connection method **"$PRIVATE_URL"** (untuk Railway internal/Vercel) atau **"$DATABASE_PUBLIC_URL"** (untuk local testing).
+4. Copy connection string yang terlihat seperti:
    ```
-   postgresql://postgres:[YOUR_PASSWORD]@db.xxxxxxxxxxxx.supabase.co:5432/postgres
+   postgresql://postgres:PASSWORD@shortline.proxy.rlwy.net:PORT/railway
    ```
-   (atau jika ada tombol copy, gunakan itu).
+   Contoh:
+   ```
+   postgresql://postgres:OIdAwuJcuHLoEEzNdtvhIkoohxHgqbsg@shortline.proxy.rlwy.net:25145/railway
+   ```
 
 **C. Verifikasi Connection String**
 
 Connection string akan terlihat seperti:
 ```
-postgresql://postgres:YOUR_DB_PASSWORD@db.xxxxxxxxxxxx.supabase.co:5432/postgres?schema=public
+postgresql://postgres:PASSWORD@shortline.proxy.rlwy.net:PORT/railway
+```
+
+Contoh real:
+```
+postgresql://postgres:OIdAwuJcuHLoEEzNdtvhIkoohxHgqbsg@shortline.proxy.rlwy.net:25145/railway
 ```
 
 Bagian penting:
 - `postgres` = username default
-- `YOUR_DB_PASSWORD` = password yang Anda set saat create project
-- `db.xxxxxxxxxxxx.supabase.co` = host Supabase Anda (unik per project)
-- `5432` = port PostgreSQL standar
-- `postgres` (di akhir) = default database name
+- `PASSWORD` = password Anda (disalin dari Railway)
+- `shortline.proxy.rlwy.net` = host Railway public proxy
+- `PORT` = port yang diberikan Railway (contoh: 25145)
+- `railway` = database name
 
 **D. Simpan untuk langkah berikutnya**
 
@@ -71,11 +72,11 @@ Simpan string ini di tempat aman (notepad temporary). Ini akan digunakan sebagai
 - Vercel Environment Variables (langkah 4)
 
 Contoh checklist langkah 2:
-- [ ] Login ke https://app.supabase.com
-- [ ] Buat project baru (plan: Free, region: terdekat)
-- [ ] Tunggu project status "All systems operational"
-- [ ] Buka Settings → Database → Connection string
-- [ ] Copy URI connection string
+- [ ] Login ke https://railway.app
+- [ ] Buat project baru → pilih PostgreSQL
+- [ ] Tunggu status "Running"
+- [ ] Buka Plugin PostgreSQL → Connect tab
+- [ ] Copy connection string (private URL untuk Vercel)
 - [ ] Simpan connection string ke notepad
 
 3) Tambahkan secret di GitHub (untuk CI migrasi) — Panduan Terperinci
@@ -91,12 +92,12 @@ Contoh checklist langkah 2:
 1. Klik tombol **"New repository secret"** (warna hijau).
 2. Isi form:
    - **Name**: `DATABASE_URL` (exact, case-sensitive)
-   - **Secret**: (paste connection string dari Supabase step 2 sebelumnya)
+   - **Secret**: (paste connection string dari Railway step 2 sebelumnya — gunakan PRIVATE URL)
 3. Klik **"Add secret"**.
 
-Contoh: jika connection string Supabase Anda adalah:
+Contoh: jika connection string Railway Anda adalah:
 ```
-postgresql://postgres:mypassword123@db.abc123xyz.supabase.co:5432/postgres?schema=public
+postgresql://postgres:OIdAwuJcuHLoEEzNdtvhIkoohxHgqbsg@shortline.proxy.rlwy.net:25145/railway
 ```
 Maka Anda paste tepat string itu ke field "Secret".
 
@@ -110,17 +111,17 @@ Setelah ditambahkan, secret `DATABASE_URL` akan muncul di daftar dengan status *
 - [ ] Masuk Settings → Secrets and variables → Actions
 - [ ] Klik "New repository secret"
 - [ ] Nama: `DATABASE_URL`
-- [ ] Value: copy-paste connection string Supabase
+- [ ] Value: copy-paste connection string Railway (PRIVATE URL)
 - [ ] Verifikasi secret muncul di daftar
 
 4) Setup Vercel (deploy production)
 
 1. Login ke https://vercel.com → Import Project → pilih repo GitHub Anda.
 2. Di setup environment, tambahkan Environment Variables (Production):
-   - `DATABASE_URL` = (paste connection string Supabase)
+   - `DATABASE_URL` = (paste connection string Railway — gunakan URL publik proxy: `shortline.proxy.rlwy.net`)
    - `NEXT_PUBLIC_WEBRTC_URL` = `wss://signaling.yjs.dev` (atau URL signaling Anda jika self-hosted)
    - `NEXT_PUBLIC_API_URL` = `https://<YOUR_VERCEL_PROJECT_DOMAIN>` (opsional)
-3. Deploy project. Vercel akan menjalankan `npm install` dan `npm run build`.
+3. Deploy project. Vercel akan menjalankan `npm install`, `prisma generate`, dan `npm run build`.
 
 5) Jalankan migrasi Prisma di production (rekomendasi: GitHub Actions)
 
@@ -176,12 +177,12 @@ Langkah: commit & push file workflow ini. Pastikan secret `DATABASE_URL` sudah d
 
 9) Quick checklist untuk pengguna baru (agar bisa start sendiri)
 
-- [ ] Buat akun GitHub, Supabase, Vercel
+- [ ] Buat akun GitHub, Railway, Vercel
 - [ ] Push kode ke GitHub repo
-- [ ] Buat Supabase project dan copy `DATABASE_URL`
+- [ ] Buat Railway PostgreSQL project dan copy `DATABASE_URL`
 - [ ] Tambahkan `DATABASE_URL` ke GitHub Secrets
 - [ ] Import repo ke Vercel, set env vars (`DATABASE_URL`, `NEXT_PUBLIC_WEBRTC_URL`)
-- [ ] (Optional) Tambahkan GitHub Actions workflow untuk migrasi
+- [ ] (Optional) GitHub Actions workflow sudah di-setup untuk migrasi otomatis
 - [ ] Akses URL Vercel dan verifikasi
 
 ----
