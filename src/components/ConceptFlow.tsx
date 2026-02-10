@@ -20,6 +20,7 @@ import {
   useEdgesState,
   NodeProps,
   EdgeProps,
+  ReactFlowInstance,
   getSmoothStepPath,
   Handle,
   Position,
@@ -38,9 +39,20 @@ interface ConceptNodeData {
 
 type ConceptNode = Node<ConceptNodeData>;
 
-function ConceptNodeComponent({ data }: NodeProps<ConceptNodeData>) {
+function ConceptNodeComponent({ data, selected }: NodeProps<ConceptNodeData>) {
   return (
-    <div className="rounded-lg border-2 border-blue-500 bg-white px-3 py-2 shadow-lg max-w-xs cursor-grab active:cursor-grabbing touch-none select-none">
+    <div
+      className={`relative rounded-lg border-2 bg-white px-3 py-2 shadow-lg max-w-xs cursor-grab active:cursor-grabbing touch-none select-none ${
+        selected
+          ? 'border-lime-400 ring-2 ring-lime-400/80 shadow-[0_0_14px_rgba(132,204,22,0.55)]'
+          : 'border-blue-500'
+      }`}
+    >
+      {selected && (
+        <div className="absolute -top-5 left-1/2 -translate-x-1/2 text-[10px] font-semibold uppercase tracking-wide text-lime-500">
+          Editing This
+        </div>
+      )}
       <Handle type="target" position={Position.Top} id="t-top" className="opacity-0" />
       <Handle type="target" position={Position.Bottom} id="t-bottom" className="opacity-0" />
       <Handle type="target" position={Position.Left} id="t-left" className="opacity-0" />
@@ -57,12 +69,13 @@ function ConceptNodeComponent({ data }: NodeProps<ConceptNodeData>) {
 const EDGE_STYLE = { stroke: '#111827', strokeWidth: 2 };
 const EDGE_MARKER = { type: MarkerType.ArrowClosed, color: '#111827' };
 const DEFAULT_NODE_SIZE = { width: 176, height: 56 };
-const ROUTE_MIN = 48;
-const ROUTE_MAX = 160;
-const CHILD_X_OFFSET = 220;
-const LEVEL_Y_SPACING = 96;
+const GRID_SIZE = 48;
+const ROUTE_MIN = 64;
+const ROUTE_MAX = 260;
+const EDGE_OFFSET = 32;
+const NODE_GAP = GRID_SIZE;
 const AUTO_GAP = 24;
-const AUTO_SHIFT = 88;
+const AUTO_SHIFT = GRID_SIZE;
 const AUTO_MAX_TRIES = 14;
 const WORKSPACE_PADDING = 320;
 const MIN_WORKSPACE_SIZE = { width: 1200, height: 800 };
@@ -73,6 +86,13 @@ function getNodeCenter(node: Node) {
   return {
     x: node.position.x + width / 2,
     y: node.position.y + height / 2,
+  };
+}
+
+function getNodeSize(node: Node) {
+  return {
+    width: node.width ?? DEFAULT_NODE_SIZE.width,
+    height: node.height ?? DEFAULT_NODE_SIZE.height,
   };
 }
 
@@ -109,6 +129,13 @@ function getWorkspaceExtent(nodes: Node[]) {
     [centerX - width / 2 - WORKSPACE_PADDING, centerY - height / 2 - WORKSPACE_PADDING],
     [centerX + width / 2 + WORKSPACE_PADDING, centerY + height / 2 + WORKSPACE_PADDING],
   ] as [[number, number], [number, number]];
+}
+
+function snapToGridPosition(position: { x: number; y: number }) {
+  return {
+    x: Math.round(position.x / GRID_SIZE) * GRID_SIZE,
+    y: Math.round(position.y / GRID_SIZE) * GRID_SIZE,
+  };
 }
 
 function findOpenPosition(
@@ -161,8 +188,8 @@ function HierarchyEdge({
     targetY,
     sourcePosition,
     targetPosition,
-    borderRadius: 12,
-    offset: 20,
+    borderRadius: 16,
+    offset: EDGE_OFFSET,
     centerX: typeof data?.centerX === 'number' ? data.centerX : undefined,
     centerY: typeof data?.centerY === 'number' ? data.centerY : undefined,
   });
@@ -225,11 +252,59 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
   const [renameNodeId, setRenameNodeId] = useState<string | null>(null);
   const [renameText, setRenameText] = useState('');
   const [showInviteModal, setShowInviteModal] = useState(false);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
   const nodeCountRef = useRef(0);
+  const undoManagerRef = useRef<Y.UndoManager | null>(null);
+  const reactFlowWrapperRef = useRef<HTMLDivElement | null>(null);
+  const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
 
   const nodeTypes = useMemo(() => ({ conceptNode: ConceptNodeComponent }), []);
   const edgeTypes = useMemo(() => ({ hierarchy: HierarchyEdge }), []);
   const workspaceExtent = useMemo(() => getWorkspaceExtent(nodes), [nodes]);
+
+  const getViewportCenter = useCallback(() => {
+    const wrapper = reactFlowWrapperRef.current;
+    const instance = reactFlowInstanceRef.current;
+    if (!wrapper || !instance) {
+      return { x: 0, y: 0 };
+    }
+    const rect = wrapper.getBoundingClientRect();
+    return instance.screenToFlowPosition({
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!doc) return;
+
+    const nodesMap = doc.getMap('nodes');
+    const edgesMap = doc.getMap('edges');
+    const undoManager = new Y.UndoManager([nodesMap, edgesMap], {
+      trackedOrigins: new Set(['local']),
+    });
+    undoManagerRef.current = undoManager;
+
+    const updateUndoState = () => {
+      setCanUndo(undoManager.canUndo());
+      setCanRedo(undoManager.canRedo());
+    };
+
+    updateUndoState();
+
+    undoManager.on('stack-item-added', updateUndoState);
+    undoManager.on('stack-item-updated', updateUndoState);
+    undoManager.on('stack-item-popped', updateUndoState);
+
+    return () => {
+      undoManager.off('stack-item-added', updateUndoState);
+      undoManager.off('stack-item-updated', updateUndoState);
+      undoManager.off('stack-item-popped', updateUndoState);
+      undoManager.destroy();
+      undoManagerRef.current = null;
+    };
+  }, [doc]);
 
   const routedEdges = useMemo(() => {
     if (edges.length === 0) return edges;
@@ -277,9 +352,11 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
     });
 
     const pivots = new Map<string, number>();
+    const nodePadding = Math.max(DEFAULT_NODE_SIZE.width, DEFAULT_NODE_SIZE.height) * 0.35;
     groups.forEach((group, key) => {
       const base = group.orientation === 'horizontal' ? group.sourceCenter.x : group.sourceCenter.y;
-      const distance = Math.max(ROUTE_MIN, Math.min(ROUTE_MAX, group.minAbsDelta / 2));
+      const rawDistance = group.minAbsDelta * 0.6 + nodePadding;
+      const distance = Math.max(ROUTE_MIN, Math.min(ROUTE_MAX, rawDistance));
       pivots.set(key, base + group.sign * distance);
     });
 
@@ -325,15 +402,14 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
     nodeCountRef.current = Math.max(nodeCountRef.current, nodes.length);
   }, [nodes.length]);
 
-  const getChildrenFor = useCallback(
-    (parentId: string) => {
-      const childIds = edges.filter((edge) => edge.source === parentId).map((edge) => edge.target);
-      return childIds
-        .map((childId) => nodes.find((node) => node.id === childId))
-        .filter((node): node is Node => Boolean(node));
-    },
-    [edges, nodes]
-  );
+  useEffect(() => {
+    if (!selectedNodeId) return;
+    const stillExists = nodes.some((node) => node.id === selectedNodeId);
+    if (!stillExists) {
+      setSelectedNodeId(null);
+      updatePresence({ currentNodeId: undefined });
+    }
+  }, [nodes, selectedNodeId, updatePresence]);
 
   const getParentIdFor = useCallback(
     (childId: string) => edges.find((edge) => edge.target === childId)?.source ?? null,
@@ -537,11 +613,12 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
     if (isReadOnly || !doc) return;
 
     const nodeId = `node-${Date.now()}`;
-    const startPos = {
-      x: Math.random() * 400,
-      y: Math.random() * 400,
-    };
-    const safePos = findOpenPosition(startPos, nodes, { x: AUTO_SHIFT, y: AUTO_SHIFT });
+    const viewCenter = getViewportCenter();
+    const basePos = snapToGridPosition({
+      x: viewCenter.x - DEFAULT_NODE_SIZE.width / 2,
+      y: viewCenter.y - DEFAULT_NODE_SIZE.height / 2,
+    });
+    const safePos = findOpenPosition(basePos, nodes, { x: AUTO_SHIFT, y: AUTO_SHIFT });
 
     const newNode: ConceptNode = {
       id: nodeId,
@@ -563,7 +640,7 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
 
     nodeCountRef.current++;
     setNodes((nds) => [...nds, newNode]);
-  }, [isReadOnly, doc, nodes, setNodes]);
+  }, [isReadOnly, doc, nodes, setNodes, getViewportCenter]);
 
   const handleAddChild = useCallback(() => {
     if (isReadOnly || !doc) return;
@@ -574,16 +651,21 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
 
     const parentNode = nodes.find((n) => n.id === selectedNodeId);
     const childId = `node-${Date.now()}`;
-    let baseChildPos = parentNode
-      ? { x: parentNode.position.x + CHILD_X_OFFSET, y: parentNode.position.y }
-      : { x: Math.random() * 400, y: Math.random() * 400 };
+    let baseChildPos = { x: 0, y: 0 };
     if (parentNode) {
-      const existingChildren = getChildrenFor(selectedNodeId);
-      if (existingChildren.length > 0) {
-        const maxY = Math.max(...existingChildren.map((child) => child.position.y));
-        baseChildPos = { x: parentNode.position.x + CHILD_X_OFFSET, y: maxY + LEVEL_Y_SPACING };
-      }
+      const parentSize = getNodeSize(parentNode);
+      baseChildPos = {
+        x: parentNode.position.x + (parentSize.width - DEFAULT_NODE_SIZE.width) / 2,
+        y: parentNode.position.y + parentSize.height + NODE_GAP,
+      };
+    } else {
+      const viewCenter = getViewportCenter();
+      baseChildPos = {
+        x: viewCenter.x - DEFAULT_NODE_SIZE.width / 2,
+        y: viewCenter.y - DEFAULT_NODE_SIZE.height / 2,
+      };
     }
+    baseChildPos = snapToGridPosition(baseChildPos);
     const childPos = findOpenPosition(baseChildPos, nodes, { x: 0, y: AUTO_SHIFT });
 
     const childNode: ConceptNode = {
@@ -623,7 +705,7 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
         markerEnd: EDGE_MARKER,
       },
     ]);
-  }, [isReadOnly, doc, selectedNodeId, nodes, setNodes, setEdges, handleAddNode, getChildrenFor]);
+  }, [isReadOnly, doc, selectedNodeId, nodes, setNodes, setEdges, handleAddNode, getViewportCenter]);
 
   const handleAddSibling = useCallback(() => {
     if (isReadOnly || !doc) return;
@@ -634,20 +716,26 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
 
     const refNode = nodes.find((n) => n.id === selectedNodeId);
     const siblingId = `node-${Date.now()}`;
-    let baseSiblingPos = refNode
-      ? { x: refNode.position.x, y: refNode.position.y + LEVEL_Y_SPACING }
-      : { x: Math.random() * 400, y: Math.random() * 400 };
     const parentIdFromState = getParentIdFor(selectedNodeId);
-    if (parentIdFromState) {
-      const parentNode = nodes.find((n) => n.id === parentIdFromState);
-      if (parentNode) {
-        const siblings = getChildrenFor(parentIdFromState);
-        const maxY = siblings.length
-          ? Math.max(...siblings.map((sibling) => sibling.position.y))
-          : parentNode.position.y;
-        baseSiblingPos = { x: parentNode.position.x + CHILD_X_OFFSET, y: maxY + LEVEL_Y_SPACING };
-      }
+    const parentNode = parentIdFromState
+      ? nodes.find((n) => n.id === parentIdFromState)
+      : undefined;
+    const anchorNode = parentNode ?? refNode;
+    let baseSiblingPos = { x: 0, y: 0 };
+    if (anchorNode) {
+      const anchorSize = getNodeSize(anchorNode);
+      baseSiblingPos = {
+        x: anchorNode.position.x + anchorSize.width + NODE_GAP,
+        y: anchorNode.position.y + (anchorSize.height - DEFAULT_NODE_SIZE.height) / 2,
+      };
+    } else {
+      const viewCenter = getViewportCenter();
+      baseSiblingPos = {
+        x: viewCenter.x - DEFAULT_NODE_SIZE.width / 2,
+        y: viewCenter.y - DEFAULT_NODE_SIZE.height / 2,
+      };
     }
+    baseSiblingPos = snapToGridPosition(baseSiblingPos);
     const siblingPos = findOpenPosition(baseSiblingPos, nodes, { x: 0, y: AUTO_SHIFT });
 
     const siblingNode: ConceptNode = {
@@ -701,7 +789,7 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
         markerEnd: EDGE_MARKER,
       },
     ]);
-  }, [isReadOnly, doc, selectedNodeId, nodes, setNodes, setEdges, handleAddNode, getChildrenFor, getParentIdFor]);
+  }, [isReadOnly, doc, selectedNodeId, nodes, setNodes, setEdges, handleAddNode, getParentIdFor, getViewportCenter]);
 
   const handleAddParent = useCallback(() => {
     if (isReadOnly || !doc) return;
@@ -712,9 +800,21 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
 
     const child = nodes.find((n) => n.id === selectedNodeId);
     const parentId = `node-${Date.now()}`;
-    const baseParentPos = child
-      ? { x: child.position.x - CHILD_X_OFFSET, y: child.position.y }
-      : { x: Math.random() * 400, y: Math.random() * 400 };
+    let baseParentPos = { x: 0, y: 0 };
+    if (child) {
+      const childSize = getNodeSize(child);
+      baseParentPos = {
+        x: child.position.x + (childSize.width - DEFAULT_NODE_SIZE.width) / 2,
+        y: child.position.y - DEFAULT_NODE_SIZE.height - NODE_GAP,
+      };
+    } else {
+      const viewCenter = getViewportCenter();
+      baseParentPos = {
+        x: viewCenter.x - DEFAULT_NODE_SIZE.width / 2,
+        y: viewCenter.y - DEFAULT_NODE_SIZE.height / 2,
+      };
+    }
+    baseParentPos = snapToGridPosition(baseParentPos);
     const parentPos = findOpenPosition(baseParentPos, nodes, { x: 0, y: -AUTO_SHIFT });
 
     const parentNode: ConceptNode = {
@@ -753,7 +853,7 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
         markerEnd: EDGE_MARKER,
       },
     ]);
-  }, [isReadOnly, doc, selectedNodeId, nodes, setNodes, setEdges, handleAddNode]);
+  }, [isReadOnly, doc, selectedNodeId, nodes, setNodes, setEdges, handleAddNode, getViewportCenter]);
 
   const handleDeleteNode = useCallback(() => {
     if (isReadOnly || !selectedNodeId || !doc) return;
@@ -792,6 +892,20 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
 
   const handleInvite = useCallback(() => {
     setShowInviteModal(true);
+  }, []);
+
+  const handleUndo = useCallback(() => {
+    const undoManager = undoManagerRef.current;
+    if (undoManager && undoManager.canUndo()) {
+      undoManager.undo();
+    }
+  }, []);
+
+  const handleRedo = useCallback(() => {
+    const undoManager = undoManagerRef.current;
+    if (undoManager && undoManager.canRedo()) {
+      undoManager.redo();
+    }
   }, []);
 
   const handleRenameStart = useCallback(() => {
@@ -858,26 +972,28 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
                 + Add Concept
               </button>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  onClick={handleAddChild}
-                  className="rounded bg-indigo-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 active:bg-indigo-800"
-                >
-                  Add Child
-                </button>
-                <button
-                  onClick={handleAddSibling}
-                  className="rounded bg-indigo-500 px-3 py-2 text-sm font-semibold text-white transition hover:bg-indigo-600 active:bg-indigo-700"
-                >
-                  Add Sibling
-                </button>
-                <button
-                  onClick={handleAddParent}
-                  className="rounded bg-indigo-400 px-3 py-2 text-sm font-semibold text-white transition hover:bg-indigo-500 active:bg-indigo-600"
-                >
-                  Add Parent
-                </button>
-              </div>
+              {selectedNodeId && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={handleAddChild}
+                    className="rounded bg-indigo-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 active:bg-indigo-800"
+                  >
+                    Add Child
+                  </button>
+                  <button
+                    onClick={handleAddSibling}
+                    className="rounded bg-indigo-500 px-3 py-2 text-sm font-semibold text-white transition hover:bg-indigo-600 active:bg-indigo-700"
+                  >
+                    Add Sibling
+                  </button>
+                  <button
+                    onClick={handleAddParent}
+                    className="rounded bg-indigo-400 px-3 py-2 text-sm font-semibold text-white transition hover:bg-indigo-500 active:bg-indigo-600"
+                  >
+                    Add Parent
+                  </button>
+                </div>
+              )}
 
               {selectedNodeId && (
                 <div className="flex items-center gap-2">
@@ -899,6 +1015,20 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
               <div className="flex-1" />
 
               <div className="flex flex-wrap items-center gap-3">
+                <button
+                  onClick={handleUndo}
+                  disabled={!canUndo}
+                  className="rounded border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Undo
+                </button>
+                <button
+                  onClick={handleRedo}
+                  disabled={!canRedo}
+                  className="rounded border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Redo
+                </button>
                 {remoteUsers.length > 0 && (
                   <div className="flex items-center gap-1 rounded bg-yellow-100 px-2 py-1 text-xs font-semibold text-yellow-800">
                     <span className="inline-block h-2 w-2 rounded-full bg-yellow-600 animate-pulse" />
@@ -940,23 +1070,43 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
               >
                 Add
               </button>
+              {selectedNodeId && (
+                <button
+                  onClick={handleAddChild}
+                  className="flex-1 min-w-[72px] rounded-full bg-indigo-600 px-3 py-2 text-sm font-semibold text-white transition active:bg-indigo-700"
+                >
+                  Child
+                </button>
+              )}
+              {selectedNodeId && (
+                <button
+                  onClick={handleAddSibling}
+                  className="flex-1 min-w-[72px] rounded-full bg-indigo-500 px-3 py-2 text-sm font-semibold text-white transition active:bg-indigo-600"
+                >
+                  Sibling
+                </button>
+              )}
+              {selectedNodeId && (
+                <button
+                  onClick={handleAddParent}
+                  className="flex-1 min-w-[72px] rounded-full bg-indigo-400 px-3 py-2 text-sm font-semibold text-white transition active:bg-indigo-500"
+                >
+                  Parent
+                </button>
+              )}
               <button
-                onClick={handleAddChild}
-                className="flex-1 min-w-[72px] rounded-full bg-indigo-600 px-3 py-2 text-sm font-semibold text-white transition active:bg-indigo-700"
+                onClick={handleUndo}
+                disabled={!canUndo}
+                className="flex-1 min-w-[72px] rounded-full border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Child
+                Undo
               </button>
               <button
-                onClick={handleAddSibling}
-                className="flex-1 min-w-[72px] rounded-full bg-indigo-500 px-3 py-2 text-sm font-semibold text-white transition active:bg-indigo-600"
+                onClick={handleRedo}
+                disabled={!canRedo}
+                className="flex-1 min-w-[72px] rounded-full border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Sibling
-              </button>
-              <button
-                onClick={handleAddParent}
-                className="flex-1 min-w-[72px] rounded-full bg-indigo-400 px-3 py-2 text-sm font-semibold text-white transition active:bg-indigo-500"
-              >
-                Parent
+                Redo
               </button>
               {selectedNodeId && (
                 <button
@@ -991,45 +1141,53 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
       )}
 
       {/* Flow Canvas */}
-      <ReactFlow
-        nodes={nodes}
-        edges={routedEdges}
-        onNodesChange={handleNodesChange}
-        onEdgesChange={handleEdgesChange}
-        onConnect={handleConnect}
-        onSelectionChange={handleSelectionChange}
-        onPaneClick={() => {
-          setSelectedNodeId((prev) => {
-            if (!prev) {
-              return prev;
-            }
-            updatePresence({ currentNodeId: undefined });
-            return null;
-          });
-        }}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        fitView
-        fitViewOptions={{ padding: 0.2 }}
-        translateExtent={workspaceExtent}
-        attributionPosition="bottom-left"
-        connectionLineType={ConnectionLineType.SmoothStep}
-        selectionOnDrag={false}
-        panOnScroll
-        zoomOnPinch
-        onlyRenderVisibleElements
-        defaultEdgeOptions={{
-          type: 'hierarchy',
-          style: EDGE_STYLE,
-          markerEnd: EDGE_MARKER,
-        }}
-      >
-        <Background />
-        <Controls />
-        <div className="hidden sm:block">
-          <MiniMap />
-        </div>
-      </ReactFlow>
+      <div ref={reactFlowWrapperRef} className="flex-1 pb-24 sm:pb-0">
+        <ReactFlow
+          nodes={nodes}
+          edges={routedEdges}
+          onInit={(instance) => {
+            reactFlowInstanceRef.current = instance;
+          }}
+          onNodesChange={handleNodesChange}
+          onEdgesChange={handleEdgesChange}
+          onConnect={handleConnect}
+          onSelectionChange={handleSelectionChange}
+          onPaneClick={() => {
+            setSelectedNodeId((prev) => {
+              if (!prev) {
+                return prev;
+              }
+              updatePresence({ currentNodeId: undefined });
+              return null;
+            });
+          }}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          fitView
+          fitViewOptions={{ padding: 0.2 }}
+          translateExtent={workspaceExtent}
+          snapToGrid
+          snapGrid={[GRID_SIZE, GRID_SIZE]}
+          attributionPosition="bottom-left"
+          connectionLineType={ConnectionLineType.SmoothStep}
+          selectionOnDrag={false}
+          panOnDrag
+          panOnScroll
+          zoomOnPinch
+          onlyRenderVisibleElements
+          defaultEdgeOptions={{
+            type: 'hierarchy',
+            style: EDGE_STYLE,
+            markerEnd: EDGE_MARKER,
+          }}
+        >
+          <Background gap={GRID_SIZE} size={1.5} />
+          <Controls />
+          <div className="hidden sm:block">
+            <MiniMap />
+          </div>
+        </ReactFlow>
+      </div>
 
       {/* Invite Modal */}
       {showInviteModal && (
