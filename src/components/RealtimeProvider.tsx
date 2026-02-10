@@ -73,8 +73,30 @@ export function RealtimeProvider({
       .split(',')
       .map((value) => value.trim())
       .filter(Boolean);
-    signalingUrlsRef.current = urls;
+    if (urls.length === 0 && typeof window !== 'undefined') {
+      const isLocalhost =
+        window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1';
+      signalingUrlsRef.current = isLocalhost ? ['ws://localhost:4444'] : [];
+    } else {
+      signalingUrlsRef.current = urls;
+    }
   }
+
+  const probeSignalingUrl = useCallback(async (url: string) => {
+    const probeUrl = url
+      .replace(/^wss:/, 'https:')
+      .replace(/^ws:/, 'http:');
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1500);
+      await fetch(probeUrl, { mode: 'no-cors', signal: controller.signal });
+      clearTimeout(timeoutId);
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
 
   // Initialize document and provider
   useEffect(() => {
@@ -123,11 +145,23 @@ export function RealtimeProvider({
 
         // Setup WebRTC provider
         const signalingUrls = signalingUrlsRef.current ?? [];
+        let reachableUrls = signalingUrls;
+
         if (signalingUrls.length > 0) {
+          const checks = await Promise.all(
+            signalingUrls.map(async (url) => ({
+              url,
+              ok: await probeSignalingUrl(url),
+            }))
+          );
+          reachableUrls = checks.filter((item) => item.ok).map((item) => item.url);
+        }
+
+        if (reachableUrls.length > 0) {
           const newProvider = new WebrtcProvider(
             `chartmaker-${mapId}`,
             newDoc,
-            { signaling: signalingUrls }
+            { signaling: reachableUrls }
           );
 
           setProvider(newProvider);
@@ -180,7 +214,7 @@ export function RealtimeProvider({
     return () => {
       isMounted = false;
     };
-  }, [mapId, userId, displayName, mode]);
+  }, [mapId, userId, displayName, mode, probeSignalingUrl]);
 
   // Debounced snapshot save - last-write-wins strategy
   const saveSnapshot = useCallback(async () => {

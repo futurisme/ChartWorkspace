@@ -38,7 +38,7 @@ cp .env.example .env.local
 
 ```env
 DATABASE_URL="postgresql://user:password@host:5432/chartmaker"
-NEXT_PUBLIC_WEBRTC_URL="wss://signaling.yjs.dev"
+NEXT_PUBLIC_WEBRTC_URL="ws://localhost:4444"
 NEXT_PUBLIC_API_URL="http://localhost:3000"
 ```
 
@@ -140,6 +140,7 @@ Response:
 
 ## Development
 
+- `npm run signaling` (start WebRTC signaling server)
 - `npm run dev`
 - `npm run build`
 - `npm run start`

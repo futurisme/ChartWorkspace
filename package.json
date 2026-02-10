@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "node -e \"if(process.env.DATABASE_URL){require('child_process').execSync('npx prisma migrate deploy && npx prisma generate',{stdio:'inherit'})}else{console.log('Skipping prisma migrate/generate because DATABASE_URL not set')}\" && next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "signaling": "node ./node_modules/y-webrtc/bin/server.js"
   },
   "dependencies": {
     "react": "^18.2.0",
