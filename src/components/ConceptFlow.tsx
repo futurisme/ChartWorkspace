@@ -6,6 +6,8 @@ import React, {
   useState,
   useMemo,
   useRef,
+  useContext,
+  createContext,
 } from 'react';
 import {
   ReactFlow,
@@ -21,6 +23,7 @@ import {
   NodeProps,
   EdgeProps,
   ReactFlowInstance,
+  NodeToolbar,
   getSmoothStepPath,
   getStraightPath,
   Handle,
@@ -40,15 +43,70 @@ interface ConceptNodeData {
 
 type ConceptNode = Node<ConceptNodeData>;
 
-function ConceptNodeComponent({ data, selected }: NodeProps<ConceptNodeData>) {
+interface NodeActionContextValue {
+  onChangeColor: (nodeId: string, color: string) => void;
+  isReadOnly: boolean;
+}
+
+const NodeActionContext = createContext<NodeActionContextValue>({
+  onChangeColor: () => {},
+  isReadOnly: false,
+});
+
+const COLOR_OPTIONS = [
+  '#0ea5e9',
+  '#22c55e',
+  '#eab308',
+  '#f97316',
+  '#ef4444',
+  '#a855f7',
+  '#6366f1',
+  '#14b8a6',
+];
+
+function ConceptNodeComponent({ data, selected, id }: NodeProps<ConceptNodeData>) {
+  const { onChangeColor, isReadOnly } = useContext(NodeActionContext);
+  const baseBorder = data.color ?? '#3b82f6';
+  const panelColor = data.color ? `${data.color}14` : undefined;
+
   return (
-    <div
-      className={`relative rounded-lg border-2 bg-white px-3 py-2 shadow-lg max-w-xs cursor-grab active:cursor-grabbing touch-none select-none ${
-        selected
-          ? 'border-lime-400 ring-2 ring-lime-400/80 shadow-[0_0_14px_rgba(132,204,22,0.55)]'
-          : 'border-blue-500'
-      }`}
-    >
+    <div className="relative">
+      <NodeToolbar
+        isVisible={selected && !isReadOnly}
+        position={Position.Right}
+        offset={8}
+      >
+        <div className="nodrag nopan flex items-center gap-1 rounded-full border border-gray-200 bg-white/95 px-2 py-1 shadow-md">
+          {COLOR_OPTIONS.map((color) => (
+            <button
+              key={color}
+              type="button"
+              className={`h-6 w-6 sm:h-5 sm:w-5 rounded-full border ${
+                data.color === color ? 'border-gray-900' : 'border-white/70'
+              } shadow-sm`}
+              style={{ backgroundColor: color }}
+              onMouseDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                onChangeColor(id, color);
+              }}
+              aria-label={`Set color ${color}`}
+            />
+          ))}
+        </div>
+      </NodeToolbar>
+
+      <div
+        className={`relative rounded-lg border-2 bg-white px-3 py-2 shadow-lg max-w-xs cursor-grab active:cursor-grabbing touch-none select-none ${
+          selected
+            ? 'border-lime-400 ring-2 ring-lime-400/80 shadow-[0_0_14px_rgba(132,204,22,0.55)]'
+            : ''
+        }`}
+        style={{
+          borderColor: selected ? undefined : baseBorder,
+          backgroundColor: panelColor,
+        }}
+      >
       {selected && (
         <div className="absolute -top-5 left-1/2 -translate-x-1/2 text-[10px] font-semibold uppercase tracking-wide text-lime-500">
           Editing This
@@ -63,6 +121,7 @@ function ConceptNodeComponent({ data, selected }: NodeProps<ConceptNodeData>) {
       <Handle type="source" position={Position.Left} id="s-left" className="opacity-0" />
       <Handle type="source" position={Position.Right} id="s-right" className="opacity-0" />
       <div className="font-semibold text-gray-900 text-sm sm:text-base break-words pointer-events-none">{data.label}</div>
+      </div>
     </div>
   );
 }
@@ -285,6 +344,29 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
       y: rect.top + rect.height / 2,
     });
   }, []);
+
+  const handleChangeColor = useCallback(
+    (nodeId: string, color: string) => {
+      if (isReadOnly || !doc) return;
+
+      const nodesMap = doc.getMap('nodes') as Y.Map<Y.Map<any>>;
+      const nodeData = nodesMap.get(nodeId);
+      if (nodeData && nodeData instanceof Y.Map) {
+        doc.transact(() => {
+          nodeData.set('color', color);
+        }, 'local');
+      }
+
+      setNodes((prev) =>
+        prev.map((node) =>
+          node.id === nodeId
+            ? { ...node, data: { ...node.data, color } }
+            : node
+        )
+      );
+    },
+    [doc, isReadOnly, setNodes]
+  );
 
   useEffect(() => {
     if (!doc) return;
@@ -1152,51 +1234,53 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
 
       {/* Flow Canvas */}
       <div ref={reactFlowWrapperRef} className="flex-1 pb-24 sm:pb-0">
-        <ReactFlow
-          nodes={nodes}
-          edges={routedEdges}
-          onInit={(instance) => {
-            reactFlowInstanceRef.current = instance;
-          }}
-          onNodesChange={handleNodesChange}
-          onEdgesChange={handleEdgesChange}
-          onConnect={handleConnect}
-          onSelectionChange={handleSelectionChange}
-          onPaneClick={() => {
-            setSelectedNodeId((prev) => {
-              if (!prev) {
-                return prev;
-              }
-              updatePresence({ currentNodeId: undefined });
-              return null;
-            });
-          }}
-          nodeTypes={nodeTypes}
-          edgeTypes={edgeTypes}
-          fitView
-          fitViewOptions={{ padding: 0.2 }}
-          translateExtent={workspaceExtent}
-          snapToGrid
-          snapGrid={[GRID_SIZE, GRID_SIZE]}
-          attributionPosition="bottom-left"
-          connectionLineType={ConnectionLineType.SmoothStep}
-          selectionOnDrag={false}
-          panOnDrag
-          panOnScroll
-          zoomOnPinch
-          onlyRenderVisibleElements
-          defaultEdgeOptions={{
-            type: 'hierarchy',
-            style: EDGE_STYLE,
-            markerEnd: EDGE_MARKER,
-          }}
-        >
-          <Background gap={GRID_SIZE} size={1.5} />
-          <Controls />
-          <div className="hidden sm:block">
-            <MiniMap />
-          </div>
-        </ReactFlow>
+        <NodeActionContext.Provider value={{ onChangeColor: handleChangeColor, isReadOnly }}>
+          <ReactFlow
+            nodes={nodes}
+            edges={routedEdges}
+            onInit={(instance) => {
+              reactFlowInstanceRef.current = instance;
+            }}
+            onNodesChange={handleNodesChange}
+            onEdgesChange={handleEdgesChange}
+            onConnect={handleConnect}
+            onSelectionChange={handleSelectionChange}
+            onPaneClick={() => {
+              setSelectedNodeId((prev) => {
+                if (!prev) {
+                  return prev;
+                }
+                updatePresence({ currentNodeId: undefined });
+                return null;
+              });
+            }}
+            nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
+            fitView
+            fitViewOptions={{ padding: 0.2 }}
+            translateExtent={workspaceExtent}
+            snapToGrid
+            snapGrid={[GRID_SIZE, GRID_SIZE]}
+            attributionPosition="bottom-left"
+            connectionLineType={ConnectionLineType.SmoothStep}
+            selectionOnDrag={false}
+            panOnDrag
+            panOnScroll
+            zoomOnPinch
+            onlyRenderVisibleElements
+            defaultEdgeOptions={{
+              type: 'hierarchy',
+              style: EDGE_STYLE,
+              markerEnd: EDGE_MARKER,
+            }}
+          >
+            <Background gap={GRID_SIZE} size={1.5} />
+            <Controls />
+            <div className="hidden sm:block">
+              <MiniMap />
+            </div>
+          </ReactFlow>
+        </NodeActionContext.Provider>
       </div>
 
       {/* Invite Modal */}
