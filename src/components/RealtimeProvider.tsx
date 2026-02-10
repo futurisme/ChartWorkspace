@@ -163,7 +163,7 @@ export function RealtimeProvider({
     };
   }, [mapId, userId, displayName, mode]);
 
-  // Debounced snapshot save with optimistic locking fix
+  // Debounced snapshot save - last-write-wins strategy
   const saveSnapshot = useCallback(async () => {
     if (!doc) return;
 
@@ -179,15 +179,6 @@ export function RealtimeProvider({
           version: currentVersion,
         }),
       });
-
-      if (response.status === 409) {
-        // Version conflict - fetch latest and continue without erroring
-        const { currentVersion: newVersion } = await response.json();
-        setCurrentVersion(newVersion);
-        setSaveErrorCount(prev => Math.min(prev + 1, 3));
-        console.info('Version conflict resolved, synced to v' + newVersion);
-        return;
-      }
 
       if (!response.ok) {
         setSaveErrorCount(prev => Math.min(prev + 1, 3));

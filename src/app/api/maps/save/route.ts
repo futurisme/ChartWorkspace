@@ -30,9 +30,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (typeof version !== 'number' || version < 1) {
+    // Validate snapshot format
+    try {
+      Buffer.from(snapshot, 'base64');
+    } catch {
       return NextResponse.json(
-        { error: 'Invalid version' },
+        { error: 'Invalid snapshot format' },
         { status: 400 }
       );
     }
@@ -49,34 +52,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Version conflict check (optimistic locking)
-    if (currentMap.version !== version) {
-      return NextResponse.json(
-        {
-          error: 'Version conflict',
-          currentVersion: currentMap.version,
-          submittedVersion: version,
-        },
-        { status: 409 }
-      );
-    }
-
-    // Validate snapshot format
-    try {
-      Buffer.from(snapshot, 'base64');
-    } catch {
-      return NextResponse.json(
-        { error: 'Invalid snapshot format' },
-        { status: 400 }
-      );
-    }
-
-    // Update map
+    // Always accept and merge - use last-write-wins strategy
+    // This prevents version conflict errors with concurrent editing
     const updated = await prisma.map.update({
       where: { id },
       data: {
         snapshot,
         version: { increment: 1 },
+        updatedAt: new Date(),
       },
     });
 

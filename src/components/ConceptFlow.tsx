@@ -19,6 +19,7 @@ import {
   useNodesState,
   useEdgesState,
   NodeProps,
+  MarkerType,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { useRealtime } from './RealtimeProvider';
@@ -86,6 +87,8 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
         source: edgeData.get('source'),
         target: edgeData.get('target'),
         label: edgeData.get('label'),
+        style: { stroke: '#000000', strokeWidth: 2 },
+        markerEnd: { type: MarkerType.ArrowClosed, color: '#000000' },
       });
     });
 
@@ -117,6 +120,8 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
           source: edgeData.get('source'),
           target: edgeData.get('target'),
           label: edgeData.get('label'),
+          style: { stroke: '#000000', strokeWidth: 2 },
+          markerEnd: { type: MarkerType.ArrowClosed, color: '#000000' },
         });
       });
 
@@ -176,6 +181,8 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
         id: edgeId,
         source: connection.source!,
         target: connection.target!,
+        style: { stroke: '#000000', strokeWidth: 2 },
+        markerEnd: { type: MarkerType.ArrowClosed, color: '#000000' },
       };
 
       const edgesMap = doc.getMap('edges');
@@ -256,7 +263,7 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
 
     nodeCountRef.current++;
     setNodes((nds) => [...nds, childNode]);
-    setEdges((eds) => [...eds, { id: edgeId, source: selectedNodeId!, target: childId }]);
+    setEdges((eds) => [...eds, { id: edgeId, source: selectedNodeId!, target: childId, style: { stroke: '#000000', strokeWidth: 2 }, markerEnd: { type: MarkerType.ArrowClosed, color: '#000000' } }]);
   }, [isReadOnly, doc, selectedNodeId, nodes, setNodes, setEdges, handleAddNode]);
 
   const handleAddSibling = useCallback(() => {
@@ -311,7 +318,7 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
 
     nodeCountRef.current++;
     setNodes((nds) => [...nds, siblingNode]);
-    setEdges((eds) => [...eds, { id: edgeId, source: sourceId, target: siblingId }]);
+    setEdges((eds) => [...eds, { id: edgeId, source: sourceId, target: siblingId, style: { stroke: '#000000', strokeWidth: 2 }, markerEnd: { type: MarkerType.ArrowClosed, color: '#000000' } }]);
   }, [isReadOnly, doc, selectedNodeId, nodes, setNodes, setEdges, handleAddNode]);
 
   const handleAddParent = useCallback(() => {
@@ -352,7 +359,7 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
 
     nodeCountRef.current++;
     setNodes((nds) => [...nds, parentNode]);
-    setEdges((eds) => [...eds, { id: edgeId, source: parentId, target: selectedNodeId! }]);
+    setEdges((eds) => [...eds, { id: edgeId, source: parentId, target: selectedNodeId!, style: { stroke: '#000000', strokeWidth: 2 }, markerEnd: { type: MarkerType.ArrowClosed, color: '#000000' } }]);
   }, [isReadOnly, doc, selectedNodeId, nodes, setNodes, setEdges, handleAddNode]);
 
   const handleDeleteNode = useCallback(() => {
@@ -542,6 +549,10 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
         nodeTypes={{ conceptNode: ConceptNodeComponent }}
         fitView
         attributionPosition="bottom-left"
+        defaultEdgeOptions={{
+          style: { stroke: '#000000', strokeWidth: 2 },
+          markerEnd: { type: MarkerType.ArrowClosed, color: '#000000' },
+        }}
       >
         <Background />
         <Controls />
