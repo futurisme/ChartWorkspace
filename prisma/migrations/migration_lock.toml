@@ -1,0 +1,15 @@
+{
+  "migrations": [
+    {
+      "checksum": "8cafefd90f66f03c9cf24a4b49c80d6b1ffa50b97a50ac3c95cb21e6cc54e8f8",
+      "finished_at": null,
+      "migration_name": "0_init",
+      "logs": null,
+      "rolled_back_at": null,
+      "started_at": "2026-02-10T19:00:00.000Z",
+      "applied_steps_count": null
+    }
+  ],
+  "formatVersion": "1.0.0",
+  "version": "5.22.0"
+}
