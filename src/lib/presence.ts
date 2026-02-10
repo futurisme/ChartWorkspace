@@ -1,5 +1,3 @@
-import * as Y from 'yjs';
-
 export interface UserPresence {
   userId: string;
   displayName: string;
@@ -9,12 +7,6 @@ export interface UserPresence {
   cursorX?: number;
   cursorY?: number;
   lastUpdated: number;
-}
-
-export interface AwarenessUpdate {
-  added: number[];
-  updated: number[];
-  removed: number[];
 }
 
 /**
@@ -32,37 +24,6 @@ export function generateUserColor(): string {
     '#ec4899', // pink
   ];
   return colors[Math.floor(Math.random() * colors.length)];
-}
-
-/**
- * Create user presence object
- */
-export function createPresence(
-  userId: string,
-  displayName: string,
-  mode: 'edit' | 'view' = 'edit'
-): UserPresence {
-  return {
-    userId,
-    displayName,
-    color: generateUserColor(),
-    mode,
-    lastUpdated: Date.now(),
-  };
-}
-
-/**
- * Update user presence
- */
-export function updatePresence(
-  presence: UserPresence,
-  updates: Partial<UserPresence>
-): UserPresence {
-  return {
-    ...presence,
-    ...updates,
-    lastUpdated: Date.now(),
-  };
 }
 
 /**
@@ -91,55 +52,4 @@ export function getRemoteUsers(
   });
 
   return users;
-}
-
-/**
- * Listen for presence changes
- */
-export function onPresenceChange(
-  awareness: any,
-  callback: (update: AwarenessUpdate & { changes: Map<number, UserPresence> }) => void
-): () => void {
-  const handler = (
-    update: AwarenessUpdate,
-    origin: any
-  ) => {
-    const changes = new Map<number, UserPresence>();
-
-    [...update.added, ...update.updated].forEach((clientId) => {
-      const state = awareness.getClientState(clientId);
-      if (state) {
-        changes.set(clientId, state as UserPresence);
-      }
-    });
-
-    callback({ ...update, changes });
-  };
-
-  awareness.on('change', handler);
-
-  return () => {
-    awareness.off('change', handler);
-  };
-}
-
-/**
- * Clean up old presence data (stale users)
- */
-export function pruneStalePresence(
-  awareness: any,
-  maxAgeMs: number = 30000
-): void {
-  const now = Date.now();
-
-  awareness.getStates().forEach((state: any, clientId: number) => {
-    if (
-      state &&
-      state.lastUpdated &&
-      now - state.lastUpdated > maxAgeMs
-    ) {
-      // Mark for removal (in real implementation, they'd disconnect)
-      console.warn(`Stale presence detected for client ${clientId}`);
-    }
-  });
 }

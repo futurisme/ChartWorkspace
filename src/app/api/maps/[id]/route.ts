@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { formatMapId, parseMapId } from '@/lib/mapId';
 
 export async function GET(
   request: NextRequest,
@@ -24,8 +25,16 @@ export async function GET(
       );
     }
 
+    const numericId = parseMapId(id);
+    if (!numericId) {
+      return NextResponse.json(
+        { error: 'Invalid map ID' },
+        { status: 400 }
+      );
+    }
+
     const map = await prisma.map.findUnique({
-      where: { id },
+      where: { id: numericId },
     });
 
     if (!map) {
@@ -36,7 +45,7 @@ export async function GET(
     }
 
     return NextResponse.json({
-      id: map.id,
+      id: formatMapId(map.id),
       title: map.title,
       snapshot: map.snapshot,
       version: map.version,

@@ -61,22 +61,3 @@ export function createDocWithSnapshot(snapshot?: string): Y.Doc {
   return doc;
 }
 
-/**
- * Merge multiple document states (for recovery)
- */
-export function mergeSnapshots(
-  baseSnapshot: string,
-  updateSnapshots: string[]
-): string {
-  const doc = createDocWithSnapshot(baseSnapshot);
-
-  for (const update of updateSnapshots) {
-    try {
-      applyYjsSnapshot(doc, update);
-    } catch (error) {
-      console.warn('Skipping invalid update:', error);
-    }
-  }
-
-  return getCurrentSnapshot(doc);
-}

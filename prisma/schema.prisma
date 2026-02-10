@@ -11,7 +11,7 @@ datasource db {
 }
 
 model Map {
-  id        String   @id @default(uuid())
+  id        Int      @id @default(autoincrement())
   title     String
   snapshot  Json     // Serialized Yjs doc update as base64
   version   Int      @default(1)

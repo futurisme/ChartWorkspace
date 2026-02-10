@@ -11,15 +11,19 @@ function EditorContent() {
   const mapId = params.mapId as string;
   const [title, setTitle] = useState('Untitled Map');
   const [loading, setLoading] = useState(true);
+  const [displayName] = useState(() => (Math.random() > 0.5 ? 'Alice' : 'Bob'));
 
   useEffect(() => {
-    // Fetch map info
     const loadMap = async () => {
       try {
         const response = await fetch(`/api/maps/${mapId}`);
         if (response.ok) {
           const data = await response.json();
           setTitle(data.title);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('lastMapId', mapId);
+            localStorage.setItem('lastMapTitle', data.title || 'Untitled Map');
+          }
         }
       } catch (error) {
         console.error('Failed to load map:', error);
@@ -42,8 +46,7 @@ function EditorContent() {
     );
   }
 
-  // Generate a simple user ID (in production, would come from auth state)
-  const userId = typeof window !== 'undefined' 
+  const userId = typeof window !== 'undefined'
     ? localStorage.getItem('userId') || `user-${Date.now()}`
     : `user-${Date.now()}`;
 
@@ -55,20 +58,24 @@ function EditorContent() {
     <RealtimeProvider
       mapId={mapId}
       userId={userId}
-      displayName={Math.random() > 0.5 ? 'Alice' : 'Bob'}
+      displayName={displayName}
       mode="edit"
     >
       <div className="flex h-screen flex-col">
-        {/* Header */}
         <header className="border-b border-gray-200 bg-white px-6 py-4">
-          <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
-          <p className="mt-1 text-sm text-gray-500">Real-time collaborative editor</p>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
+              <p className="mt-1 text-sm text-gray-500">Real-time collaborative editor</p>
+            </div>
+            <div className="rounded bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+              Map #{mapId}
+            </div>
+          </div>
         </header>
 
-        {/* Presence Bar */}
         <PresenceBar />
 
-        {/* Editor */}
         <div className="flex-1">
           <ConceptFlow isReadOnly={false} />
         </div>
@@ -80,3 +87,4 @@ function EditorContent() {
 export default function EditorPage() {
   return <EditorContent />;
 }
+

@@ -4,7 +4,7 @@ import React, { useMemo } from 'react';
 import { useRealtime } from './RealtimeProvider';
 
 export function PresenceBar() {
-  const { localPresence, remoteUsers, isConnected, localClientId } = useRealtime();
+  const { localPresence, remoteUsers, isConnected } = useRealtime();
 
   const allUsers = useMemo(() => {
     const users = [...remoteUsers];
@@ -24,8 +24,8 @@ export function PresenceBar() {
 
   return (
     <div className="border-b border-gray-200 bg-white px-4 py-3">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-2">
             <div
               className={`h-2 w-2 rounded-full ${
@@ -37,7 +37,7 @@ export function PresenceBar() {
             </span>
           </div>
 
-          <div className="h-6 border-l border-gray-300" />
+          <div className="hidden h-6 border-l border-gray-300 sm:block" />
 
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-600">
@@ -46,7 +46,7 @@ export function PresenceBar() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {allUsers.map((user, idx) => (
             <UserAvatar
               key={`${user.userId}-${idx}`}
@@ -57,7 +57,6 @@ export function PresenceBar() {
         </div>
       </div>
 
-      {/* User list detail */}
       {allUsers.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-2">
           {allUsers.map((user, idx) => (
@@ -117,7 +116,7 @@ function UserBadge({ user, isLocal }: UserBadgeProps) {
       />
       <span>{user.displayName}</span>
       <span className="ml-1 rounded px-1.5 py-0.5 text-xs font-semibold opacity-75">
-        {user.mode === 'edit' ? '✎ Editing' : '👁 Viewing'}
+        {user.mode === 'edit' ? 'Editing' : 'Viewing'}
       </span>
       {isLocal && <span className="ml-0.5 text-xs">(you)</span>}
     </div>

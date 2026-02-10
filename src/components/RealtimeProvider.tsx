@@ -11,14 +11,13 @@ import React, {
 } from 'react';
 import * as Y from 'yjs';
 import { WebrtcProvider } from 'y-webrtc';
-import { UserPresence, setupAwareness, getRemoteUsers } from '@/lib/presence';
+import { UserPresence, setupAwareness, getRemoteUsers, generateUserColor } from '@/lib/presence';
 import { getCurrentSnapshot } from '@/lib/snapshot';
 
 export interface RealtimeContextType {
   doc: Y.Doc | null;
   provider: WebrtcProvider | null;
   awareness: any | null;
-  localClientId: number | null;
   localPresence: UserPresence | null;
   remoteUsers: UserPresence[];
   isConnected: boolean;
@@ -56,7 +55,6 @@ export function RealtimeProvider({
   const [doc, setDoc] = useState<Y.Doc | null>(null);
   const [provider, setProvider] = useState<WebrtcProvider | null>(null);
   const [awareness, setAwareness] = useState<any | null>(null);
-  const [localClientId, setLocalClientId] = useState<number | null>(null);
   const [localPresence, setLocalPresence] = useState<UserPresence | null>(null);
   const [remoteUsers, setRemoteUsers] = useState<UserPresence[]>([]);
   const [isConnected, setIsConnected] = useState(false);
@@ -64,7 +62,9 @@ export function RealtimeProvider({
   const [saveErrorCount, setSaveErrorCount] = useState(0);
 
   const saveTimeoutRef = useRef<NodeJS.Timeout>();
-  const presenceTimeoutRef = useRef<NodeJS.Timeout>();
+  const dirtyRef = useRef(false);
+  const updateCounterRef = useRef(0);
+  const localPresenceRef = useRef<UserPresence | null>(null);
 
   // Initialize document and provider
   useEffect(() => {
@@ -101,9 +101,11 @@ export function RealtimeProvider({
         setCurrentVersion(version);
 
         // Setup WebRTC provider
+        const signalingUrl = process.env.NEXT_PUBLIC_WEBRTC_URL;
         const newProvider = new WebrtcProvider(
           `chartmaker-${mapId}`,
-          newDoc
+          newDoc,
+          signalingUrl ? { signaling: [signalingUrl] } : undefined
         );
 
         setProvider(newProvider);
@@ -111,18 +113,18 @@ export function RealtimeProvider({
         // Get awareness
         const newAwareness = newProvider.awareness;
         setAwareness(newAwareness);
-        setLocalClientId(newAwareness.clientID);
 
         // Setup local user presence
         const presence: UserPresence = {
           userId,
           displayName,
-          color: `hsl(${Math.random() * 360}, 70%, 60%)`,
+          color: generateUserColor(),
           mode,
           lastUpdated: Date.now(),
         };
 
         setLocalPresence(presence);
+        localPresenceRef.current = presence;
         setupAwareness(newAwareness, presence);
 
         // Listen for awareness changes
@@ -165,9 +167,10 @@ export function RealtimeProvider({
 
   // Debounced snapshot save - last-write-wins strategy
   const saveSnapshot = useCallback(async () => {
-    if (!doc) return;
+    if (!doc || !dirtyRef.current) return;
 
     try {
+      const updateMark = updateCounterRef.current;
       const snapshot = getCurrentSnapshot(doc);
 
       const response = await fetch('/api/maps/save', {
@@ -188,6 +191,9 @@ export function RealtimeProvider({
       const result = await response.json();
       setCurrentVersion(result.version);
       setSaveErrorCount(0); // Reset on success
+      if (updateCounterRef.current === updateMark) {
+        dirtyRef.current = false;
+      }
     } catch (error) {
       setSaveErrorCount(prev => Math.min(prev + 1, 3));
       console.error('Snapshot save error (will retry):', error);
@@ -199,6 +205,8 @@ export function RealtimeProvider({
     if (!doc) return;
 
     const handleChange = () => {
+      dirtyRef.current = true;
+      updateCounterRef.current += 1;
       // Clear existing timeout
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
@@ -234,33 +242,28 @@ export function RealtimeProvider({
     };
   }, [doc, saveSnapshot]);
 
-  // Auto-update presence
+  // Auto-update presence to keep sessions fresh
   useEffect(() => {
-    if (!awareness || !localPresence) return;
+    if (!awareness) return;
 
-    const handleUpdate = () => {
-      if (presenceTimeoutRef.current) {
-        clearTimeout(presenceTimeoutRef.current);
-      }
+    const intervalId = setInterval(() => {
+      const presence = localPresenceRef.current;
+      if (!presence) return;
 
-      presenceTimeoutRef.current = setTimeout(() => {
-        const updated = {
-          ...localPresence,
-          lastUpdated: Date.now(),
-        };
-        setupAwareness(awareness, updated);
-        setLocalPresence(updated);
-      }, 5000);
+      const updated = {
+        ...presence,
+        lastUpdated: Date.now(),
+      };
+
+      localPresenceRef.current = updated;
+      setLocalPresence(updated);
+      setupAwareness(awareness, updated);
+    }, 2500);
+
+    return () => {
+      clearInterval(intervalId);
     };
-
-    const unsubscribe = () => {
-      if (presenceTimeoutRef.current) {
-        clearTimeout(presenceTimeoutRef.current);
-      }
-    };
-
-    return unsubscribe;
-  }, [awareness, localPresence]);
+  }, [awareness]);
 
   const updatePresence = useCallback(
     (updates: Partial<UserPresence>) => {
@@ -273,6 +276,7 @@ export function RealtimeProvider({
       };
 
       setLocalPresence(updated);
+      localPresenceRef.current = updated;
       setupAwareness(awareness, updated);
     },
     [awareness, localPresence]
@@ -284,7 +288,6 @@ export function RealtimeProvider({
         doc,
         provider,
         awareness,
-        localClientId,
         localPresence,
         remoteUsers,
         isConnected,

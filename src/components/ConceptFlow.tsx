@@ -64,6 +64,8 @@ const LEVEL_Y_SPACING = 96;
 const AUTO_GAP = 24;
 const AUTO_SHIFT = 88;
 const AUTO_MAX_TRIES = 14;
+const WORKSPACE_PADDING = 320;
+const MIN_WORKSPACE_SIZE = { width: 1200, height: 800 };
 
 function getNodeCenter(node: Node) {
   const width = node.width ?? DEFAULT_NODE_SIZE.width;
@@ -72,6 +74,41 @@ function getNodeCenter(node: Node) {
     x: node.position.x + width / 2,
     y: node.position.y + height / 2,
   };
+}
+
+function getWorkspaceExtent(nodes: Node[]) {
+  if (nodes.length === 0) {
+    const halfWidth = MIN_WORKSPACE_SIZE.width / 2;
+    const halfHeight = MIN_WORKSPACE_SIZE.height / 2;
+    return [
+      [-halfWidth, -halfHeight],
+      [halfWidth, halfHeight],
+    ] as [[number, number], [number, number]];
+  }
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  nodes.forEach((node) => {
+    const width = node.width ?? DEFAULT_NODE_SIZE.width;
+    const height = node.height ?? DEFAULT_NODE_SIZE.height;
+    minX = Math.min(minX, node.position.x);
+    minY = Math.min(minY, node.position.y);
+    maxX = Math.max(maxX, node.position.x + width);
+    maxY = Math.max(maxY, node.position.y + height);
+  });
+
+  const width = Math.max(maxX - minX, MIN_WORKSPACE_SIZE.width);
+  const height = Math.max(maxY - minY, MIN_WORKSPACE_SIZE.height);
+  const centerX = (minX + maxX) / 2;
+  const centerY = (minY + maxY) / 2;
+
+  return [
+    [centerX - width / 2 - WORKSPACE_PADDING, centerY - height / 2 - WORKSPACE_PADDING],
+    [centerX + width / 2 + WORKSPACE_PADDING, centerY + height / 2 + WORKSPACE_PADDING],
+  ] as [[number, number], [number, number]];
 }
 
 function findOpenPosition(
@@ -133,6 +170,49 @@ function HierarchyEdge({
   return <BaseEdge id={id} path={edgePath} markerEnd={markerEnd} style={style} />;
 }
 
+function buildNodeFromMap(nodeId: string, nodeData: Y.Map<any>): Node {
+  const position = nodeData.get('position') || { x: 0, y: 0 };
+  return {
+    id: nodeId,
+    type: 'conceptNode',
+    data: {
+      label: nodeData.get('label') || 'Node',
+      color: nodeData.get('color'),
+    },
+    position,
+  } as Node;
+}
+
+function buildEdgeFromMap(edgeId: string, edgeData: Y.Map<any>): Edge {
+  return {
+    id: edgeId,
+    source: edgeData.get('source'),
+    target: edgeData.get('target'),
+    label: edgeData.get('label'),
+    style: EDGE_STYLE,
+    markerEnd: EDGE_MARKER,
+  };
+}
+
+function isSameNode(a: Node, b: Node) {
+  return (
+    a.id === b.id &&
+    a.position.x === b.position.x &&
+    a.position.y === b.position.y &&
+    a.data?.label === b.data?.label &&
+    a.data?.color === b.data?.color
+  );
+}
+
+function isSameEdge(a: Edge, b: Edge) {
+  return (
+    a.id === b.id &&
+    a.source === b.source &&
+    a.target === b.target &&
+    a.label === b.label
+  );
+}
+
 interface ConceptFlowProps {
   isReadOnly?: boolean;
 }
@@ -149,6 +229,7 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
 
   const nodeTypes = useMemo(() => ({ conceptNode: ConceptNodeComponent }), []);
   const edgeTypes = useMemo(() => ({ hierarchy: HierarchyEdge }), []);
+  const workspaceExtent = useMemo(() => getWorkspaceExtent(nodes), [nodes]);
 
   const routedEdges = useMemo(() => {
     if (edges.length === 0) return edges;
@@ -240,6 +321,10 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
     });
   }, [edges, nodes]);
 
+  useEffect(() => {
+    nodeCountRef.current = Math.max(nodeCountRef.current, nodes.length);
+  }, [nodes.length]);
+
   const getChildrenFor = useCallback(
     (parentId: string) => {
       const childIds = edges.filter((edge) => edge.source === parentId).map((edge) => edge.target);
@@ -265,16 +350,9 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
     // Load initial nodes
     const initialNodes: Node[] = [];
     nodesMap.forEach((nodeData, nodeId) => {
-      const position = nodeData.get('position');
-      initialNodes.push({
-        id: nodeId,
-        type: 'conceptNode',
-        data: {
-          label: nodeData.get('label') || 'Node',
-          color: nodeData.get('color'),
-        },
-        position: position || { x: 0, y: 0 },
-      } as Node);
+      if (nodeData instanceof Y.Map) {
+        initialNodes.push(buildNodeFromMap(nodeId, nodeData));
+      }
     });
 
     setNodes(initialNodes);
@@ -283,57 +361,115 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
     // Load initial edges
     const initialEdges: Edge[] = [];
     edgesMap.forEach((edgeData, edgeId) => {
-      initialEdges.push({
-        id: edgeId,
-        source: edgeData.get('source'),
-        target: edgeData.get('target'),
-        label: edgeData.get('label'),
-        style: EDGE_STYLE,
-        markerEnd: EDGE_MARKER,
-      });
+      if (edgeData instanceof Y.Map) {
+        initialEdges.push(buildEdgeFromMap(edgeId, edgeData));
+      }
     });
 
     setEdges(initialEdges);
 
-    // Listen for updates
-    const handleUpdate = (update: Uint8Array, origin: any) => {
-      if (origin === 'local') return;
+    const handleNodesDeep = (events: Y.YEvent<any>[], transaction: Y.Transaction) => {
+      if (transaction.origin === 'local') return;
 
-      // Rebuild from Yjs state
-      const updatedNodes: Node[] = [];
-      nodesMap.forEach((nodeData, nodeId) => {
-        const position = nodeData.get('position');
-        updatedNodes.push({
-          id: nodeId,
-          type: 'conceptNode',
-          data: {
-            label: nodeData.get('label') || 'Node',
-            color: nodeData.get('color'),
-          },
-          position: position || { x: 0, y: 0 },
-        } as Node);
+      const changedIds = new Set<string>();
+      events.forEach((event) => {
+        if (event.target === nodesMap) {
+          event.changes.keys.forEach((_change, key) => {
+            changedIds.add(String(key));
+          });
+        }
+        if (event.path.length > 0) {
+          changedIds.add(String(event.path[0]));
+        }
       });
 
-      const updatedEdges: Edge[] = [];
-      edgesMap.forEach((edgeData, edgeId) => {
-        updatedEdges.push({
-          id: edgeId,
-          source: edgeData.get('source'),
-          target: edgeData.get('target'),
-          label: edgeData.get('label'),
-          style: EDGE_STYLE,
-          markerEnd: EDGE_MARKER,
+      if (changedIds.size === 0) return;
+
+      setNodes((prev) => {
+        let changed = false;
+        const nextMap = new Map(prev.map((node) => [node.id, node]));
+
+        changedIds.forEach((nodeId) => {
+          const nodeData = nodesMap.get(nodeId);
+          if (!nodeData || !(nodeData instanceof Y.Map)) {
+            if (nextMap.delete(nodeId)) {
+              changed = true;
+            }
+            return;
+          }
+
+          const nextNode = buildNodeFromMap(nodeId, nodeData);
+          const existing = nextMap.get(nodeId);
+          if (!existing) {
+            nextMap.set(nodeId, nextNode);
+            changed = true;
+            return;
+          }
+
+          if (!isSameNode(existing, nextNode)) {
+            nextMap.set(nodeId, { ...existing, ...nextNode, data: nextNode.data, position: nextNode.position });
+            changed = true;
+          }
         });
-      });
 
-      setNodes(updatedNodes);
-      setEdges(updatedEdges);
+        return changed ? Array.from(nextMap.values()) : prev;
+      });
     };
 
-    doc.on('update', handleUpdate);
+    const handleEdgesDeep = (events: Y.YEvent<any>[], transaction: Y.Transaction) => {
+      if (transaction.origin === 'local') return;
+
+      const changedIds = new Set<string>();
+      events.forEach((event) => {
+        if (event.target === edgesMap) {
+          event.changes.keys.forEach((_change, key) => {
+            changedIds.add(String(key));
+          });
+        }
+        if (event.path.length > 0) {
+          changedIds.add(String(event.path[0]));
+        }
+      });
+
+      if (changedIds.size === 0) return;
+
+      setEdges((prev) => {
+        let changed = false;
+        const nextMap = new Map(prev.map((edge) => [edge.id, edge]));
+
+        changedIds.forEach((edgeId) => {
+          const edgeData = edgesMap.get(edgeId);
+          if (!edgeData || !(edgeData instanceof Y.Map)) {
+            if (nextMap.delete(edgeId)) {
+              changed = true;
+            }
+            return;
+          }
+
+          const nextEdge = buildEdgeFromMap(edgeId, edgeData);
+          const existing = nextMap.get(edgeId);
+          if (!existing) {
+            nextMap.set(edgeId, nextEdge);
+            changed = true;
+            return;
+          }
+
+          if (!isSameEdge(existing, nextEdge)) {
+            nextMap.set(edgeId, { ...existing, ...nextEdge });
+            changed = true;
+          }
+        });
+
+        return changed ? Array.from(nextMap.values()) : prev;
+      });
+    };
+
+    nodesMap.observeDeep(handleNodesDeep);
+    edgesMap.observeDeep(handleEdgesDeep);
 
     return () => {
-      doc.off('update', handleUpdate);
+      nodesMap.unobserveDeep(handleNodesDeep);
+      edgesMap.unobserveDeep(handleEdgesDeep);
     };
   }, [doc, setNodes, setEdges]);
 
@@ -348,14 +484,16 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
 
       const nodesMap = doc.getMap('nodes') as Y.Map<Y.Map<any>>;
 
-      changes.forEach((change: any) => {
-        if (change.type === 'position' && change.position) {
-          const nodeData = nodesMap.get(change.id);
-          if (nodeData && nodeData instanceof Y.Map) {
-            nodeData.set('position', change.position);
+      doc.transact(() => {
+        changes.forEach((change: any) => {
+          if (change.type === 'position' && change.position) {
+            const nodeData = nodesMap.get(change.id);
+            if (nodeData && nodeData instanceof Y.Map) {
+              nodeData.set('position', change.position);
+            }
           }
-        }
-      });
+        });
+      }, 'local');
     },
     [isReadOnly, doc, onNodesChange]
   );
@@ -382,11 +520,13 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
       };
 
       const edgesMap = doc.getMap('edges');
-      const edgeDataMap = new Y.Map();
-      edgeDataMap.set('id', edgeId);
-      edgeDataMap.set('source', connection.source!);
-      edgeDataMap.set('target', connection.target!);
-      edgesMap.set(edgeId, edgeDataMap);
+      doc.transact(() => {
+        const edgeDataMap = new Y.Map();
+        edgeDataMap.set('id', edgeId);
+        edgeDataMap.set('source', connection.source!);
+        edgeDataMap.set('target', connection.target!);
+        edgesMap.set(edgeId, edgeDataMap);
+      }, 'local');
 
       setEdges((eds) => addEdge(newEdge, eds));
     },
@@ -413,11 +553,13 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
     };
 
     const nodesMap = doc.getMap('nodes');
-    const nodeDataMap = new Y.Map();
-    nodeDataMap.set('id', nodeId);
-    nodeDataMap.set('label', newNode.data.label);
-    nodeDataMap.set('position', newNode.position);
-    nodesMap.set(nodeId, nodeDataMap);
+    doc.transact(() => {
+      const nodeDataMap = new Y.Map();
+      nodeDataMap.set('id', nodeId);
+      nodeDataMap.set('label', newNode.data.label);
+      nodeDataMap.set('position', newNode.position);
+      nodesMap.set(nodeId, nodeDataMap);
+    }, 'local');
 
     nodeCountRef.current++;
     setNodes((nds) => [...nds, newNode]);
@@ -453,20 +595,21 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
 
     // Save node in Yjs
     const nodesMap = doc.getMap('nodes');
-    const nodeDataMap = new Y.Map();
-    nodeDataMap.set('id', childId);
-    nodeDataMap.set('label', childNode.data.label);
-    nodeDataMap.set('position', childNode.position);
-    nodesMap.set(childId, nodeDataMap);
-
-    // Create edge
-    const edgeId = `edge-${Date.now()}`;
     const edgesMap = doc.getMap('edges');
-    const edgeDataMap = new Y.Map();
-    edgeDataMap.set('id', edgeId);
-    edgeDataMap.set('source', selectedNodeId);
-    edgeDataMap.set('target', childId);
-    edgesMap.set(edgeId, edgeDataMap);
+    const edgeId = `edge-${Date.now()}`;
+    doc.transact(() => {
+      const nodeDataMap = new Y.Map();
+      nodeDataMap.set('id', childId);
+      nodeDataMap.set('label', childNode.data.label);
+      nodeDataMap.set('position', childNode.position);
+      nodesMap.set(childId, nodeDataMap);
+
+      const edgeDataMap = new Y.Map();
+      edgeDataMap.set('id', edgeId);
+      edgeDataMap.set('source', selectedNodeId);
+      edgeDataMap.set('target', childId);
+      edgesMap.set(edgeId, edgeDataMap);
+    }, 'local');
 
     nodeCountRef.current++;
     setNodes((nds) => [...nds, childNode]);
@@ -515,14 +658,6 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
     };
 
     const nodesMap = doc.getMap('nodes');
-    const nodeDataMap = new Y.Map();
-    nodeDataMap.set('id', siblingId);
-    nodeDataMap.set('label', siblingNode.data.label);
-    nodeDataMap.set('position', siblingNode.position);
-    nodesMap.set(siblingId, nodeDataMap);
-
-    // Find parent of selected node and connect parent -> sibling
-    // If no parent exists, connect selected -> sibling
     const edgesMap = doc.getMap('edges') as Y.Map<Y.Map<any>>;
     let parentId: string | null = parentIdFromState;
 
@@ -540,11 +675,19 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
     // Create edge: parent -> sibling (if parent exists), else selected -> sibling
     const sourceId = parentId || selectedNodeId;
     const edgeId = `edge-${Date.now()}`;
-    const edgeDataMap = new Y.Map();
-    edgeDataMap.set('id', edgeId);
-    edgeDataMap.set('source', sourceId);
-    edgeDataMap.set('target', siblingId);
-    edgesMap.set(edgeId, edgeDataMap);
+    doc.transact(() => {
+      const nodeDataMap = new Y.Map();
+      nodeDataMap.set('id', siblingId);
+      nodeDataMap.set('label', siblingNode.data.label);
+      nodeDataMap.set('position', siblingNode.position);
+      nodesMap.set(siblingId, nodeDataMap);
+
+      const edgeDataMap = new Y.Map();
+      edgeDataMap.set('id', edgeId);
+      edgeDataMap.set('source', sourceId);
+      edgeDataMap.set('target', siblingId);
+      edgesMap.set(edgeId, edgeDataMap);
+    }, 'local');
 
     nodeCountRef.current++;
     setNodes((nds) => [...nds, siblingNode]);
@@ -582,20 +725,21 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
     };
 
     const nodesMap = doc.getMap('nodes');
-    const nodeDataMap = new Y.Map();
-    nodeDataMap.set('id', parentId);
-    nodeDataMap.set('label', parentNode.data.label);
-    nodeDataMap.set('position', parentNode.position);
-    nodesMap.set(parentId, nodeDataMap);
-
-    // Connect parent -> child
-    const edgeId = `edge-${Date.now()}`;
     const edgesMap = doc.getMap('edges');
-    const edgeDataMap = new Y.Map();
-    edgeDataMap.set('id', edgeId);
-    edgeDataMap.set('source', parentId);
-    edgeDataMap.set('target', selectedNodeId);
-    edgesMap.set(edgeId, edgeDataMap);
+    const edgeId = `edge-${Date.now()}`;
+    doc.transact(() => {
+      const nodeDataMap = new Y.Map();
+      nodeDataMap.set('id', parentId);
+      nodeDataMap.set('label', parentNode.data.label);
+      nodeDataMap.set('position', parentNode.position);
+      nodesMap.set(parentId, nodeDataMap);
+
+      const edgeDataMap = new Y.Map();
+      edgeDataMap.set('id', edgeId);
+      edgeDataMap.set('source', parentId);
+      edgeDataMap.set('target', selectedNodeId);
+      edgesMap.set(edgeId, edgeDataMap);
+    }, 'local');
 
     nodeCountRef.current++;
     setNodes((nds) => [...nds, parentNode]);
@@ -617,8 +761,6 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
     const nodesMap = doc.getMap('nodes');
     const edgesMap = doc.getMap('edges') as Y.Map<Y.Map<any>>;
 
-    nodesMap.delete(selectedNodeId);
-
     // Delete connected edges
     const edgesToDelete: string[] = [];
     edgesMap.forEach((edgeData, edgeId) => {
@@ -631,9 +773,12 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
       }
     });
 
-    edgesToDelete.forEach((edgeId) => {
-      edgesMap.delete(edgeId);
-    });
+    doc.transact(() => {
+      nodesMap.delete(selectedNodeId);
+      edgesToDelete.forEach((edgeId) => {
+        edgesMap.delete(edgeId);
+      });
+    }, 'local');
 
     setNodes((nds) => nds.filter((n) => n.id !== selectedNodeId));
     setEdges((eds) =>
@@ -664,7 +809,9 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
     const nodesMap = doc.getMap('nodes') as Y.Map<Y.Map<any>>;
     const nodeData = nodesMap.get(renameNodeId);
     if (nodeData && nodeData instanceof Y.Map) {
-      nodeData.set('label', renameText);
+      doc.transact(() => {
+        nodeData.set('label', renameText);
+      }, 'local');
     }
 
     // Update local state
@@ -697,8 +844,8 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
       {/* Toolbar */}
       {!isReadOnly && (
         <>
-          <div className="hidden sm:block border-b border-gray-200 bg-white px-4 py-2">
-            <div className="flex items-center gap-2 flex-wrap md:flex-nowrap">
+          <div className="hidden sm:block border-b border-gray-200 bg-white">
+            <div className="flex flex-wrap items-center gap-2 px-4 py-2">
               <button
                 onClick={handleAddNode}
                 className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 active:bg-blue-800"
@@ -706,91 +853,132 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
                 + Add Concept
               </button>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   onClick={handleAddChild}
                   className="rounded bg-indigo-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 active:bg-indigo-800"
                 >
-                  + Child
+                  Add Child
                 </button>
                 <button
                   onClick={handleAddSibling}
                   className="rounded bg-indigo-500 px-3 py-2 text-sm font-semibold text-white transition hover:bg-indigo-600 active:bg-indigo-700"
                 >
-                  + Sibling
+                  Add Sibling
                 </button>
                 <button
                   onClick={handleAddParent}
                   className="rounded bg-indigo-400 px-3 py-2 text-sm font-semibold text-white transition hover:bg-indigo-500 active:bg-indigo-600"
                 >
-                  + Parent
+                  Add Parent
                 </button>
               </div>
 
               {selectedNodeId && (
-                <>
+                <div className="flex items-center gap-2">
                   <button
                     onClick={handleRenameStart}
                     className="rounded bg-yellow-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-yellow-700 active:bg-yellow-800"
                   >
-                    ✎ Rename
+                    Rename
                   </button>
                   <button
                     onClick={handleDeleteNode}
                     className="rounded bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700 active:bg-red-800"
                   >
-                    × Delete
+                    Delete
                   </button>
-                </>
+                </div>
               )}
 
               <div className="flex-1" />
 
-              {/* Multi-user indicator */}
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-3">
                 {remoteUsers.length > 0 && (
-                  <div className="flex items-center gap-1 px-2 py-1 bg-yellow-100 rounded text-xs font-semibold text-yellow-800">
+                  <div className="flex items-center gap-1 rounded bg-yellow-100 px-2 py-1 text-xs font-semibold text-yellow-800">
                     <span className="inline-block h-2 w-2 rounded-full bg-yellow-600 animate-pulse" />
                     {remoteUsers.length + 1} editing
                   </div>
                 )}
+
+                <button
+                  onClick={handleInvite}
+                  className="rounded border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 active:bg-gray-100"
+                >
+                  Invite
+                </button>
+
+                {!isConnected && (
+                  <div className="flex items-center gap-2 text-sm text-red-600">
+                    <div className="h-2 w-2 rounded-full bg-red-500" />
+                    Offline
+                  </div>
+                )}
+
+                {saveErrorCount > 0 && (
+                  <div className="text-xs font-medium text-orange-600">
+                    {saveErrorCount > 0
+                      ? `Warning: ${saveErrorCount} save${saveErrorCount > 1 ? 's' : ''} syncing`
+                      : ''}
+                  </div>
+                )}
               </div>
-
-              <button
-                onClick={handleInvite}
-                className="rounded border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 active:bg-gray-100"
-              >
-                Invite to collab
-              </button>
-
-              {!isConnected && (
-                <div className="flex items-center gap-2 text-sm text-red-600">
-                  <div className="h-2 w-2 rounded-full bg-red-500" />
-                  Offline
-                </div>
-              )}
-
-              {saveErrorCount > 0 && (
-                <div className="text-xs font-medium text-orange-600">
-                  {saveErrorCount > 0 ? `⚠ ${saveErrorCount} save${saveErrorCount > 1 ? 's' : ''} syncing` : ''}
-                </div>
-              )}
             </div>
           </div>
 
           {/* Mobile toolbar fixed bottom */}
           <div className="sm:hidden fixed bottom-0 left-0 right-0 z-40 border-t border-gray-200 bg-white px-2 py-2">
-            <div className="flex items-center justify-around">
-              <button onClick={handleAddNode} className="rounded-full bg-blue-600 p-3 text-white text-lg transition active:bg-blue-700" title="Add">＋</button>
-              <button onClick={handleAddChild} className="rounded-full bg-indigo-600 p-3 text-white text-lg transition active:bg-indigo-700" title="Child">↳</button>
-              <button onClick={handleAddSibling} className="rounded-full bg-indigo-500 p-3 text-white text-lg transition active:bg-indigo-600" title="Sibling">≡</button>
-              <button onClick={handleAddParent} className="rounded-full bg-indigo-400 p-3 text-white text-lg transition active:bg-indigo-500" title="Parent">↶</button>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <button
+                onClick={handleAddNode}
+                className="flex-1 min-w-[72px] rounded-full bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition active:bg-blue-700"
+              >
+                Add
+              </button>
+              <button
+                onClick={handleAddChild}
+                className="flex-1 min-w-[72px] rounded-full bg-indigo-600 px-3 py-2 text-sm font-semibold text-white transition active:bg-indigo-700"
+              >
+                Child
+              </button>
+              <button
+                onClick={handleAddSibling}
+                className="flex-1 min-w-[72px] rounded-full bg-indigo-500 px-3 py-2 text-sm font-semibold text-white transition active:bg-indigo-600"
+              >
+                Sibling
+              </button>
+              <button
+                onClick={handleAddParent}
+                className="flex-1 min-w-[72px] rounded-full bg-indigo-400 px-3 py-2 text-sm font-semibold text-white transition active:bg-indigo-500"
+              >
+                Parent
+              </button>
               {selectedNodeId && (
-                <button onClick={handleRenameStart} className="rounded-full bg-yellow-600 p-3 text-white text-lg transition active:bg-yellow-700" title="Rename">✎</button>
+                <button
+                  onClick={handleRenameStart}
+                  className="flex-1 min-w-[72px] rounded-full bg-yellow-600 px-3 py-2 text-sm font-semibold text-white transition active:bg-yellow-700"
+                >
+                  Rename
+                </button>
               )}
-              <button onClick={handleInvite} className="rounded-full bg-gray-100 p-3 text-lg transition active:bg-gray-200" title="Invite">🔗</button>
+              {selectedNodeId && (
+                <button
+                  onClick={handleDeleteNode}
+                  className="flex-1 min-w-[72px] rounded-full bg-red-600 px-3 py-2 text-sm font-semibold text-white transition active:bg-red-700"
+                >
+                  Delete
+                </button>
+              )}
+              <button
+                onClick={handleInvite}
+                className="flex-1 min-w-[72px] rounded-full bg-gray-100 px-3 py-2 text-sm font-semibold text-gray-800 transition active:bg-gray-200"
+              >
+                Invite
+              </button>
               {remoteUsers.length > 0 && (
-                <div className="rounded-full bg-yellow-100 p-3 text-sm font-bold text-yellow-800">{remoteUsers.length + 1}</div>
+                <div className="flex min-w-[72px] flex-1 items-center justify-center rounded-full bg-yellow-100 px-3 py-2 text-sm font-semibold text-yellow-800">
+                  {remoteUsers.length + 1} online
+                </div>
               )}
             </div>
           </div>
@@ -813,6 +1001,7 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
         edgeTypes={edgeTypes}
         fitView
         fitViewOptions={{ padding: 0.2 }}
+        translateExtent={workspaceExtent}
         attributionPosition="bottom-left"
         connectionLineType={ConnectionLineType.SmoothStep}
         selectionOnDrag={false}
@@ -909,3 +1098,4 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
     </div>
   );
 }
+

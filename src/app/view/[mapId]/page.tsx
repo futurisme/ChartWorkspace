@@ -19,6 +19,10 @@ function ViewerContent() {
         if (response.ok) {
           const data = await response.json();
           setTitle(data.title);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('lastMapId', mapId);
+            localStorage.setItem('lastMapTitle', data.title || 'Untitled Map');
+          }
         }
       } catch (error) {
         console.error('Failed to load map:', error);
@@ -57,23 +61,20 @@ function ViewerContent() {
       mode="view"
     >
       <div className="flex h-screen flex-col">
-        {/* Header */}
         <header className="border-b border-gray-200 bg-gray-50 px-6 py-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
               <p className="mt-1 text-sm text-gray-500">Viewing</p>
             </div>
             <div className="rounded bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700">
-              👁 View Only
+              View Only
             </div>
           </div>
         </header>
 
-        {/* Presence Bar */}
         <PresenceBar />
 
-        {/* Viewer */}
         <div className="flex-1">
           <ConceptFlow isReadOnly={true} />
         </div>

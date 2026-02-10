@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import * as Y from 'yjs';
+import { formatMapId, parseMapId } from '@/lib/mapId';
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,9 +14,17 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { id, snapshot, version } = body;
+    const { id, snapshot } = body;
 
     if (!id || typeof id !== 'string') {
+      return NextResponse.json(
+        { error: 'Invalid map ID' },
+        { status: 400 }
+      );
+    }
+
+    const numericId = parseMapId(id);
+    if (!numericId) {
       return NextResponse.json(
         { error: 'Invalid map ID' },
         { status: 400 }
@@ -42,7 +50,7 @@ export async function POST(request: NextRequest) {
 
     // Get current map from database
     const currentMap = await prisma.map.findUnique({
-      where: { id },
+      where: { id: numericId },
     });
 
     if (!currentMap) {
@@ -55,7 +63,7 @@ export async function POST(request: NextRequest) {
     // Always accept and merge - use last-write-wins strategy
     // This prevents version conflict errors with concurrent editing
     const updated = await prisma.map.update({
-      where: { id },
+      where: { id: numericId },
       data: {
         snapshot,
         version: { increment: 1 },
@@ -64,7 +72,7 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({
-      id: updated.id,
+      id: formatMapId(updated.id),
       version: updated.version,
       updatedAt: updated.updatedAt,
     });

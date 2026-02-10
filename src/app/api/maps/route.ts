@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { createDocWithSnapshot, getCurrentSnapshot } from '@/lib/snapshot';
+import { formatMapId } from '@/lib/mapId';
 
 export async function POST(request: NextRequest) {
   try {
@@ -39,7 +40,7 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json(
-      { id: map.id, title: map.title },
+      { id: formatMapId(map.id), title: map.title },
       { status: 201 }
     );
   } catch (error) {

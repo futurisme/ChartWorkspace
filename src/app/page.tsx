@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
 export default function Home() {
@@ -9,6 +8,14 @@ export default function Home() {
   const [mapTitle, setMapTitle] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState('');
+  const [lastMapId, setLastMapId] = useState<string | null>(null);
+  const [lastMapTitle, setLastMapTitle] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    setLastMapId(localStorage.getItem('lastMapId'));
+    setLastMapTitle(localStorage.getItem('lastMapTitle'));
+  }, []);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -19,7 +26,6 @@ export default function Home() {
 
     setIsCreating(true);
     try {
-      // Create new map
       const response = await fetch('/api/maps', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -34,6 +40,11 @@ export default function Home() {
       setError(err instanceof Error ? err.message : 'Failed to create map');
       setIsCreating(false);
     }
+  };
+
+  const handleLoadLast = () => {
+    if (!lastMapId) return;
+    router.push(`/editor/${lastMapId}`);
   };
 
   return (
@@ -78,6 +89,21 @@ export default function Home() {
             >
               {isCreating ? 'Creating...' : 'Create New Map'}
             </button>
+
+            <button
+              type="button"
+              onClick={handleLoadLast}
+              disabled={!lastMapId}
+              className="w-full rounded border border-gray-200 py-2 font-semibold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Load My Chart Workspace
+            </button>
+
+            {lastMapId && (
+              <p className="text-center text-xs text-gray-500">
+                Last opened: {lastMapTitle || 'Untitled Map'} (#{lastMapId})
+              </p>
+            )}
           </form>
 
           <div className="mt-8 border-t pt-6">
@@ -85,11 +111,11 @@ export default function Home() {
               Features:
             </p>
             <ul className="mt-3 space-y-2 text-sm text-gray-700">
-              <li>✓ Real-time collaboration</li>
-              <li>✓ Live presence awareness</li>
-              <li>✓ Conflict-free editing (CRDT)</li>
-              <li>✓ Auto-save to database</li>
-              <li>✓ Editor & Viewer modes</li>
+              <li>Real-time collaboration</li>
+              <li>Live presence awareness</li>
+              <li>Conflict-free editing (CRDT)</li>
+              <li>Auto-save to database</li>
+              <li>Editor and viewer modes</li>
             </ul>
           </div>
         </div>
