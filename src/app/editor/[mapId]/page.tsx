@@ -1,0 +1,82 @@
+'use client';
+
+import React, { useEffect, useState } from 'react';
+import { useParams } from 'next/navigation';
+import { RealtimeProvider } from '@/components/RealtimeProvider';
+import { ConceptFlow } from '@/components/ConceptFlow';
+import { PresenceBar } from '@/components/PresenceBar';
+
+function EditorContent() {
+  const params = useParams();
+  const mapId = params.mapId as string;
+  const [title, setTitle] = useState('Untitled Map');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Fetch map info
+    const loadMap = async () => {
+      try {
+        const response = await fetch(`/api/maps/${mapId}`);
+        if (response.ok) {
+          const data = await response.json();
+          setTitle(data.title);
+        }
+      } catch (error) {
+        console.error('Failed to load map:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadMap();
+  }, [mapId]);
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-100">
+        <div className="text-center">
+          <div className="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
+          <p className="text-gray-600">Loading map...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Generate a simple user ID (in production, would come from auth state)
+  const userId = typeof window !== 'undefined' 
+    ? localStorage.getItem('userId') || `user-${Date.now()}`
+    : `user-${Date.now()}`;
+
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('userId', userId);
+  }
+
+  return (
+    <RealtimeProvider
+      mapId={mapId}
+      userId={userId}
+      displayName={Math.random() > 0.5 ? 'Alice' : 'Bob'}
+      mode="edit"
+    >
+      <div className="flex h-screen flex-col">
+        {/* Header */}
+        <header className="border-b border-gray-200 bg-white px-6 py-4">
+          <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
+          <p className="mt-1 text-sm text-gray-500">Real-time collaborative editor</p>
+        </header>
+
+        {/* Presence Bar */}
+        <PresenceBar />
+
+        {/* Editor */}
+        <div className="flex-1">
+          <ConceptFlow isReadOnly={false} />
+        </div>
+      </div>
+    </RealtimeProvider>
+  );
+}
+
+export default function EditorPage() {
+  return <EditorContent />;
+}

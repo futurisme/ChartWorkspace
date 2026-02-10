@@ -1,0 +1,22 @@
+// prisma/.env.local - create this in your local environment
+// DATABASE_URL="postgresql://user:password@localhost:5432/chartmaker?schema=public"
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Map {
+  id        String   @id @default(uuid())
+  title     String
+  snapshot  Json     // Serialized Yjs doc update as base64
+  version   Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([updatedAt])
+}
