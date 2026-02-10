@@ -48,6 +48,9 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState([] as Node[]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([] as Edge[]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [renameNodeId, setRenameNodeId] = useState<string | null>(null);
+  const [renameText, setRenameText] = useState('');
+  const [showInviteModal, setShowInviteModal] = useState(false);
   const nodeCountRef = useRef(0);
 
   // Initialize from Yjs doc
@@ -283,9 +286,33 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
     nodeDataMap.set('position', siblingNode.position);
     nodesMap.set(siblingId, nodeDataMap);
 
+    // Find parent of selected node and connect parent -> sibling
+    // If no parent exists, connect selected -> sibling
+    const edgesMap = doc.getMap('edges') as Y.Map<Y.Map<any>>;
+    let parentId: string | null = null;
+
+    // Find parent (incoming edge where target is selectedNodeId)
+    edgesMap.forEach((edgeData) => {
+      if (edgeData && edgeData instanceof Y.Map) {
+        if (edgeData.get('target') === selectedNodeId) {
+          parentId = edgeData.get('source');
+        }
+      }
+    });
+
+    // Create edge: parent -> sibling (if parent exists), else selected -> sibling
+    const sourceId = parentId || selectedNodeId;
+    const edgeId = `edge-${Date.now()}`;
+    const edgeDataMap = new Y.Map();
+    edgeDataMap.set('id', edgeId);
+    edgeDataMap.set('source', sourceId);
+    edgeDataMap.set('target', siblingId);
+    edgesMap.set(edgeId, edgeDataMap);
+
     nodeCountRef.current++;
     setNodes((nds) => [...nds, siblingNode]);
-  }, [isReadOnly, doc, selectedNodeId, nodes, setNodes, handleAddNode]);
+    setEdges((eds) => [...eds, { id: edgeId, source: sourceId, target: siblingId }]);
+  }, [isReadOnly, doc, selectedNodeId, nodes, setNodes, setEdges, handleAddNode]);
 
   const handleAddParent = useCallback(() => {
     if (isReadOnly || !doc) return;
@@ -363,18 +390,41 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
   }, [isReadOnly, selectedNodeId, doc, setNodes, setEdges]);
 
   const handleInvite = useCallback(() => {
-    try {
-      const url = typeof window !== 'undefined' ? window.location.href : '';
-      if (navigator.clipboard && url) {
-        navigator.clipboard.writeText(url);
-        alert('Invite link copied to clipboard');
-      } else {
-        alert('Copy this link to invite: ' + url);
-      }
-    } catch (e) {
-      console.warn('Invite copy failed', e);
-      alert('Unable to copy invite link');
+    setShowInviteModal(true);
+  }, []);
+
+  const handleRenameStart = useCallback(() => {
+    if (!selectedNodeId || isReadOnly) return;
+    const node = nodes.find((n) => n.id === selectedNodeId);
+    if (node) {
+      setRenameNodeId(selectedNodeId);
+      setRenameText(node.data.label);
     }
+  }, [selectedNodeId, nodes, isReadOnly]);
+
+  const handleRenameSave = useCallback(() => {
+    if (!renameNodeId || !doc || !renameText.trim()) return;
+
+    const nodesMap = doc.getMap('nodes') as Y.Map<Y.Map<any>>;
+    const nodeData = nodesMap.get(renameNodeId);
+    if (nodeData && nodeData instanceof Y.Map) {
+      nodeData.set('label', renameText);
+    }
+
+    // Update local state
+    setNodes((nds) =>
+      nds.map((n) =>
+        n.id === renameNodeId ? { ...n, data: { ...n.data, label: renameText } } : n
+      )
+    );
+
+    setRenameNodeId(null);
+    setRenameText('');
+  }, [renameNodeId, doc, renameText, setNodes]);
+
+  const handleRenameCancel = useCallback(() => {
+    setRenameNodeId(null);
+    setRenameText('');
   }, []);
 
   return (
@@ -413,12 +463,20 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
               </div>
 
               {selectedNodeId && (
-                <button
-                  onClick={handleDeleteNode}
-                  className="rounded bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700 active:bg-red-800"
-                >
-                  × Delete
-                </button>
+                <>
+                  <button
+                    onClick={handleRenameStart}
+                    className="rounded bg-yellow-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-yellow-700 active:bg-yellow-800"
+                  >
+                    ✎ Rename
+                  </button>
+                  <button
+                    onClick={handleDeleteNode}
+                    className="rounded bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700 active:bg-red-800"
+                  >
+                    × Delete
+                  </button>
+                </>
               )}
 
               <div className="flex-1" />
@@ -462,6 +520,9 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
               <button onClick={handleAddChild} className="rounded-full bg-indigo-600 p-3 text-white text-lg transition active:bg-indigo-700" title="Child">↳</button>
               <button onClick={handleAddSibling} className="rounded-full bg-indigo-500 p-3 text-white text-lg transition active:bg-indigo-600" title="Sibling">≡</button>
               <button onClick={handleAddParent} className="rounded-full bg-indigo-400 p-3 text-white text-lg transition active:bg-indigo-500" title="Parent">↶</button>
+              {selectedNodeId && (
+                <button onClick={handleRenameStart} className="rounded-full bg-yellow-600 p-3 text-white text-lg transition active:bg-yellow-700" title="Rename">✎</button>
+              )}
               <button onClick={handleInvite} className="rounded-full bg-gray-100 p-3 text-lg transition active:bg-gray-200" title="Invite">🔗</button>
               {remoteUsers.length > 0 && (
                 <div className="rounded-full bg-yellow-100 p-3 text-sm font-bold text-yellow-800">{remoteUsers.length + 1}</div>
@@ -488,6 +549,81 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
           <MiniMap />
         </div>
       </ReactFlow>
+
+      {/* Invite Modal */}
+      {showInviteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg">
+            <h2 className="mb-4 text-xl font-bold">Share map</h2>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Map link</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  readOnly
+                  value={typeof window !== 'undefined' ? window.location.href : ''}
+                  className="flex-1 rounded border border-gray-300 bg-gray-50 px-3 py-2 text-sm"
+                />
+                <button
+                  onClick={() => {
+                    const url = typeof window !== 'undefined' ? window.location.href : '';
+                    if (navigator.clipboard && url) {
+                      navigator.clipboard.writeText(url);
+                    }
+                  }}
+                  className="rounded bg-blue-500 px-3 py-2 text-white hover:bg-blue-600"
+                >
+                  Copy
+                </button>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowInviteModal(false)}
+              className="w-full rounded bg-gray-200 px-4 py-2 hover:bg-gray-300"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Rename Modal */}
+      {renameNodeId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg">
+            <h2 className="mb-4 text-xl font-bold">Rename Node</h2>
+            <input
+              type="text"
+              value={renameText}
+              onChange={(e) => setRenameText(e.target.value)}
+              placeholder="Enter new name"
+              className="mb-4 w-full rounded border border-gray-300 px-3 py-2"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handleRenameSave();
+                } else if (e.key === 'Escape') {
+                  handleRenameCancel();
+                }
+              }}
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={handleRenameSave}
+                className="flex-1 rounded bg-blue-500 px-4 py-2 text-white hover:bg-blue-600"
+              >
+                Rename
+              </button>
+              <button
+                onClick={handleRenameCancel}
+                className="flex-1 rounded bg-gray-200 px-4 py-2 hover:bg-gray-300"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
