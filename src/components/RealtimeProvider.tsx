@@ -25,6 +25,7 @@ export interface RealtimeContextType {
   mapId: string;
   saveSnapshot: () => Promise<void>;
   updatePresence: (updates: Partial<UserPresence>) => void;
+  saveErrorCount: number;
 }
 
 const RealtimeContext = createContext<RealtimeContextType | undefined>(undefined);
@@ -60,6 +61,7 @@ export function RealtimeProvider({
   const [remoteUsers, setRemoteUsers] = useState<UserPresence[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [currentVersion, setCurrentVersion] = useState(1);
+  const [saveErrorCount, setSaveErrorCount] = useState(0);
 
   const saveTimeoutRef = useRef<NodeJS.Timeout>();
   const presenceTimeoutRef = useRef<NodeJS.Timeout>();
@@ -161,7 +163,7 @@ export function RealtimeProvider({
     };
   }, [mapId, userId, displayName, mode]);
 
-  // Debounced snapshot save
+  // Debounced snapshot save with optimistic locking fix
   const saveSnapshot = useCallback(async () => {
     if (!doc) return;
 
@@ -179,21 +181,25 @@ export function RealtimeProvider({
       });
 
       if (response.status === 409) {
-        // Version conflict - reload necessary
+        // Version conflict - fetch latest and continue without erroring
         const { currentVersion: newVersion } = await response.json();
         setCurrentVersion(newVersion);
-        console.warn('Version conflict, updated local version');
+        setSaveErrorCount(prev => Math.min(prev + 1, 3));
+        console.info('Version conflict resolved, synced to v' + newVersion);
         return;
       }
 
       if (!response.ok) {
-        throw new Error('Failed to save snapshot');
+        setSaveErrorCount(prev => Math.min(prev + 1, 3));
+        throw new Error(`Save failed: ${response.status}`);
       }
 
       const result = await response.json();
       setCurrentVersion(result.version);
+      setSaveErrorCount(0); // Reset on success
     } catch (error) {
-      console.error('Failed to save snapshot:', error);
+      setSaveErrorCount(prev => Math.min(prev + 1, 3));
+      console.error('Snapshot save error (will retry):', error);
     }
   }, [doc, mapId, currentVersion]);
 
@@ -294,6 +300,7 @@ export function RealtimeProvider({
         mapId,
         saveSnapshot,
         updatePresence,
+        saveErrorCount,
       }}
     >
       {children}

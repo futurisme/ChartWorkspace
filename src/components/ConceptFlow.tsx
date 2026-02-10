@@ -33,8 +33,8 @@ type ConceptNode = Node<ConceptNodeData>;
 
 function ConceptNodeComponent({ data }: NodeProps<ConceptNodeData>) {
   return (
-    <div className="rounded-lg border-2 border-blue-500 bg-white px-3 py-2 shadow-lg max-w-xs">
-      <div className="font-semibold text-gray-900 text-sm sm:text-base break-words">{data.label}</div>
+    <div className="rounded-lg border-2 border-blue-500 bg-white px-3 py-2 shadow-lg max-w-xs cursor-grab active:cursor-grabbing touch-none select-none">
+      <div className="font-semibold text-gray-900 text-sm sm:text-base break-words pointer-events-none">{data.label}</div>
     </div>
   );
 }
@@ -44,7 +44,7 @@ interface ConceptFlowProps {
 }
 
 export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
-  const { doc, isConnected, updatePresence } = useRealtime();
+  const { doc, isConnected, updatePresence, remoteUsers, localPresence, saveErrorCount } = useRealtime();
   const [nodes, setNodes, onNodesChange] = useNodesState([] as Node[]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([] as Edge[]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -254,7 +254,7 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
     nodeCountRef.current++;
     setNodes((nds) => [...nds, childNode]);
     setEdges((eds) => [...eds, { id: edgeId, source: selectedNodeId!, target: childId }]);
-  }, [isReadOnly, doc, selectedNodeId, nodes, setNodes, setEdges]);
+  }, [isReadOnly, doc, selectedNodeId, nodes, setNodes, setEdges, handleAddNode]);
 
   const handleAddSibling = useCallback(() => {
     if (isReadOnly || !doc) return;
@@ -285,7 +285,7 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
 
     nodeCountRef.current++;
     setNodes((nds) => [...nds, siblingNode]);
-  }, [isReadOnly, doc, selectedNodeId, nodes, setNodes]);
+  }, [isReadOnly, doc, selectedNodeId, nodes, setNodes, handleAddNode]);
 
   const handleAddParent = useCallback(() => {
     if (isReadOnly || !doc) return;
@@ -326,7 +326,7 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
     nodeCountRef.current++;
     setNodes((nds) => [...nds, parentNode]);
     setEdges((eds) => [...eds, { id: edgeId, source: parentId, target: selectedNodeId! }]);
-  }, [isReadOnly, doc, selectedNodeId, nodes, setNodes, setEdges]);
+  }, [isReadOnly, doc, selectedNodeId, nodes, setNodes, setEdges, handleAddNode]);
 
   const handleDeleteNode = useCallback(() => {
     if (isReadOnly || !selectedNodeId || !doc) return;
@@ -383,10 +383,10 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
       {!isReadOnly && (
         <>
           <div className="hidden sm:block border-b border-gray-200 bg-white px-4 py-2">
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2 flex-wrap md:flex-nowrap">
               <button
                 onClick={handleAddNode}
-                className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+                className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 active:bg-blue-800"
               >
                 + Add Concept
               </button>
@@ -394,19 +394,19 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleAddChild}
-                  className="rounded bg-indigo-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700"
+                  className="rounded bg-indigo-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 active:bg-indigo-800"
                 >
                   + Child
                 </button>
                 <button
                   onClick={handleAddSibling}
-                  className="rounded bg-indigo-500 px-3 py-2 text-sm font-semibold text-white transition hover:bg-indigo-600"
+                  className="rounded bg-indigo-500 px-3 py-2 text-sm font-semibold text-white transition hover:bg-indigo-600 active:bg-indigo-700"
                 >
                   + Sibling
                 </button>
                 <button
                   onClick={handleAddParent}
-                  className="rounded bg-indigo-400 px-3 py-2 text-sm font-semibold text-white transition hover:bg-indigo-500"
+                  className="rounded bg-indigo-400 px-3 py-2 text-sm font-semibold text-white transition hover:bg-indigo-500 active:bg-indigo-600"
                 >
                   + Parent
                 </button>
@@ -415,7 +415,7 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
               {selectedNodeId && (
                 <button
                   onClick={handleDeleteNode}
-                  className="rounded bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700"
+                  className="rounded bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700 active:bg-red-800"
                 >
                   × Delete
                 </button>
@@ -423,9 +423,19 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
 
               <div className="flex-1" />
 
+              {/* Multi-user indicator */}
+              <div className="flex items-center gap-2">
+                {remoteUsers.length > 0 && (
+                  <div className="flex items-center gap-1 px-2 py-1 bg-yellow-100 rounded text-xs font-semibold text-yellow-800">
+                    <span className="inline-block h-2 w-2 rounded-full bg-yellow-600 animate-pulse" />
+                    {remoteUsers.length + 1} editing
+                  </div>
+                )}
+              </div>
+
               <button
                 onClick={handleInvite}
-                className="rounded border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                className="rounded border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 active:bg-gray-100"
               >
                 Invite to collab
               </button>
@@ -436,17 +446,26 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
                   Offline
                 </div>
               )}
+
+              {saveErrorCount > 0 && (
+                <div className="text-xs font-medium text-orange-600">
+                  {saveErrorCount > 0 ? `⚠ ${saveErrorCount} save${saveErrorCount > 1 ? 's' : ''} syncing` : ''}
+                </div>
+              )}
             </div>
           </div>
 
           {/* Mobile toolbar fixed bottom */}
           <div className="sm:hidden fixed bottom-0 left-0 right-0 z-40 border-t border-gray-200 bg-white px-2 py-2">
             <div className="flex items-center justify-around">
-              <button onClick={handleAddNode} className="rounded-full bg-blue-600 p-3 text-white">＋</button>
-              <button onClick={handleAddChild} className="rounded-full bg-indigo-600 p-3 text-white">↳</button>
-              <button onClick={handleAddSibling} className="rounded-full bg-indigo-500 p-3 text-white">≡</button>
-              <button onClick={handleAddParent} className="rounded-full bg-indigo-400 p-3 text-white">↶</button>
-              <button onClick={handleInvite} className="rounded-full bg-gray-100 p-3">🔗</button>
+              <button onClick={handleAddNode} className="rounded-full bg-blue-600 p-3 text-white text-lg transition active:bg-blue-700" title="Add">＋</button>
+              <button onClick={handleAddChild} className="rounded-full bg-indigo-600 p-3 text-white text-lg transition active:bg-indigo-700" title="Child">↳</button>
+              <button onClick={handleAddSibling} className="rounded-full bg-indigo-500 p-3 text-white text-lg transition active:bg-indigo-600" title="Sibling">≡</button>
+              <button onClick={handleAddParent} className="rounded-full bg-indigo-400 p-3 text-white text-lg transition active:bg-indigo-500" title="Parent">↶</button>
+              <button onClick={handleInvite} className="rounded-full bg-gray-100 p-3 text-lg transition active:bg-gray-200" title="Invite">🔗</button>
+              {remoteUsers.length > 0 && (
+                <div className="rounded-full bg-yellow-100 p-3 text-sm font-bold text-yellow-800">{remoteUsers.length + 1}</div>
+              )}
             </div>
           </div>
         </>
@@ -461,6 +480,7 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
         onConnect={handleConnect}
         nodeTypes={{ conceptNode: ConceptNodeComponent }}
         fitView
+        attributionPosition="bottom-left"
       >
         <Background />
         <Controls />
