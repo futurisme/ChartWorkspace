@@ -31,6 +31,16 @@ body {
   height: 100%;
 }
 
+.react-flow__edge-path {
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.react-flow__pane,
+.react-flow__renderer {
+  touch-action: pan-x pan-y;
+}
+
 /* Smooth transitions */
 @layer components {
   .smooth-transition {

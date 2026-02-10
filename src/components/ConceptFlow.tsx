@@ -19,7 +19,13 @@ import {
   useNodesState,
   useEdgesState,
   NodeProps,
+  EdgeProps,
+  getSmoothStepPath,
+  Handle,
+  Position,
   MarkerType,
+  ConnectionLineType,
+  BaseEdge,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { useRealtime } from './RealtimeProvider';
@@ -35,9 +41,96 @@ type ConceptNode = Node<ConceptNodeData>;
 function ConceptNodeComponent({ data }: NodeProps<ConceptNodeData>) {
   return (
     <div className="rounded-lg border-2 border-blue-500 bg-white px-3 py-2 shadow-lg max-w-xs cursor-grab active:cursor-grabbing touch-none select-none">
+      <Handle type="target" position={Position.Top} id="t-top" className="opacity-0" />
+      <Handle type="target" position={Position.Bottom} id="t-bottom" className="opacity-0" />
+      <Handle type="target" position={Position.Left} id="t-left" className="opacity-0" />
+      <Handle type="target" position={Position.Right} id="t-right" className="opacity-0" />
+      <Handle type="source" position={Position.Top} id="s-top" className="opacity-0" />
+      <Handle type="source" position={Position.Bottom} id="s-bottom" className="opacity-0" />
+      <Handle type="source" position={Position.Left} id="s-left" className="opacity-0" />
+      <Handle type="source" position={Position.Right} id="s-right" className="opacity-0" />
       <div className="font-semibold text-gray-900 text-sm sm:text-base break-words pointer-events-none">{data.label}</div>
     </div>
   );
+}
+
+const EDGE_STYLE = { stroke: '#111827', strokeWidth: 2 };
+const EDGE_MARKER = { type: MarkerType.ArrowClosed, color: '#111827' };
+const DEFAULT_NODE_SIZE = { width: 176, height: 56 };
+const ROUTE_MIN = 48;
+const ROUTE_MAX = 160;
+const CHILD_X_OFFSET = 220;
+const LEVEL_Y_SPACING = 96;
+const AUTO_GAP = 24;
+const AUTO_SHIFT = 88;
+const AUTO_MAX_TRIES = 14;
+
+function getNodeCenter(node: Node) {
+  const width = node.width ?? DEFAULT_NODE_SIZE.width;
+  const height = node.height ?? DEFAULT_NODE_SIZE.height;
+  return {
+    x: node.position.x + width / 2,
+    y: node.position.y + height / 2,
+  };
+}
+
+function findOpenPosition(
+  start: { x: number; y: number },
+  nodes: Node[],
+  step: { x: number; y: number }
+) {
+  let candidate = { ...start };
+  const newWidth = DEFAULT_NODE_SIZE.width;
+  const newHeight = DEFAULT_NODE_SIZE.height;
+
+  for (let i = 0; i < AUTO_MAX_TRIES; i += 1) {
+    const overlaps = nodes.some((node) => {
+      const nodeWidth = node.width ?? DEFAULT_NODE_SIZE.width;
+      const nodeHeight = node.height ?? DEFAULT_NODE_SIZE.height;
+      return (
+        candidate.x < node.position.x + nodeWidth + AUTO_GAP &&
+        candidate.x + newWidth + AUTO_GAP > node.position.x &&
+        candidate.y < node.position.y + nodeHeight + AUTO_GAP &&
+        candidate.y + newHeight + AUTO_GAP > node.position.y
+      );
+    });
+
+    if (!overlaps) {
+      return candidate;
+    }
+
+    candidate = { x: candidate.x + step.x, y: candidate.y + step.y };
+  }
+
+  return candidate;
+}
+
+function HierarchyEdge({
+  id,
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  sourcePosition,
+  targetPosition,
+  markerEnd,
+  style,
+  data,
+}: EdgeProps) {
+  const [edgePath] = getSmoothStepPath({
+    sourceX,
+    sourceY,
+    targetX,
+    targetY,
+    sourcePosition,
+    targetPosition,
+    borderRadius: 12,
+    offset: 20,
+    centerX: typeof data?.centerX === 'number' ? data.centerX : undefined,
+    centerY: typeof data?.centerY === 'number' ? data.centerY : undefined,
+  });
+
+  return <BaseEdge id={id} path={edgePath} markerEnd={markerEnd} style={style} />;
 }
 
 interface ConceptFlowProps {
@@ -45,7 +138,7 @@ interface ConceptFlowProps {
 }
 
 export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
-  const { doc, isConnected, updatePresence, remoteUsers, localPresence, saveErrorCount } = useRealtime();
+  const { doc, isConnected, updatePresence, remoteUsers, saveErrorCount } = useRealtime();
   const [nodes, setNodes, onNodesChange] = useNodesState([] as Node[]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([] as Edge[]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -53,6 +146,114 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
   const [renameText, setRenameText] = useState('');
   const [showInviteModal, setShowInviteModal] = useState(false);
   const nodeCountRef = useRef(0);
+
+  const nodeTypes = useMemo(() => ({ conceptNode: ConceptNodeComponent }), []);
+  const edgeTypes = useMemo(() => ({ hierarchy: HierarchyEdge }), []);
+
+  const routedEdges = useMemo(() => {
+    if (edges.length === 0) return edges;
+
+    const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+    const groups = new Map<
+      string,
+      {
+        orientation: 'horizontal' | 'vertical';
+        sign: 1 | -1;
+        sourceCenter: { x: number; y: number };
+        minAbsDelta: number;
+      }
+    >();
+
+    const edgeMeta = edges.map((edge) => {
+      const sourceNode = nodeMap.get(edge.source);
+      const targetNode = nodeMap.get(edge.target);
+      if (!sourceNode || !targetNode) {
+        return { edge, horizontal: true, sign: 1 as 1 | -1 };
+      }
+
+      const sourceCenter = getNodeCenter(sourceNode);
+      const targetCenter = getNodeCenter(targetNode);
+      const dx = targetCenter.x - sourceCenter.x;
+      const dy = targetCenter.y - sourceCenter.y;
+      const horizontal = Math.abs(dx) >= Math.abs(dy);
+      const sign = (horizontal ? (dx >= 0 ? 1 : -1) : (dy >= 0 ? 1 : -1)) as 1 | -1;
+      const absDelta = horizontal ? Math.abs(dx) : Math.abs(dy);
+      const key = `${edge.source}:${horizontal ? 'h' : 'v'}:${sign}`;
+
+      const existing = groups.get(key);
+      if (existing) {
+        existing.minAbsDelta = Math.min(existing.minAbsDelta, absDelta);
+      } else {
+        groups.set(key, {
+          orientation: horizontal ? 'horizontal' : 'vertical',
+          sign,
+          sourceCenter,
+          minAbsDelta: absDelta,
+        });
+      }
+
+      return { edge, horizontal, sign };
+    });
+
+    const pivots = new Map<string, number>();
+    groups.forEach((group, key) => {
+      const base = group.orientation === 'horizontal' ? group.sourceCenter.x : group.sourceCenter.y;
+      const distance = Math.max(ROUTE_MIN, Math.min(ROUTE_MAX, group.minAbsDelta / 2));
+      pivots.set(key, base + group.sign * distance);
+    });
+
+    return edgeMeta.map(({ edge, horizontal, sign }) => {
+      const key = `${edge.source}:${horizontal ? 'h' : 'v'}:${sign}`;
+      const pivot = pivots.get(key);
+      const sourcePosition = horizontal
+        ? sign >= 0
+          ? Position.Right
+          : Position.Left
+        : sign >= 0
+          ? Position.Bottom
+          : Position.Top;
+      const targetPosition = horizontal
+        ? sign >= 0
+          ? Position.Left
+          : Position.Right
+        : sign >= 0
+          ? Position.Top
+          : Position.Bottom;
+      const sourceHandle = horizontal ? (sign >= 0 ? 's-right' : 's-left') : sign >= 0 ? 's-bottom' : 's-top';
+      const targetHandle = horizontal ? (sign >= 0 ? 't-left' : 't-right') : sign >= 0 ? 't-top' : 't-bottom';
+
+      return {
+        ...edge,
+        type: 'hierarchy',
+        sourcePosition,
+        targetPosition,
+        sourceHandle,
+        targetHandle,
+        style: edge.style ?? EDGE_STYLE,
+        markerEnd: edge.markerEnd ?? EDGE_MARKER,
+        data: {
+          ...edge.data,
+          centerX: horizontal ? pivot : undefined,
+          centerY: horizontal ? undefined : pivot,
+        },
+      };
+    });
+  }, [edges, nodes]);
+
+  const getChildrenFor = useCallback(
+    (parentId: string) => {
+      const childIds = edges.filter((edge) => edge.source === parentId).map((edge) => edge.target);
+      return childIds
+        .map((childId) => nodes.find((node) => node.id === childId))
+        .filter((node): node is Node => Boolean(node));
+    },
+    [edges, nodes]
+  );
+
+  const getParentIdFor = useCallback(
+    (childId: string) => edges.find((edge) => edge.target === childId)?.source ?? null,
+    [edges]
+  );
 
   // Initialize from Yjs doc
   useEffect(() => {
@@ -87,8 +288,8 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
         source: edgeData.get('source'),
         target: edgeData.get('target'),
         label: edgeData.get('label'),
-        style: { stroke: '#000000', strokeWidth: 2 },
-        markerEnd: { type: MarkerType.ArrowClosed, color: '#000000' },
+        style: EDGE_STYLE,
+        markerEnd: EDGE_MARKER,
       });
     });
 
@@ -120,8 +321,8 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
           source: edgeData.get('source'),
           target: edgeData.get('target'),
           label: edgeData.get('label'),
-          style: { stroke: '#000000', strokeWidth: 2 },
-          markerEnd: { type: MarkerType.ArrowClosed, color: '#000000' },
+          style: EDGE_STYLE,
+          markerEnd: EDGE_MARKER,
         });
       });
 
@@ -154,14 +355,9 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
             nodeData.set('position', change.position);
           }
         }
-
-        if (change.type === 'select') {
-          setSelectedNodeId(change.id);
-          updatePresence({ currentNodeId: change.id });
-        }
       });
     },
-    [isReadOnly, doc, onNodesChange, updatePresence]
+    [isReadOnly, doc, onNodesChange]
   );
 
   const handleEdgesChange = useCallback(
@@ -181,8 +377,8 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
         id: edgeId,
         source: connection.source!,
         target: connection.target!,
-        style: { stroke: '#000000', strokeWidth: 2 },
-        markerEnd: { type: MarkerType.ArrowClosed, color: '#000000' },
+        style: EDGE_STYLE,
+        markerEnd: EDGE_MARKER,
       };
 
       const edgesMap = doc.getMap('edges');
@@ -201,16 +397,19 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
     if (isReadOnly || !doc) return;
 
     const nodeId = `node-${Date.now()}`;
+    const startPos = {
+      x: Math.random() * 400,
+      y: Math.random() * 400,
+    };
+    const safePos = findOpenPosition(startPos, nodes, { x: AUTO_SHIFT, y: AUTO_SHIFT });
+
     const newNode: ConceptNode = {
       id: nodeId,
       type: 'conceptNode',
       data: {
         label: `Concept ${nodeCountRef.current + 1}`,
       },
-      position: {
-        x: Math.random() * 400,
-        y: Math.random() * 400,
-      },
+      position: safePos,
     };
 
     const nodesMap = doc.getMap('nodes');
@@ -222,7 +421,7 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
 
     nodeCountRef.current++;
     setNodes((nds) => [...nds, newNode]);
-  }, [isReadOnly, doc, setNodes]);
+  }, [isReadOnly, doc, nodes, setNodes]);
 
   const handleAddChild = useCallback(() => {
     if (isReadOnly || !doc) return;
@@ -233,9 +432,17 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
 
     const parentNode = nodes.find((n) => n.id === selectedNodeId);
     const childId = `node-${Date.now()}`;
-    const childPos = parentNode
-      ? { x: parentNode.position.x + 160, y: parentNode.position.y + 40 }
+    let baseChildPos = parentNode
+      ? { x: parentNode.position.x + CHILD_X_OFFSET, y: parentNode.position.y }
       : { x: Math.random() * 400, y: Math.random() * 400 };
+    if (parentNode) {
+      const existingChildren = getChildrenFor(selectedNodeId);
+      if (existingChildren.length > 0) {
+        const maxY = Math.max(...existingChildren.map((child) => child.position.y));
+        baseChildPos = { x: parentNode.position.x + CHILD_X_OFFSET, y: maxY + LEVEL_Y_SPACING };
+      }
+    }
+    const childPos = findOpenPosition(baseChildPos, nodes, { x: 0, y: AUTO_SHIFT });
 
     const childNode: ConceptNode = {
       id: childId,
@@ -263,8 +470,17 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
 
     nodeCountRef.current++;
     setNodes((nds) => [...nds, childNode]);
-    setEdges((eds) => [...eds, { id: edgeId, source: selectedNodeId!, target: childId, style: { stroke: '#000000', strokeWidth: 2 }, markerEnd: { type: MarkerType.ArrowClosed, color: '#000000' } }]);
-  }, [isReadOnly, doc, selectedNodeId, nodes, setNodes, setEdges, handleAddNode]);
+    setEdges((eds) => [
+      ...eds,
+      {
+        id: edgeId,
+        source: selectedNodeId!,
+        target: childId,
+        style: EDGE_STYLE,
+        markerEnd: EDGE_MARKER,
+      },
+    ]);
+  }, [isReadOnly, doc, selectedNodeId, nodes, setNodes, setEdges, handleAddNode, getChildrenFor]);
 
   const handleAddSibling = useCallback(() => {
     if (isReadOnly || !doc) return;
@@ -275,9 +491,21 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
 
     const refNode = nodes.find((n) => n.id === selectedNodeId);
     const siblingId = `node-${Date.now()}`;
-    const siblingPos = refNode
-      ? { x: refNode.position.x, y: refNode.position.y + 120 }
+    let baseSiblingPos = refNode
+      ? { x: refNode.position.x, y: refNode.position.y + LEVEL_Y_SPACING }
       : { x: Math.random() * 400, y: Math.random() * 400 };
+    const parentIdFromState = getParentIdFor(selectedNodeId);
+    if (parentIdFromState) {
+      const parentNode = nodes.find((n) => n.id === parentIdFromState);
+      if (parentNode) {
+        const siblings = getChildrenFor(parentIdFromState);
+        const maxY = siblings.length
+          ? Math.max(...siblings.map((sibling) => sibling.position.y))
+          : parentNode.position.y;
+        baseSiblingPos = { x: parentNode.position.x + CHILD_X_OFFSET, y: maxY + LEVEL_Y_SPACING };
+      }
+    }
+    const siblingPos = findOpenPosition(baseSiblingPos, nodes, { x: 0, y: AUTO_SHIFT });
 
     const siblingNode: ConceptNode = {
       id: siblingId,
@@ -296,16 +524,18 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
     // Find parent of selected node and connect parent -> sibling
     // If no parent exists, connect selected -> sibling
     const edgesMap = doc.getMap('edges') as Y.Map<Y.Map<any>>;
-    let parentId: string | null = null;
+    let parentId: string | null = parentIdFromState;
 
-    // Find parent (incoming edge where target is selectedNodeId)
-    edgesMap.forEach((edgeData) => {
-      if (edgeData && edgeData instanceof Y.Map) {
-        if (edgeData.get('target') === selectedNodeId) {
-          parentId = edgeData.get('source');
+    if (!parentId) {
+      // Find parent (incoming edge where target is selectedNodeId)
+      edgesMap.forEach((edgeData) => {
+        if (edgeData && edgeData instanceof Y.Map) {
+          if (edgeData.get('target') === selectedNodeId) {
+            parentId = edgeData.get('source');
+          }
         }
-      }
-    });
+      });
+    }
 
     // Create edge: parent -> sibling (if parent exists), else selected -> sibling
     const sourceId = parentId || selectedNodeId;
@@ -318,8 +548,17 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
 
     nodeCountRef.current++;
     setNodes((nds) => [...nds, siblingNode]);
-    setEdges((eds) => [...eds, { id: edgeId, source: sourceId, target: siblingId, style: { stroke: '#000000', strokeWidth: 2 }, markerEnd: { type: MarkerType.ArrowClosed, color: '#000000' } }]);
-  }, [isReadOnly, doc, selectedNodeId, nodes, setNodes, setEdges, handleAddNode]);
+    setEdges((eds) => [
+      ...eds,
+      {
+        id: edgeId,
+        source: sourceId,
+        target: siblingId,
+        style: EDGE_STYLE,
+        markerEnd: EDGE_MARKER,
+      },
+    ]);
+  }, [isReadOnly, doc, selectedNodeId, nodes, setNodes, setEdges, handleAddNode, getChildrenFor, getParentIdFor]);
 
   const handleAddParent = useCallback(() => {
     if (isReadOnly || !doc) return;
@@ -330,9 +569,10 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
 
     const child = nodes.find((n) => n.id === selectedNodeId);
     const parentId = `node-${Date.now()}`;
-    const parentPos = child
-      ? { x: child.position.x - 160, y: child.position.y - 40 }
+    const baseParentPos = child
+      ? { x: child.position.x - CHILD_X_OFFSET, y: child.position.y }
       : { x: Math.random() * 400, y: Math.random() * 400 };
+    const parentPos = findOpenPosition(baseParentPos, nodes, { x: 0, y: -AUTO_SHIFT });
 
     const parentNode: ConceptNode = {
       id: parentId,
@@ -359,7 +599,16 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
 
     nodeCountRef.current++;
     setNodes((nds) => [...nds, parentNode]);
-    setEdges((eds) => [...eds, { id: edgeId, source: parentId, target: selectedNodeId!, style: { stroke: '#000000', strokeWidth: 2 }, markerEnd: { type: MarkerType.ArrowClosed, color: '#000000' } }]);
+    setEdges((eds) => [
+      ...eds,
+      {
+        id: edgeId,
+        source: parentId,
+        target: selectedNodeId!,
+        style: EDGE_STYLE,
+        markerEnd: EDGE_MARKER,
+      },
+    ]);
   }, [isReadOnly, doc, selectedNodeId, nodes, setNodes, setEdges, handleAddNode]);
 
   const handleDeleteNode = useCallback(() => {
@@ -433,6 +682,15 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
     setRenameNodeId(null);
     setRenameText('');
   }, []);
+
+  const handleSelectionChange = useCallback(
+    (selection: { nodes?: Node[] }) => {
+      const nextSelected = selection.nodes?.[0]?.id ?? null;
+      setSelectedNodeId(nextSelected);
+      updatePresence({ currentNodeId: nextSelected ?? undefined });
+    },
+    [updatePresence]
+  );
 
   return (
     <div className="flex h-full flex-col">
@@ -542,16 +800,29 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
       {/* Flow Canvas */}
       <ReactFlow
         nodes={nodes}
-        edges={edges}
+        edges={routedEdges}
         onNodesChange={handleNodesChange}
         onEdgesChange={handleEdgesChange}
         onConnect={handleConnect}
-        nodeTypes={{ conceptNode: ConceptNodeComponent }}
+        onSelectionChange={handleSelectionChange}
+        onPaneClick={() => {
+          setSelectedNodeId(null);
+          updatePresence({ currentNodeId: undefined });
+        }}
+        nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         fitView
+        fitViewOptions={{ padding: 0.2 }}
         attributionPosition="bottom-left"
+        connectionLineType={ConnectionLineType.SmoothStep}
+        selectionOnDrag={false}
+        panOnScroll
+        zoomOnPinch
+        onlyRenderVisibleElements
         defaultEdgeOptions={{
-          style: { stroke: '#000000', strokeWidth: 2 },
-          markerEnd: { type: MarkerType.ArrowClosed, color: '#000000' },
+          type: 'hierarchy',
+          style: EDGE_STYLE,
+          markerEnd: EDGE_MARKER,
         }}
       >
         <Background />
