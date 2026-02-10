@@ -1,20 +1,41 @@
 import * as Y from 'yjs';
 
+function encodeBase64(data: Uint8Array): string {
+  if (typeof Buffer !== 'undefined') {
+    return Buffer.from(data).toString('base64');
+  }
+  let binary = '';
+  data.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary);
+}
+
+function decodeBase64(snapshot: string): Uint8Array {
+  if (typeof Buffer !== 'undefined') {
+    return new Uint8Array(Buffer.from(snapshot, 'base64'));
+  }
+  const binary = atob(snapshot);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
 /**
  * Encode a Yjs doc state as a base64 string for storage
  */
 export function encodeYjsSnapshot(doc: Y.Doc): string {
   const state = Y.encodeStateAsUpdate(doc);
-  const buffer = Buffer.from(state);
-  return buffer.toString('base64');
+  return encodeBase64(state);
 }
 
 /**
  * Decode a base64 snapshot back into updates for a Yjs doc
  */
 export function decodeYjsSnapshot(snapshot: string): Uint8Array {
-  const buffer = Buffer.from(snapshot, 'base64');
-  return new Uint8Array(buffer);
+  return decodeBase64(snapshot);
 }
 
 /**

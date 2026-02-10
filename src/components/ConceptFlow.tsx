@@ -833,8 +833,13 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
   const handleSelectionChange = useCallback(
     (selection: { nodes?: Node[] }) => {
       const nextSelected = selection.nodes?.[0]?.id ?? null;
-      setSelectedNodeId(nextSelected);
-      updatePresence({ currentNodeId: nextSelected ?? undefined });
+      setSelectedNodeId((prev) => {
+        if (prev === nextSelected) {
+          return prev;
+        }
+        updatePresence({ currentNodeId: nextSelected ?? undefined });
+        return nextSelected;
+      });
     },
     [updatePresence]
   );
@@ -994,8 +999,13 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
         onConnect={handleConnect}
         onSelectionChange={handleSelectionChange}
         onPaneClick={() => {
-          setSelectedNodeId(null);
-          updatePresence({ currentNodeId: undefined });
+          setSelectedNodeId((prev) => {
+            if (!prev) {
+              return prev;
+            }
+            updatePresence({ currentNodeId: undefined });
+            return null;
+          });
         }}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}

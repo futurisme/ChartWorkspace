@@ -12,7 +12,7 @@ import React, {
 import * as Y from 'yjs';
 import { WebrtcProvider } from 'y-webrtc';
 import { UserPresence, setupAwareness, getRemoteUsers, generateUserColor } from '@/lib/presence';
-import { getCurrentSnapshot } from '@/lib/snapshot';
+import { applyYjsSnapshot, getCurrentSnapshot } from '@/lib/snapshot';
 
 export interface RealtimeContextType {
   doc: Y.Doc | null;
@@ -65,6 +65,16 @@ export function RealtimeProvider({
   const dirtyRef = useRef(false);
   const updateCounterRef = useRef(0);
   const localPresenceRef = useRef<UserPresence | null>(null);
+  const signalingUrlsRef = useRef<string[] | null>(null);
+
+  if (signalingUrlsRef.current === null) {
+    const raw = process.env.NEXT_PUBLIC_WEBRTC_URL ?? '';
+    const urls = raw
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean);
+    signalingUrlsRef.current = urls;
+  }
 
   // Initialize document and provider
   useEffect(() => {
@@ -88,8 +98,7 @@ export function RealtimeProvider({
         // Apply snapshot if exists
         if (snapshot) {
           try {
-            const update = Buffer.from(snapshot, 'base64');
-            Y.applyUpdate(newDoc, new Uint8Array(update));
+            applyYjsSnapshot(newDoc, snapshot);
           } catch (error) {
             console.warn('Could not apply snapshot:', error);
           }
@@ -99,20 +108,6 @@ export function RealtimeProvider({
 
         setDoc(newDoc);
         setCurrentVersion(version);
-
-        // Setup WebRTC provider
-        const signalingUrl = process.env.NEXT_PUBLIC_WEBRTC_URL;
-        const newProvider = new WebrtcProvider(
-          `chartmaker-${mapId}`,
-          newDoc,
-          signalingUrl ? { signaling: [signalingUrl] } : undefined
-        );
-
-        setProvider(newProvider);
-
-        // Get awareness
-        const newAwareness = newProvider.awareness;
-        setAwareness(newAwareness);
 
         // Setup local user presence
         const presence: UserPresence = {
@@ -125,34 +120,56 @@ export function RealtimeProvider({
 
         setLocalPresence(presence);
         localPresenceRef.current = presence;
-        setupAwareness(newAwareness, presence);
 
-        // Listen for awareness changes
-        const handleAwarenessChange = () => {
-          if (isMounted) {
-            const remote = getRemoteUsers(
-              newAwareness,
-              newAwareness.clientID
-            );
-            setRemoteUsers(remote);
-          }
-        };
+        // Setup WebRTC provider
+        const signalingUrls = signalingUrlsRef.current ?? [];
+        if (signalingUrls.length > 0) {
+          const newProvider = new WebrtcProvider(
+            `chartmaker-${mapId}`,
+            newDoc,
+            { signaling: signalingUrls }
+          );
 
-        newAwareness.on('change', handleAwarenessChange);
+          setProvider(newProvider);
 
-        // Connection status
-        const handleStatus = (event: any) => {
-          if (isMounted) {
-            setIsConnected(event.connected ?? event.status === 'connected');
-          }
-        };
+          // Get awareness
+          const newAwareness = newProvider.awareness;
+          setAwareness(newAwareness);
 
-        newProvider.on('status', handleStatus);
+          setupAwareness(newAwareness, presence);
 
-        return () => {
-          newAwareness.off('change', handleAwarenessChange);
-          newProvider.off('status', handleStatus);
-        };
+          // Listen for awareness changes
+          const handleAwarenessChange = () => {
+            if (isMounted) {
+              const remote = getRemoteUsers(
+                newAwareness,
+                newAwareness.clientID
+              );
+              setRemoteUsers(remote);
+            }
+          };
+
+          newAwareness.on('change', handleAwarenessChange);
+
+          // Connection status
+          const handleStatus = (event: any) => {
+            if (isMounted) {
+              setIsConnected(event.connected ?? event.status === 'connected');
+            }
+          };
+
+          newProvider.on('status', handleStatus);
+
+          return () => {
+            newAwareness.off('change', handleAwarenessChange);
+            newProvider.off('status', handleStatus);
+          };
+        }
+
+        setProvider(null);
+        setAwareness(null);
+        setRemoteUsers([]);
+        setIsConnected(false);
       } catch (error) {
         console.error('Failed to initialize realtime:', error);
       }
@@ -256,7 +273,6 @@ export function RealtimeProvider({
       };
 
       localPresenceRef.current = updated;
-      setLocalPresence(updated);
       setupAwareness(awareness, updated);
     }, 2500);
 
@@ -267,19 +283,33 @@ export function RealtimeProvider({
 
   const updatePresence = useCallback(
     (updates: Partial<UserPresence>) => {
-      if (!awareness || !localPresence) return;
+      if (!awareness) return;
+      const presence = localPresenceRef.current;
+      if (!presence) return;
 
       const updated = {
-        ...localPresence,
+        ...presence,
         ...updates,
         lastUpdated: Date.now(),
       };
 
-      setLocalPresence(updated);
       localPresenceRef.current = updated;
       setupAwareness(awareness, updated);
+
+      setLocalPresence((prev) => {
+        if (!prev) return updated;
+        const same =
+          prev.userId === updated.userId &&
+          prev.displayName === updated.displayName &&
+          prev.color === updated.color &&
+          prev.mode === updated.mode &&
+          prev.currentNodeId === updated.currentNodeId &&
+          prev.cursorX === updated.cursorX &&
+          prev.cursorY === updated.cursorY;
+        return same ? prev : updated;
+      });
     },
-    [awareness, localPresence]
+    [awareness]
   );
 
   return (
