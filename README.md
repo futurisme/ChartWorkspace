@@ -38,7 +38,7 @@ cp .env.example .env.local
 
 ```env
 DATABASE_URL="postgresql://user:password@host:5432/chartmaker"
-NEXT_PUBLIC_WEBRTC_URL="ws://localhost:4444"
+NEXT_PUBLIC_WEBRTC_URL="wss://your-railway-app.up.railway.app"
 NEXT_PUBLIC_API_URL="http://localhost:3000"
 ```
 
@@ -138,9 +138,16 @@ Response:
 { "id": "0001", "version": 6, "updatedAt": "2026-02-09T10:05:00Z" }
 ```
 
+## Production Signaling (Railway)
+
+Use the production signaling server in `signaling-server/` and deploy it to Railway.
+
+1. Deploy `signaling-server/` to Railway.
+2. Copy the Railway public URL (HTTPS).
+3. Set `NEXT_PUBLIC_WEBRTC_URL="wss://your-railway-app.up.railway.app"` in your app env.
+
 ## Development
 
-- `npm run signaling` (start WebRTC signaling server)
 - `npm run dev`
 - `npm run build`
 - `npm run start`

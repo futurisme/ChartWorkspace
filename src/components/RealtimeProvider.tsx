@@ -77,9 +77,7 @@ export function RealtimeProvider({
       const isLocalhost =
         window.location.hostname === 'localhost' ||
         window.location.hostname === '127.0.0.1';
-      signalingUrlsRef.current = isLocalhost
-        ? ['ws://localhost:4444']
-        : ['wss://signaling.yjs.dev'];
+      signalingUrlsRef.current = isLocalhost ? ['ws://localhost:4444'] : [];
     } else {
       signalingUrlsRef.current = urls;
     }
