@@ -81,7 +81,7 @@ function ConceptNodeComponent({ data, selected, id }: NodeProps<ConceptNodeData>
             <button
               key={color}
               type="button"
-              className={`h-6 w-6 sm:h-5 sm:w-5 rounded-full border ${
+              className={`h-6 w-6 rounded-full border ${
                 data.color === color ? 'border-gray-900' : 'border-white/70'
               } shadow-sm`}
               style={{ backgroundColor: color }}
@@ -130,8 +130,10 @@ const EDGE_STYLE = { stroke: '#111827', strokeWidth: 2 };
 const EDGE_MARKER = { type: MarkerType.ArrowClosed, color: '#111827' };
 const DEFAULT_NODE_SIZE = { width: 176, height: 56 };
 const GRID_SIZE = 64;
-const ROUTE_MIN = 80;
-const ROUTE_MAX = 320;
+const ROUTE_GRID_SIZE = 16;
+const ROUTE_ALIGN_TOLERANCE = ROUTE_GRID_SIZE * 0.75;
+const ROUTE_MIN = 96;
+const ROUTE_MAX = 360;
 const EDGE_OFFSET = 32;
 const NODE_GAP = GRID_SIZE;
 const AUTO_GAP = 24;
@@ -198,6 +200,10 @@ function snapToGridPosition(position: { x: number; y: number }) {
   };
 }
 
+function snapToRouteGrid(value: number) {
+  return Math.round(value / ROUTE_GRID_SIZE) * ROUTE_GRID_SIZE;
+}
+
 function findOpenPosition(
   start: { x: number; y: number },
   nodes: Node[],
@@ -245,8 +251,8 @@ function HierarchyEdge({
   const dy = targetY - sourceY;
   const absDx = Math.abs(dx);
   const absDy = Math.abs(dy);
-  const alignedHorizontal = absDy <= GRID_SIZE * 0.5;
-  const alignedVertical = absDx <= GRID_SIZE * 0.5;
+  const alignedHorizontal = absDy <= ROUTE_ALIGN_TOLERANCE;
+  const alignedVertical = absDx <= ROUTE_ALIGN_TOLERANCE;
 
   const [edgePath] = alignedHorizontal || alignedVertical
     ? getStraightPath({ sourceX, sourceY, targetX, targetY })
@@ -409,6 +415,7 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
         sign: 1 | -1;
         sourceCenter: { x: number; y: number };
         minAbsDelta: number;
+        minGap: number;
       }
     >();
 
@@ -421,22 +428,31 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
 
       const sourceCenter = getNodeCenter(sourceNode);
       const targetCenter = getNodeCenter(targetNode);
+      const sourceSize = getNodeSize(sourceNode);
+      const targetSize = getNodeSize(targetNode);
       const dx = targetCenter.x - sourceCenter.x;
       const dy = targetCenter.y - sourceCenter.y;
-      const horizontal = Math.abs(dx) >= Math.abs(dy);
+      const normDx = Math.abs(dx) / Math.max(1, sourceSize.width + targetSize.width);
+      const normDy = Math.abs(dy) / Math.max(1, sourceSize.height + targetSize.height);
+      const horizontal = normDx >= normDy;
       const sign = (horizontal ? (dx >= 0 ? 1 : -1) : (dy >= 0 ? 1 : -1)) as 1 | -1;
       const absDelta = horizontal ? Math.abs(dx) : Math.abs(dy);
+      const minGap = horizontal
+        ? (sourceSize.width + targetSize.width) / 2 + NODE_GAP
+        : (sourceSize.height + targetSize.height) / 2 + NODE_GAP;
       const key = `${edge.source}:${horizontal ? 'h' : 'v'}:${sign}`;
 
       const existing = groups.get(key);
       if (existing) {
         existing.minAbsDelta = Math.min(existing.minAbsDelta, absDelta);
+        existing.minGap = Math.max(existing.minGap, minGap);
       } else {
         groups.set(key, {
           orientation: horizontal ? 'horizontal' : 'vertical',
           sign,
           sourceCenter,
           minAbsDelta: absDelta,
+          minGap,
         });
       }
 
@@ -444,12 +460,13 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
     });
 
     const pivots = new Map<string, number>();
-    const nodePadding = Math.max(DEFAULT_NODE_SIZE.width, DEFAULT_NODE_SIZE.height) * 0.45;
+    const nodePadding = Math.max(DEFAULT_NODE_SIZE.width, DEFAULT_NODE_SIZE.height) * 0.5;
     groups.forEach((group, key) => {
       const base = group.orientation === 'horizontal' ? group.sourceCenter.x : group.sourceCenter.y;
-      const rawDistance = group.minAbsDelta * 0.65 + nodePadding;
-      const distance = Math.max(ROUTE_MIN, Math.min(ROUTE_MAX, rawDistance));
-      pivots.set(key, base + group.sign * distance);
+      const rawDistance = group.minAbsDelta * 0.7 + nodePadding;
+      const distance = Math.max(ROUTE_MIN, Math.min(ROUTE_MAX, Math.max(rawDistance, group.minGap)));
+      const pivot = snapToRouteGrid(base + group.sign * distance);
+      pivots.set(key, pivot);
     });
 
     return edgeMeta.map(({ edge, horizontal, sign }) => {
@@ -1274,7 +1291,8 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
               markerEnd: EDGE_MARKER,
             }}
           >
-            <Background gap={GRID_SIZE} size={1.5} />
+            <Background gap={ROUTE_GRID_SIZE} size={0.5} color="#f1f5f9" variant="lines" />
+            <Background gap={GRID_SIZE} size={1} color="#e2e8f0" variant="lines" />
             <Controls />
             <div className="hidden sm:block">
               <MiniMap />
