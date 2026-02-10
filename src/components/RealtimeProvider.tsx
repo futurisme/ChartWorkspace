@@ -77,7 +77,9 @@ export function RealtimeProvider({
       const isLocalhost =
         window.location.hostname === 'localhost' ||
         window.location.hostname === '127.0.0.1';
-      signalingUrlsRef.current = isLocalhost ? ['ws://localhost:4444'] : [];
+      signalingUrlsRef.current = isLocalhost
+        ? ['ws://localhost:4444']
+        : ['wss://signaling.yjs.dev'];
     } else {
       signalingUrlsRef.current = urls;
     }
@@ -155,6 +157,17 @@ export function RealtimeProvider({
             }))
           );
           reachableUrls = checks.filter((item) => item.ok).map((item) => item.url);
+        }
+
+        if (reachableUrls.length === 0 && typeof window !== 'undefined') {
+          const isLocalhost =
+            window.location.hostname === 'localhost' ||
+            window.location.hostname === '127.0.0.1';
+          if (isLocalhost) {
+            const localUrl = 'ws://localhost:4444';
+            const localOk = await probeSignalingUrl(localUrl);
+            reachableUrls = localOk ? [localUrl] : [];
+          }
         }
 
         if (reachableUrls.length > 0) {

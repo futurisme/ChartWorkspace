@@ -22,6 +22,7 @@ import {
   EdgeProps,
   ReactFlowInstance,
   getSmoothStepPath,
+  getStraightPath,
   Handle,
   Position,
   MarkerType,
@@ -69,9 +70,9 @@ function ConceptNodeComponent({ data, selected }: NodeProps<ConceptNodeData>) {
 const EDGE_STYLE = { stroke: '#111827', strokeWidth: 2 };
 const EDGE_MARKER = { type: MarkerType.ArrowClosed, color: '#111827' };
 const DEFAULT_NODE_SIZE = { width: 176, height: 56 };
-const GRID_SIZE = 48;
-const ROUTE_MIN = 64;
-const ROUTE_MAX = 260;
+const GRID_SIZE = 64;
+const ROUTE_MIN = 80;
+const ROUTE_MAX = 320;
 const EDGE_OFFSET = 32;
 const NODE_GAP = GRID_SIZE;
 const AUTO_GAP = 24;
@@ -181,18 +182,27 @@ function HierarchyEdge({
   style,
   data,
 }: EdgeProps) {
-  const [edgePath] = getSmoothStepPath({
-    sourceX,
-    sourceY,
-    targetX,
-    targetY,
-    sourcePosition,
-    targetPosition,
-    borderRadius: 16,
-    offset: EDGE_OFFSET,
-    centerX: typeof data?.centerX === 'number' ? data.centerX : undefined,
-    centerY: typeof data?.centerY === 'number' ? data.centerY : undefined,
-  });
+  const dx = targetX - sourceX;
+  const dy = targetY - sourceY;
+  const absDx = Math.abs(dx);
+  const absDy = Math.abs(dy);
+  const alignedHorizontal = absDy <= GRID_SIZE * 0.5;
+  const alignedVertical = absDx <= GRID_SIZE * 0.5;
+
+  const [edgePath] = alignedHorizontal || alignedVertical
+    ? getStraightPath({ sourceX, sourceY, targetX, targetY })
+    : getSmoothStepPath({
+        sourceX,
+        sourceY,
+        targetX,
+        targetY,
+        sourcePosition,
+        targetPosition,
+        borderRadius: 16,
+        offset: EDGE_OFFSET,
+        centerX: typeof data?.centerX === 'number' ? data.centerX : undefined,
+        centerY: typeof data?.centerY === 'number' ? data.centerY : undefined,
+      });
 
   return <BaseEdge id={id} path={edgePath} markerEnd={markerEnd} style={style} />;
 }
@@ -352,10 +362,10 @@ export function ConceptFlow({ isReadOnly = false }: ConceptFlowProps) {
     });
 
     const pivots = new Map<string, number>();
-    const nodePadding = Math.max(DEFAULT_NODE_SIZE.width, DEFAULT_NODE_SIZE.height) * 0.35;
+    const nodePadding = Math.max(DEFAULT_NODE_SIZE.width, DEFAULT_NODE_SIZE.height) * 0.45;
     groups.forEach((group, key) => {
       const base = group.orientation === 'horizontal' ? group.sourceCenter.x : group.sourceCenter.y;
-      const rawDistance = group.minAbsDelta * 0.6 + nodePadding;
+      const rawDistance = group.minAbsDelta * 0.65 + nodePadding;
       const distance = Math.max(ROUTE_MIN, Math.min(ROUTE_MAX, rawDistance));
       pivots.set(key, base + group.sign * distance);
     });
