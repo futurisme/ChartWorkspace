@@ -116,9 +116,9 @@ Perbaikan saat ini:
 
 ### 6) Aturan Placement
 - Posisi node hasil simpan dipertahankan saat reload.
-- Auto-spread hanya saat event edit: add child/sibling, connect, drag stop overlap.
-- Overlap trigger berbasis tabrakan nyata, bukan sekadar berdekatan.
-- Deterministik untuk kolaborasi (urut stabil + update posisi yang berubah saja).
+- Overlap node tidak lagi memicu auto-reposition massal, agar layout asli tidak tiba-tiba berubah.
+- Utility spread tetap tersedia di modul placement untuk kebutuhan manual/terkontrol.
+- Update posisi saat drag dipersist saat drag selesai (lebih ringan dan mengurangi lag realtime).
 
 ### 7) Environment Variables
 ```env
@@ -197,7 +197,7 @@ Current fix:
 - Strict same-row sibling alignment -> direct side-to-side connector.
 - Non-aligned nodes -> orthogonal elbow connector.
 - Multi-child vertical hierarchy -> shared bus + vertical drops.
-- Persisted layout is preserved on reload; no auto-spread at initial hydration.
+- Persisted layout is preserved on reload, and overlap does not trigger automatic mass re-layout.
 
 ### 5) Local Commands
 ```bash
@@ -213,4 +213,3 @@ npm run start
 - Vercel for web app.
 - Railway signaling service with `wss://...up.railway.app`.
 - Set `NEXT_PUBLIC_WEBRTC_URL` in production and redeploy web app.
-

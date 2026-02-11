@@ -37,10 +37,7 @@ import { buildAdaptiveRoutedEdges } from './flow-edge-routing';
 import { FlowNodeCard, NodeActionContext } from './flow-node-card';
 import {
   findOpenPosition,
-  getUpdatedNodePositions,
-  hasSiblingOverlap,
   snapToGridPosition,
-  spreadChildrenForParent,
   getNodeSize,
 } from './flow-node-placement';
 import { FlowToolbarDesktop } from './flow-toolbar-desktop';
@@ -154,8 +151,14 @@ function isSameEdge(a: Edge, b: Edge) {
   return a.id === b.id && a.source === b.source && a.target === b.target && a.label === b.label;
 }
 
-function isPositionChange(change: NodeChange): change is Extract<NodeChange, { type: 'position'; position?: XYPosition }> {
+type PositionNodeChange = Extract<NodeChange, { type: 'position'; position?: XYPosition }>;
+
+function isPositionChange(change: NodeChange): change is PositionNodeChange {
   return change.type === 'position' && Boolean((change as { position?: XYPosition }).position);
+}
+
+function shouldPersistPositionChange(change: PositionNodeChange) {
+  return (change as PositionNodeChange & { dragging?: boolean }).dragging !== true;
 }
 
 interface FlowWorkspaceProps {
@@ -460,6 +463,7 @@ export function FlowWorkspace({
 
       const positionUpdates = changes
         .filter(isPositionChange)
+        .filter(shouldPersistPositionChange)
         .map((change) => ({ id: change.id, position: change.position ?? { x: 0, y: 0 } }));
 
       persistNodePositions(positionUpdates);
@@ -470,19 +474,9 @@ export function FlowWorkspace({
   const handleNodeDragStop = useCallback(
     (_event: React.MouseEvent | React.TouchEvent, node: Node) => {
       if (isReadOnly || !doc) return;
-
-      const parentId = getParentIdFor(node.id);
-      if (!parentId) return;
-      if (!hasSiblingOverlap(parentId, nodes, edges)) return;
-
-      const nextNodes = spreadChildrenForParent(parentId, nodes, edges);
-      const updates = getUpdatedNodePositions(nodes, nextNodes);
-      if (updates.length === 0) return;
-
-      setNodes(nextNodes);
-      persistNodePositions(updates);
+      persistNodePositions([{ id: node.id, position: node.position }]);
     },
-    [isReadOnly, doc, getParentIdFor, nodes, edges, setNodes, persistNodePositions]
+    [isReadOnly, doc, persistNodePositions]
   );
 
   const handleEdgesChange = useCallback(
@@ -506,32 +500,19 @@ export function FlowWorkspace({
       };
 
       const baseEdges = addEdge(newEdge, edges);
-      const nextNodes = hasSiblingOverlap(connection.source, nodes, baseEdges)
-        ? spreadChildrenForParent(connection.source, nodes, baseEdges)
-        : nodes;
-      const positionUpdates = getUpdatedNodePositions(nodes, nextNodes);
 
       const edgesMap = doc.getMap<YRecordMap>('edges') as YEdgeStore;
-      const nodesMap = doc.getMap<YRecordMap>('nodes') as YNodeStore;
       doc.transact(() => {
         const edgeDataMap = new Y.Map<unknown>();
         edgeDataMap.set('id', edgeId);
         edgeDataMap.set('source', connection.source);
         edgeDataMap.set('target', connection.target);
         edgesMap.set(edgeId, edgeDataMap);
-
-        positionUpdates.forEach((update) => {
-          const nodeData = nodesMap.get(update.id);
-          if (nodeData) {
-            nodeData.set('position', update.position);
-          }
-        });
       }, 'local');
 
       setEdges(baseEdges);
-      setNodes(nextNodes);
     },
-    [isReadOnly, doc, edges, nodes, setEdges, setNodes]
+    [isReadOnly, doc, edges, setEdges]
   );
 
   const handleAddNode = useCallback(() => {
@@ -611,10 +592,6 @@ export function FlowWorkspace({
 
     const baseNodes = [...nodes, childNode];
     const baseEdges = [...edges, edge];
-    const nextNodes = hasSiblingOverlap(selectedNodeId, baseNodes, baseEdges)
-      ? spreadChildrenForParent(selectedNodeId, baseNodes, baseEdges)
-      : baseNodes;
-    const positionUpdates = getUpdatedNodePositions(baseNodes, nextNodes);
 
     const nodesMap = doc.getMap<YRecordMap>('nodes') as YNodeStore;
     const edgesMap = doc.getMap<YRecordMap>('edges') as YEdgeStore;
@@ -626,13 +603,6 @@ export function FlowWorkspace({
       nodeDataMap.set('position', childNode.position);
       nodesMap.set(childId, nodeDataMap);
 
-      positionUpdates.forEach((update) => {
-        const nodeData = nodesMap.get(update.id);
-        if (nodeData) {
-          nodeData.set('position', update.position);
-        }
-      });
-
       const edgeDataMap = new Y.Map<unknown>();
       edgeDataMap.set('id', edgeId);
       edgeDataMap.set('source', selectedNodeId);
@@ -641,7 +611,7 @@ export function FlowWorkspace({
     }, 'local');
 
     nodeCountRef.current += 1;
-    setNodes(nextNodes);
+    setNodes(baseNodes);
     setEdges(baseEdges);
   }, [isReadOnly, doc, selectedNodeId, nodes, edges, setNodes, setEdges, handleAddNode, getViewportCenter]);
 
@@ -705,10 +675,6 @@ export function FlowWorkspace({
 
     const baseNodes = [...nodes, siblingNode];
     const baseEdges = [...edges, edge];
-    const nextNodes = hasSiblingOverlap(sourceId, baseNodes, baseEdges)
-      ? spreadChildrenForParent(sourceId, baseNodes, baseEdges)
-      : baseNodes;
-    const positionUpdates = getUpdatedNodePositions(baseNodes, nextNodes);
 
     const nodesMap = doc.getMap<YRecordMap>('nodes') as YNodeStore;
 
@@ -719,13 +685,6 @@ export function FlowWorkspace({
       nodeDataMap.set('position', siblingNode.position);
       nodesMap.set(siblingId, nodeDataMap);
 
-      positionUpdates.forEach((update) => {
-        const nodeData = nodesMap.get(update.id);
-        if (nodeData) {
-          nodeData.set('position', update.position);
-        }
-      });
-
       const edgeDataMap = new Y.Map<unknown>();
       edgeDataMap.set('id', edgeId);
       edgeDataMap.set('source', sourceId);
@@ -734,7 +693,7 @@ export function FlowWorkspace({
     }, 'local');
 
     nodeCountRef.current += 1;
-    setNodes(nextNodes);
+    setNodes(baseNodes);
     setEdges(baseEdges);
   }, [isReadOnly, doc, selectedNodeId, nodes, edges, setNodes, setEdges, handleAddNode, getParentIdFor, getViewportCenter]);
 

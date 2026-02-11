@@ -352,6 +352,8 @@ export function buildAdaptiveRoutedEdges(edges: Edge[], nodes: Node[]): RoutedHi
     offsets.forEach((meta, edgeId) => laneMetaMap.set(edgeId, meta));
   });
 
+  const linearMetaMap = new Map(linearMetas.map((meta) => [meta.edge.id, meta]));
+
   return edges.map((edge) => {
     const sourceNode = nodeMap.get(edge.source);
     const targetNode = nodeMap.get(edge.target);
@@ -382,7 +384,7 @@ export function buildAdaptiveRoutedEdges(edges: Edge[], nodes: Node[]): RoutedHi
       } as RoutedHierarchyEdge;
     }
 
-    const meta = linearMetas.find((item) => item.edge.id === edge.id);
+    const meta = linearMetaMap.get(edge.id);
     if (!meta) {
       return {
         ...edge,
