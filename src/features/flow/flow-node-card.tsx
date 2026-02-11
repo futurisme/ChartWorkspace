@@ -1,4 +1,4 @@
-﻿import { createContext, useContext } from 'react';
+import { createContext, memo, useContext } from 'react';
 import { Handle, NodeProps, NodeToolbar, Position } from 'reactflow';
 import { COLOR_OPTIONS } from './flow-constants';
 import type { ConceptNodeData, NodeActionContextValue } from './flow-types';
@@ -8,7 +8,7 @@ export const NodeActionContext = createContext<NodeActionContextValue>({
   isReadOnly: false,
 });
 
-export function FlowNodeCard({ data, selected, id }: NodeProps<ConceptNodeData>) {
+function FlowNodeCardComponent({ data, selected, id }: NodeProps<ConceptNodeData>) {
   const { onChangeColor, isReadOnly } = useContext(NodeActionContext);
   const baseBorder = data.color ?? '#3b82f6';
   const panelColor = data.color ? `${data.color}14` : undefined;
@@ -68,3 +68,4 @@ export function FlowNodeCard({ data, selected, id }: NodeProps<ConceptNodeData>)
   );
 }
 
+export const FlowNodeCard = memo(FlowNodeCardComponent);

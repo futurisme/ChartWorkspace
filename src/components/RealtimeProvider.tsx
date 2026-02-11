@@ -111,6 +111,8 @@ export function RealtimeProvider({
   const updateCounterRef = useRef(0);
   const localPresenceRef = useRef<UserPresence | null>(null);
   const signalingUrlsRef = useRef<string[] | null>(null);
+  const saveInFlightRef = useRef(false);
+  const queuedSaveRef = useRef(false);
 
   if (signalingUrlsRef.current === null) {
     const parsedEnvUrls = parseSignalingUrls(process.env.NEXT_PUBLIC_WEBRTC_URL ?? '');
@@ -129,6 +131,7 @@ export function RealtimeProvider({
     let activeDoc: Y.Doc | null = null;
     let activeProvider: WebrtcProvider | null = null;
     let detachRealtimeHandlers: (() => void) | null = null;
+    const initAbortController = new AbortController();
 
     const initializeRealtime = async () => {
       try {
@@ -136,7 +139,7 @@ export function RealtimeProvider({
         const mapEndpoint = mode === 'edit'
           ? `/api/maps/${mapId}?ensure=1`
           : `/api/maps/${mapId}`;
-        const response = await fetch(mapEndpoint);
+        const response = await fetch(mapEndpoint, { signal: initAbortController.signal });
         if (!response.ok) {
           throw new Error(`Failed to load map (${response.status})`);
         }
@@ -228,11 +231,20 @@ export function RealtimeProvider({
           return;
         }
 
+        if (mode === 'edit') {
+          console.warn(
+            'Realtime signaling URL is not configured. Set NEXT_PUBLIC_WEBRTC_URL for multi-user live sync.'
+          );
+        }
+
         setProvider(null);
         setAwareness(null);
         setRemoteUsers([]);
         setIsConnected(false);
       } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          return;
+        }
         console.error('Failed to initialize realtime:', error);
       }
     };
@@ -241,6 +253,7 @@ export function RealtimeProvider({
 
     return () => {
       isMounted = false;
+      initAbortController.abort();
       if (detachRealtimeHandlers) {
         detachRealtimeHandlers();
         detachRealtimeHandlers = null;
@@ -259,7 +272,12 @@ export function RealtimeProvider({
   // Debounced snapshot save - last-write-wins strategy
   const saveSnapshot = useCallback(async () => {
     if (!doc || !dirtyRef.current) return;
+    if (saveInFlightRef.current) {
+      queuedSaveRef.current = true;
+      return;
+    }
 
+    saveInFlightRef.current = true;
     try {
       const updateMark = updateCounterRef.current;
       const snapshot = getCurrentSnapshot(doc);
@@ -275,7 +293,6 @@ export function RealtimeProvider({
       });
 
       if (!response.ok) {
-        setSaveErrorCount(prev => Math.min(prev + 1, 3));
         throw new Error(`Save failed: ${response.status}`);
       }
 
@@ -288,6 +305,14 @@ export function RealtimeProvider({
     } catch (error) {
       setSaveErrorCount(prev => Math.min(prev + 1, 3));
       console.error('Snapshot save error (will retry):', error);
+    } finally {
+      saveInFlightRef.current = false;
+      if (queuedSaveRef.current && dirtyRef.current) {
+        queuedSaveRef.current = false;
+        void saveSnapshot();
+      } else {
+        queuedSaveRef.current = false;
+      }
     }
   }, [doc, mapId, currentVersion]);
 

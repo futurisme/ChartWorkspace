@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Background,
   BackgroundVariant,
@@ -42,7 +42,13 @@ import {
 } from './flow-node-placement';
 import { FlowToolbarDesktop } from './flow-toolbar-desktop';
 import { FlowToolbarMobile } from './flow-toolbar-mobile';
-import type { ConceptNode, ConceptNodeData, PersistedEdgeRecord, PersistedNodeRecord } from './flow-types';
+import type {
+  ConceptNode,
+  ConceptNodeData,
+  NodeActionContextValue,
+  PersistedEdgeRecord,
+  PersistedNodeRecord,
+} from './flow-types';
 
 type YRecordMap = Y.Map<unknown>;
 type YNodeStore = Y.Map<YRecordMap>;
@@ -52,6 +58,11 @@ interface PositionUpdate {
   id: string;
   position: XYPosition;
 }
+
+type NodeAddOrResetChange = Extract<NodeChange, { type: 'add' | 'reset'; item: Node<ConceptNodeData> }>;
+type NodeRemoveChange = Extract<NodeChange, { type: 'remove' }>;
+type EdgeAddOrResetChange = Extract<EdgeChange, { type: 'add' | 'reset'; item: Edge }>;
+type EdgeRemoveChange = Extract<EdgeChange, { type: 'remove' }>;
 
 function readString(data: YRecordMap, key: string) {
   const value = data.get(key);
@@ -129,6 +140,44 @@ function buildEdgeFromMap(edgeId: string, edgeData: YRecordMap): Edge {
   };
 }
 
+function upsertNodeRecord(nodesMap: YNodeStore, node: Node<ConceptNodeData>) {
+  let nodeData = nodesMap.get(node.id);
+  if (!nodeData) {
+    nodeData = new Y.Map<unknown>() as YRecordMap;
+    nodesMap.set(node.id, nodeData);
+  }
+
+  nodeData.set('id', node.id);
+  nodeData.set('label', node.data?.label ?? 'Node');
+  nodeData.set('position', node.position);
+  if (node.data?.color) {
+    nodeData.set('color', node.data.color);
+  } else {
+    nodeData.delete('color');
+  }
+}
+
+function upsertEdgeRecord(edgesMap: YEdgeStore, edge: Edge) {
+  if (!edge.source || !edge.target) {
+    return;
+  }
+
+  let edgeData = edgesMap.get(edge.id);
+  if (!edgeData) {
+    edgeData = new Y.Map<unknown>() as YRecordMap;
+    edgesMap.set(edge.id, edgeData);
+  }
+
+  edgeData.set('id', edge.id);
+  edgeData.set('source', edge.source);
+  edgeData.set('target', edge.target);
+  if (typeof edge.label === 'string') {
+    edgeData.set('label', edge.label);
+  } else {
+    edgeData.delete('label');
+  }
+}
+
 function getNodeLabel(node: Node): string {
   const data = node.data as ConceptNodeData | undefined;
   return data?.label ?? 'Node';
@@ -161,6 +210,22 @@ function shouldPersistPositionChange(change: PositionNodeChange) {
   return (change as PositionNodeChange & { dragging?: boolean }).dragging !== true;
 }
 
+function isNodeAddOrResetChange(change: NodeChange): change is NodeAddOrResetChange {
+  return change.type === 'add' || change.type === 'reset';
+}
+
+function isNodeRemoveChange(change: NodeChange): change is NodeRemoveChange {
+  return change.type === 'remove';
+}
+
+function isEdgeAddOrResetChange(change: EdgeChange): change is EdgeAddOrResetChange {
+  return change.type === 'add' || change.type === 'reset';
+}
+
+function isEdgeRemoveChange(change: EdgeChange): change is EdgeRemoveChange {
+  return change.type === 'remove';
+}
+
 interface FlowWorkspaceProps {
   isReadOnly?: boolean;
   showDesktopControlsPanel?: boolean;
@@ -189,10 +254,16 @@ export function FlowWorkspace({
   const undoManagerRef = useRef<Y.UndoManager | null>(null);
   const reactFlowWrapperRef = useRef<HTMLDivElement | null>(null);
   const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
+  const persistedPositionsRef = useRef<Map<string, XYPosition>>(new Map());
 
   const nodeTypes = useMemo(() => ({ conceptNode: FlowNodeCard }), []);
   const edgeTypes = useMemo(() => ({ hierarchy: FlowEdgeHierarchy }), []);
-  const routedEdges = useMemo(() => buildAdaptiveRoutedEdges(edges, nodes), [edges, nodes]);
+  const deferredNodes = useDeferredValue(nodes);
+  const deferredEdges = useDeferredValue(edges);
+  const routedEdges = useMemo(
+    () => buildAdaptiveRoutedEdges(deferredEdges, deferredNodes),
+    [deferredEdges, deferredNodes]
+  );
 
   const getParentIdFor = useCallback(
     (childId: string) => edges.find((edge) => edge.target === childId)?.source ?? null,
@@ -227,15 +298,39 @@ export function FlowWorkspace({
         return;
       }
 
+      const deduped = new Map<string, XYPosition>();
+      updates.forEach((update) => {
+        deduped.set(update.id, update.position);
+      });
+
+      const effectiveUpdates = Array.from(deduped.entries())
+        .filter(([id, position]) => {
+          const previous = persistedPositionsRef.current.get(id);
+          return !previous || previous.x !== position.x || previous.y !== position.y;
+        })
+        .map(([id, position]) => ({ id, position }));
+
+      if (effectiveUpdates.length === 0) {
+        return;
+      }
+
       const nodesMap = doc.getMap<YRecordMap>('nodes') as YNodeStore;
       doc.transact(() => {
-        updates.forEach((update) => {
-          const nodeData = nodesMap.get(update.id);
-          if (nodeData) {
-            nodeData.set('position', update.position);
+        effectiveUpdates.forEach((update) => {
+          let nodeData = nodesMap.get(update.id);
+          if (!nodeData) {
+            nodeData = new Y.Map<unknown>() as YRecordMap;
+            nodeData.set('id', update.id);
+            nodeData.set('label', 'Node');
+            nodesMap.set(update.id, nodeData);
           }
+          nodeData.set('position', update.position);
         });
       }, 'local');
+
+      effectiveUpdates.forEach((update) => {
+        persistedPositionsRef.current.set(update.id, update.position);
+      });
     },
     [doc]
   );
@@ -345,6 +440,7 @@ export function FlowWorkspace({
     setNodes(initialNodes);
     nodeCountRef.current = initialNodes.length;
     setEdges(initialEdges);
+    persistedPositionsRef.current = new Map(initialNodes.map((node) => [node.id, node.position]));
 
     const handleNodesDeep = (events: Y.YEvent<Y.AbstractType<unknown>>[], transaction: Y.Transaction) => {
       if (transaction.origin === 'local') return;
@@ -373,6 +469,7 @@ export function FlowWorkspace({
             if (nextMap.delete(nodeId)) {
               changed = true;
             }
+            persistedPositionsRef.current.delete(nodeId);
             return;
           }
 
@@ -380,12 +477,14 @@ export function FlowWorkspace({
           const existing = nextMap.get(nodeId);
           if (!existing) {
             nextMap.set(nodeId, nextNode);
+            persistedPositionsRef.current.set(nodeId, nextNode.position);
             changed = true;
             return;
           }
 
           if (!isSameNode(existing, nextNode)) {
             nextMap.set(nodeId, { ...existing, ...nextNode, data: nextNode.data, position: nextNode.position });
+            persistedPositionsRef.current.set(nodeId, nextNode.position);
             changed = true;
           }
         });
@@ -466,6 +565,51 @@ export function FlowWorkspace({
         .filter(shouldPersistPositionChange)
         .map((change) => ({ id: change.id, position: change.position ?? { x: 0, y: 0 } }));
 
+      const removedNodeIds = changes.filter(isNodeRemoveChange).map((change) => change.id);
+      const upsertNodes = changes
+        .filter(isNodeAddOrResetChange)
+        .map((change) => change.item)
+        .filter((node): node is Node<ConceptNodeData> => Boolean(node?.id));
+
+      if (removedNodeIds.length > 0 || upsertNodes.length > 0) {
+        const nodesMap = doc.getMap<YRecordMap>('nodes') as YNodeStore;
+        const edgesMap = doc.getMap<YRecordMap>('edges') as YEdgeStore;
+        const removedIdsSet = new Set(removedNodeIds);
+
+        doc.transact(() => {
+          upsertNodes.forEach((node) => {
+            upsertNodeRecord(nodesMap, node);
+          });
+
+          removedNodeIds.forEach((nodeId) => {
+            nodesMap.delete(nodeId);
+          });
+
+          if (removedIdsSet.size > 0) {
+            const danglingEdgeIds: string[] = [];
+            edgesMap.forEach((edgeData, edgeId) => {
+              const edgeRecord = toPersistedEdgeRecord(edgeId, edgeData);
+              if (!edgeRecord) {
+                danglingEdgeIds.push(edgeId);
+                return;
+              }
+
+              if (removedIdsSet.has(edgeRecord.source) || removedIdsSet.has(edgeRecord.target)) {
+                danglingEdgeIds.push(edgeId);
+              }
+            });
+
+            danglingEdgeIds.forEach((edgeId) => {
+              edgesMap.delete(edgeId);
+            });
+          }
+        }, 'local');
+
+        removedNodeIds.forEach((nodeId) => {
+          persistedPositionsRef.current.delete(nodeId);
+        });
+      }
+
       persistNodePositions(positionUpdates);
     },
     [isReadOnly, doc, onNodesChange, persistNodePositions]
@@ -483,8 +627,31 @@ export function FlowWorkspace({
     (changes: EdgeChange[]) => {
       if (isReadOnly) return;
       onEdgesChange(changes);
+
+      if (!doc) return;
+
+      const removedEdgeIds = changes.filter(isEdgeRemoveChange).map((change) => change.id);
+      const upsertEdges = changes
+        .filter(isEdgeAddOrResetChange)
+        .map((change) => change.item)
+        .filter((edge): edge is Edge => Boolean(edge?.id));
+
+      if (removedEdgeIds.length === 0 && upsertEdges.length === 0) {
+        return;
+      }
+
+      const edgesMap = doc.getMap<YRecordMap>('edges') as YEdgeStore;
+      doc.transact(() => {
+        removedEdgeIds.forEach((edgeId) => {
+          edgesMap.delete(edgeId);
+        });
+
+        upsertEdges.forEach((edge) => {
+          upsertEdgeRecord(edgesMap, edge);
+        });
+      }, 'local');
     },
-    [isReadOnly, onEdgesChange]
+    [isReadOnly, doc, onEdgesChange]
   );
 
   const handleConnect = useCallback(
@@ -544,6 +711,7 @@ export function FlowWorkspace({
       nodesMap.set(nodeId, nodeDataMap);
     }, 'local');
 
+    persistedPositionsRef.current.set(nodeId, newNode.position);
     nodeCountRef.current += 1;
     setNodes((nds) => [...nds, newNode]);
   }, [isReadOnly, doc, nodes, setNodes, getViewportCenter]);
@@ -610,6 +778,7 @@ export function FlowWorkspace({
       edgesMap.set(edgeId, edgeDataMap);
     }, 'local');
 
+    persistedPositionsRef.current.set(childId, childNode.position);
     nodeCountRef.current += 1;
     setNodes(baseNodes);
     setEdges(baseEdges);
@@ -692,6 +861,7 @@ export function FlowWorkspace({
       edgesMap.set(edgeId, edgeDataMap);
     }, 'local');
 
+    persistedPositionsRef.current.set(siblingId, siblingNode.position);
     nodeCountRef.current += 1;
     setNodes(baseNodes);
     setEdges(baseEdges);
@@ -749,6 +919,7 @@ export function FlowWorkspace({
       edgesMap.set(edgeId, edgeDataMap);
     }, 'local');
 
+    persistedPositionsRef.current.set(parentId, parentNode.position);
     nodeCountRef.current += 1;
     setNodes((nds) => [...nds, parentNode]);
     setEdges((eds) => [...eds, { id: edgeId, source: parentId, target: selectedNodeId, style: EDGE_STYLE }]);
@@ -781,6 +952,7 @@ export function FlowWorkspace({
 
     setNodes((nds) => nds.filter((n) => n.id !== selectedNodeId));
     setEdges((eds) => eds.filter((e) => e.source !== selectedNodeId && e.target !== selectedNodeId));
+    persistedPositionsRef.current.delete(selectedNodeId);
     setSelectedNodeId(null);
   }, [isReadOnly, selectedNodeId, doc, setNodes, setEdges]);
 
@@ -849,6 +1021,11 @@ export function FlowWorkspace({
     setShowInviteModal(true);
   }, []);
 
+  const nodeActionContextValue = useMemo<NodeActionContextValue>(
+    () => ({ onChangeColor: handleChangeColor, isReadOnly }),
+    [handleChangeColor, isReadOnly]
+  );
+
   return (
     <div className="relative flex h-full min-h-0 flex-col bg-slate-50">
       {!isReadOnly && (
@@ -904,7 +1081,7 @@ export function FlowWorkspace({
         ref={reactFlowWrapperRef}
         className={`relative min-h-0 flex-1 ${!isReadOnly && showMobileToolsPanel ? 'pb-24 lg:pb-0' : 'pb-0'}`}
       >
-        <NodeActionContext.Provider value={{ onChangeColor: handleChangeColor, isReadOnly }}>
+        <NodeActionContext.Provider value={nodeActionContextValue}>
           <ReactFlow
             nodes={nodes}
             edges={routedEdges}

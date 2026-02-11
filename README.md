@@ -35,6 +35,8 @@ Perbaikan saat ini:
 #### Realtime + Presence
 - `src/components/RealtimeProvider.tsx`: bootstrap Y.Doc, signaling, awareness, autosave.
 - `src/components/PresenceBar.tsx`: status connected/offline + online users.
+- Autosave memakai in-flight queue agar request save tidak bertumpuk saat editing ramai.
+- Jika `NEXT_PUBLIC_WEBRTC_URL` kosong, aplikasi memberi warning eksplisit pada mode edit.
 
 #### Flow Feature Modules
 - `src/features/flow/flow-workspace.tsx`: orchestration canvas + action handlers + Yjs sync.
@@ -120,6 +122,11 @@ Perbaikan saat ini:
 - Utility spread tetap tersedia di modul placement untuk kebutuhan manual/terkontrol.
 - Update posisi saat drag dipersist saat drag selesai (lebih ringan dan mengurangi lag realtime).
 
+### 6.1) Realtime Sync Guarantees
+- Perubahan node `add/remove/reset/position` disimpan ke Yjs map agar sinkron lintas pengguna.
+- Perubahan edge `add/remove/reset` juga ditulis ke Yjs map dalam transaksi lokal.
+- Delete node otomatis membersihkan edge terkait, sehingga tidak meninggalkan edge yatim pada peer lain.
+
 ### 7) Environment Variables
 ```env
 DATABASE_URL="postgresql://user:password@host:5432/chartmaker"
@@ -192,12 +199,14 @@ Current fix:
 - Presence UI: `src/components/PresenceBar.tsx`
 - Flow modules: `src/features/flow/*`
 - Shared libs: `src/lib/snapshot.ts`, `src/lib/mapId.ts`, `src/lib/presence.ts`, `src/lib/prisma.ts`
+- Node/edge change handlers now persist `add/remove/reset/position` into Yjs transactions for full peer sync.
 
 ### 4) Core Runtime Rules
 - Strict same-row sibling alignment -> direct side-to-side connector.
 - Non-aligned nodes -> orthogonal elbow connector.
 - Multi-child vertical hierarchy -> shared bus + vertical drops.
 - Persisted layout is preserved on reload, and overlap does not trigger automatic mass re-layout.
+- Drag updates are persisted on drag end and deduplicated to reduce realtime write pressure.
 
 ### 5) Local Commands
 ```bash
