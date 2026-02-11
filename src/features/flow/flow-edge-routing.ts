@@ -130,10 +130,10 @@ function buildLaneOffsets(items: EdgeRoutingMeta[], axis: 'x' | 'y') {
     return aValue - bValue;
   });
 
-  const offsetMap = new Map<string, number>();
+  const offsetMap = new Map<string, { offset: number; index: number }>();
   sorted.forEach((item, index) => {
     const offset = (index - (sorted.length - 1) / 2) * ROUTE_LANE_GAP;
-    offsetMap.set(item.edge.id, snapToRouteGrid(offset));
+    offsetMap.set(item.edge.id, { offset: snapToRouteGrid(offset), index });
   });
 
   return offsetMap;
@@ -250,16 +250,16 @@ export function buildAdaptiveRoutedEdges(edges: Edge[], nodes: Node[]): RoutedHi
     }
   });
 
-  const laneOffsets = new Map<string, number>();
+  const laneMetaMap = new Map<string, { offset: number; index: number }>();
   grouped.forEach((items, key) => {
     if (items.length === 1) {
-      laneOffsets.set(items[0].edge.id, 0);
+      laneMetaMap.set(items[0].edge.id, { offset: 0, index: 0 });
       return;
     }
 
     const axis = key.includes(':horizontal:') ? 'y' : 'x';
     const offsets = buildLaneOffsets(items, axis);
-    offsets.forEach((offset, edgeId) => laneOffsets.set(edgeId, offset));
+    offsets.forEach((meta, edgeId) => laneMetaMap.set(edgeId, meta));
   });
 
   return edges.map((edge) => {
@@ -299,7 +299,8 @@ export function buildAdaptiveRoutedEdges(edges: Edge[], nodes: Node[]): RoutedHi
     if (Math.abs(dx) > Math.abs(dy)) {
       const sign = (dx >= 0 ? 1 : -1) as 1 | -1;
       const anchors = getHorizontalAnchors(sourceNode, targetNode, sign);
-      const laneOffset = laneOffsets.get(edge.id) ?? 0;
+      const laneMeta = laneMetaMap.get(edge.id) ?? { offset: 0, index: 0 };
+      const laneOffset = laneMeta.offset;
       const aligned = Math.abs(anchors.sourceAnchor.y - anchors.targetAnchor.y) <= ROUTE_ALIGN_TOLERANCE;
 
       const points = aligned
@@ -326,14 +327,15 @@ export function buildAdaptiveRoutedEdges(edges: Edge[], nodes: Node[]): RoutedHi
         data: {
           kind: 'horizontal',
           points,
-          laneIndex: laneOffset,
+          laneIndex: laneMeta.index,
         },
       } as RoutedHierarchyEdge;
     }
 
     const sign = (dy >= 0 ? 1 : -1) as 1 | -1;
     const anchors = getVerticalAnchors(sourceNode, targetNode, sign);
-    const laneOffset = laneOffsets.get(edge.id) ?? 0;
+    const laneMeta = laneMetaMap.get(edge.id) ?? { offset: 0, index: 0 };
+    const laneOffset = laneMeta.offset;
     const aligned = Math.abs(anchors.sourceAnchor.x - anchors.targetAnchor.x) <= ROUTE_ALIGN_TOLERANCE;
 
     const points = aligned
@@ -360,7 +362,7 @@ export function buildAdaptiveRoutedEdges(edges: Edge[], nodes: Node[]): RoutedHi
       data: {
         kind: 'vertical',
         points,
-        laneIndex: laneOffset,
+        laneIndex: laneMeta.index,
       },
     } as RoutedHierarchyEdge;
   });
