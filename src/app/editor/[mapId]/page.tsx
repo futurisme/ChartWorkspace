@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { RealtimeProvider } from '@/components/RealtimeProvider';
-import { ConceptFlow } from '@/components/ConceptFlow';
+import { FlowWorkspace } from '@/features/flow/flow-workspace';
 import { PresenceBar } from '@/components/PresenceBar';
 
 function EditorContent() {
@@ -77,7 +77,7 @@ function EditorContent() {
         <PresenceBar />
 
         <div className="flex-1">
-          <ConceptFlow isReadOnly={false} />
+          <FlowWorkspace isReadOnly={false} />
         </div>
       </div>
     </RealtimeProvider>

@@ -1,0 +1,228 @@
+﻿import { useState } from 'react';
+
+interface FlowToolbarDesktopProps {
+  selectedNodeId: string | null;
+  canUndo: boolean;
+  canRedo: boolean;
+  snapEnabled: boolean;
+  remoteUsersCount: number;
+  isConnected: boolean;
+  saveErrorCount: number;
+  onAddNode: () => void;
+  onAddChild: () => void;
+  onAddSibling: () => void;
+  onAddParent: () => void;
+  onRename: () => void;
+  onDelete: () => void;
+  onUndo: () => void;
+  onRedo: () => void;
+  onInvite: () => void;
+  onToggleSnap: () => void;
+}
+
+function SectionHeader({
+  title,
+  open,
+  onToggle,
+}: {
+  title: string;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="flex w-full items-center justify-between rounded-md bg-slate-100 px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-700"
+    >
+      <span>{title}</span>
+      <span>{open ? 'Hide' : 'Show'}</span>
+    </button>
+  );
+}
+
+export function FlowToolbarDesktop({
+  selectedNodeId,
+  canUndo,
+  canRedo,
+  snapEnabled,
+  remoteUsersCount,
+  isConnected,
+  saveErrorCount,
+  onAddNode,
+  onAddChild,
+  onAddSibling,
+  onAddParent,
+  onRename,
+  onDelete,
+  onUndo,
+  onRedo,
+  onInvite,
+  onToggleSnap,
+}: FlowToolbarDesktopProps) {
+  const [leftOpen, setLeftOpen] = useState(true);
+  const [rightOpen, setRightOpen] = useState(true);
+  const [nodeSectionOpen, setNodeSectionOpen] = useState(true);
+  const [structureSectionOpen, setStructureSectionOpen] = useState(true);
+  const [editSectionOpen, setEditSectionOpen] = useState(true);
+  const [viewSectionOpen, setViewSectionOpen] = useState(true);
+
+  return (
+    <>
+      <div className="pointer-events-none absolute left-4 top-4 z-30 hidden w-[280px] sm:block">
+        <div className="pointer-events-auto rounded-xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-slate-900">Workspace Controls</h2>
+            <button
+              type="button"
+              onClick={() => setLeftOpen((prev) => !prev)}
+              className="rounded border border-slate-200 px-2 py-1 text-xs font-medium text-slate-700"
+            >
+              {leftOpen ? 'Collapse' : 'Expand'}
+            </button>
+          </div>
+
+          {leftOpen && (
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <SectionHeader title="Node" open={nodeSectionOpen} onToggle={() => setNodeSectionOpen((prev) => !prev)} />
+                {nodeSectionOpen && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={onAddNode}
+                      className="rounded bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                    >
+                      Add Node
+                    </button>
+                    <button
+                      onClick={onRename}
+                      disabled={!selectedNodeId}
+                      className="rounded bg-amber-500 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                    >
+                      Rename
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <SectionHeader
+                  title="Structure"
+                  open={structureSectionOpen}
+                  onToggle={() => setStructureSectionOpen((prev) => !prev)}
+                />
+                {structureSectionOpen && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={onAddChild}
+                      disabled={!selectedNodeId}
+                      className="rounded bg-indigo-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                    >
+                      Child
+                    </button>
+                    <button
+                      onClick={onAddSibling}
+                      disabled={!selectedNodeId}
+                      className="rounded bg-indigo-500 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                    >
+                      Sibling
+                    </button>
+                    <button
+                      onClick={onAddParent}
+                      disabled={!selectedNodeId}
+                      className="col-span-2 rounded bg-indigo-400 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                    >
+                      Parent
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <SectionHeader title="Edit" open={editSectionOpen} onToggle={() => setEditSectionOpen((prev) => !prev)} />
+                {editSectionOpen && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={onUndo}
+                      disabled={!canUndo}
+                      className="rounded border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50"
+                    >
+                      Undo
+                    </button>
+                    <button
+                      onClick={onRedo}
+                      disabled={!canRedo}
+                      className="rounded border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50"
+                    >
+                      Redo
+                    </button>
+                    <button
+                      onClick={onDelete}
+                      disabled={!selectedNodeId}
+                      className="col-span-2 rounded bg-red-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <SectionHeader title="View" open={viewSectionOpen} onToggle={() => setViewSectionOpen((prev) => !prev)} />
+                {viewSectionOpen && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={onToggleSnap}
+                      className="rounded border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+                    >
+                      Snap: {snapEnabled ? 'ON' : 'OFF'}
+                    </button>
+                    <button
+                      onClick={onInvite}
+                      className="rounded border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+                    >
+                      Invite
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="pointer-events-none absolute right-4 top-4 z-30 hidden w-[250px] sm:block">
+        <div className="pointer-events-auto rounded-xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-slate-900">Status Panel</h2>
+            <button
+              type="button"
+              onClick={() => setRightOpen((prev) => !prev)}
+              className="rounded border border-slate-200 px-2 py-1 text-xs font-medium text-slate-700"
+            >
+              {rightOpen ? 'Collapse' : 'Expand'}
+            </button>
+          </div>
+
+          {rightOpen && (
+            <div className="space-y-2 text-sm text-slate-700">
+              <div className="rounded bg-slate-100 px-3 py-2">
+                Selection: <span className="font-semibold">{selectedNodeId ? 'Node selected' : 'None'}</span>
+              </div>
+              <div className="rounded bg-slate-100 px-3 py-2">
+                Connection: <span className="font-semibold">{isConnected ? 'Online' : 'Offline'}</span>
+              </div>
+              <div className="rounded bg-slate-100 px-3 py-2">
+                Collaborators: <span className="font-semibold">{remoteUsersCount + 1}</span>
+              </div>
+              <div className="rounded bg-slate-100 px-3 py-2">
+                Save warnings: <span className="font-semibold">{saveErrorCount}</span>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
