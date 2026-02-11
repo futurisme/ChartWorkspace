@@ -132,9 +132,14 @@ export function RealtimeProvider({
 
     const initializeRealtime = async () => {
       try {
-        // Fetch initial snapshot from server
-        const response = await fetch(`/api/maps/${mapId}`);
-        if (!response.ok) throw new Error('Failed to load map');
+        // In edit mode, ensure the map exists so direct /editor/:id links do not fail on first open.
+        const mapEndpoint = mode === 'edit'
+          ? `/api/maps/${mapId}?ensure=1`
+          : `/api/maps/${mapId}`;
+        const response = await fetch(mapEndpoint);
+        if (!response.ok) {
+          throw new Error(`Failed to load map (${response.status})`);
+        }
 
         const { snapshot, version } = await response.json();
 

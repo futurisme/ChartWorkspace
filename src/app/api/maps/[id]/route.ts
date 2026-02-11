@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { formatMapId, parseMapId } from '@/lib/mapId';
+import { createDocWithSnapshot, getCurrentSnapshot } from '@/lib/snapshot';
 
 export async function GET(
   request: NextRequest,
@@ -33,9 +34,24 @@ export async function GET(
       );
     }
 
-    const map = await prisma.map.findUnique({
+    const ensureMap = request.nextUrl.searchParams.get('ensure') === '1';
+    let map = await prisma.map.findUnique({
       where: { id: numericId },
     });
+
+    if (!map && ensureMap) {
+      const freshDoc = createDocWithSnapshot();
+      map = await prisma.map.upsert({
+        where: { id: numericId },
+        create: {
+          id: numericId,
+          title: `Map ${formatMapId(numericId)}`,
+          snapshot: getCurrentSnapshot(freshDoc),
+          version: 1,
+        },
+        update: {},
+      });
+    }
 
     if (!map) {
       return NextResponse.json(

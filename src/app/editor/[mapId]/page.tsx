@@ -19,7 +19,7 @@ function EditorContent() {
   useEffect(() => {
     const loadMap = async () => {
       try {
-        const response = await fetch(`/api/maps/${mapId}`);
+        const response = await fetch(`/api/maps/${mapId}?ensure=1`);
         if (response.ok) {
           const data = await response.json();
           setTitle(data.title);

@@ -48,23 +48,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get current map from database
-    const currentMap = await prisma.map.findUnique({
+    // Always accept and merge - use last-write-wins strategy.
+    // Upsert avoids save-time 404 when the map has not been created yet.
+    const updated = await prisma.map.upsert({
       where: { id: numericId },
-    });
-
-    if (!currentMap) {
-      return NextResponse.json(
-        { error: 'Map not found' },
-        { status: 404 }
-      );
-    }
-
-    // Always accept and merge - use last-write-wins strategy
-    // This prevents version conflict errors with concurrent editing
-    const updated = await prisma.map.update({
-      where: { id: numericId },
-      data: {
+      create: {
+        id: numericId,
+        title: `Map ${formatMapId(numericId)}`,
+        snapshot,
+        version: 1,
+      },
+      update: {
         snapshot,
         version: { increment: 1 },
         updatedAt: new Date(),
