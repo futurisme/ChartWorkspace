@@ -1,16 +1,21 @@
 ﻿'use client';
 
-import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Background,
   BackgroundVariant,
-  Connection,
+  type Connection,
   ConnectionLineType,
   Controls,
   MiniMap,
-  Node,
+  type Edge,
+  type EdgeChange,
+  type Node,
+  type NodeChange,
+  type OnSelectionChangeParams,
   ReactFlow,
-  ReactFlowInstance,
+  type ReactFlowInstance,
+  type XYPosition,
   addEdge,
   useEdgesState,
   useNodesState,
@@ -18,14 +23,21 @@ import {
 import 'reactflow/dist/style.css';
 import * as Y from 'yjs';
 import { useRealtime } from '@/components/RealtimeProvider';
-import { EDGE_STYLE, AUTO_SHIFT, DEFAULT_NODE_SIZE, GRID_SIZE, NODE_GAP, ROUTE_GRID_SIZE } from './flow-constants';
+import {
+  EDGE_STYLE,
+  AUTO_SHIFT,
+  DEFAULT_NODE_SIZE,
+  GRID_SIZE,
+  NODE_GAP,
+  ROUTE_GRID_SIZE,
+  UNBOUNDED_TRANSLATE_EXTENT,
+} from './flow-constants';
 import { FlowEdgeHierarchy } from './flow-edge-hierarchy';
 import { buildAdaptiveRoutedEdges } from './flow-edge-routing';
 import { FlowNodeCard, NodeActionContext } from './flow-node-card';
 import {
   findOpenPosition,
   getUpdatedNodePositions,
-  getWorkspaceExtent,
   hasSiblingOverlap,
   snapToGridPosition,
   spreadChildrenForAllParents,
@@ -34,43 +46,117 @@ import {
 } from './flow-node-placement';
 import { FlowToolbarDesktop } from './flow-toolbar-desktop';
 import { FlowToolbarMobile } from './flow-toolbar-mobile';
-import type { ConceptNode, ConceptNodeData } from './flow-types';
+import type { ConceptNode, ConceptNodeData, PersistedEdgeRecord, PersistedNodeRecord } from './flow-types';
 
-function buildNodeFromMap(nodeId: string, nodeData: Y.Map<any>): Node {
-  const position = nodeData.get('position') || { x: 0, y: 0 };
-  return {
-    id: nodeId,
-    type: 'conceptNode',
-    data: {
-      label: nodeData.get('label') || 'Node',
-      color: nodeData.get('color'),
-    },
-    position,
-  } as Node;
+type YRecordMap = Y.Map<unknown>;
+type YNodeStore = Y.Map<YRecordMap>;
+type YEdgeStore = Y.Map<YRecordMap>;
+
+interface PositionUpdate {
+  id: string;
+  position: XYPosition;
 }
 
-function buildEdgeFromMap(edgeId: string, edgeData: Y.Map<any>) {
+function readString(data: YRecordMap, key: string) {
+  const value = data.get(key);
+  return typeof value === 'string' ? value : undefined;
+}
+
+function readPosition(data: YRecordMap, key: string): XYPosition | null {
+  const value = data.get(key);
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const next = value as { x?: unknown; y?: unknown };
+  if (typeof next.x !== 'number' || typeof next.y !== 'number') {
+    return null;
+  }
+
+  return { x: next.x, y: next.y };
+}
+
+function toPersistedNodeRecord(nodeId: string, nodeData: YRecordMap): PersistedNodeRecord {
+  return {
+    id: nodeId,
+    label: readString(nodeData, 'label') ?? 'Node',
+    position: readPosition(nodeData, 'position') ?? { x: 0, y: 0 },
+    color: readString(nodeData, 'color'),
+  };
+}
+
+function toPersistedEdgeRecord(edgeId: string, edgeData: YRecordMap): PersistedEdgeRecord | null {
+  const source = readString(edgeData, 'source');
+  const target = readString(edgeData, 'target');
+  if (!source || !target) {
+    return null;
+  }
+
   return {
     id: edgeId,
-    source: edgeData.get('source'),
-    target: edgeData.get('target'),
-    label: edgeData.get('label'),
+    source,
+    target,
+    label: readString(edgeData, 'label'),
+  };
+}
+
+function buildNodeFromMap(nodeId: string, nodeData: YRecordMap): Node<ConceptNodeData> {
+  const persisted = toPersistedNodeRecord(nodeId, nodeData);
+  return {
+    id: persisted.id,
+    type: 'conceptNode',
+    data: {
+      label: persisted.label,
+      color: persisted.color,
+    },
+    position: persisted.position,
+  };
+}
+
+function buildEdgeFromMap(edgeId: string, edgeData: YRecordMap): Edge {
+  const persisted = toPersistedEdgeRecord(edgeId, edgeData);
+  if (!persisted) {
+    return {
+      id: edgeId,
+      source: '',
+      target: '',
+      style: EDGE_STYLE,
+    };
+  }
+
+  return {
+    id: persisted.id,
+    source: persisted.source,
+    target: persisted.target,
+    label: persisted.label,
     style: EDGE_STYLE,
   };
 }
 
+function getNodeLabel(node: Node): string {
+  const data = node.data as ConceptNodeData | undefined;
+  return data?.label ?? 'Node';
+}
+
 function isSameNode(a: Node, b: Node) {
+  const aData = a.data as ConceptNodeData | undefined;
+  const bData = b.data as ConceptNodeData | undefined;
+
   return (
     a.id === b.id &&
     a.position.x === b.position.x &&
     a.position.y === b.position.y &&
-    a.data?.label === b.data?.label &&
-    a.data?.color === b.data?.color
+    (aData?.label ?? '') === (bData?.label ?? '') &&
+    (aData?.color ?? '') === (bData?.color ?? '')
   );
 }
 
-function isSameEdge(a: any, b: any) {
+function isSameEdge(a: Edge, b: Edge) {
   return a.id === b.id && a.source === b.source && a.target === b.target && a.label === b.label;
+}
+
+function isPositionChange(change: NodeChange): change is Extract<NodeChange, { type: 'position'; position?: XYPosition }> {
+  return change.type === 'position' && Boolean((change as { position?: XYPosition }).position);
 }
 
 interface FlowWorkspaceProps {
@@ -79,8 +165,8 @@ interface FlowWorkspaceProps {
 
 export function FlowWorkspace({ isReadOnly = false }: FlowWorkspaceProps) {
   const { doc, isConnected, updatePresence, remoteUsers, saveErrorCount } = useRealtime();
-  const [nodes, setNodes, onNodesChange] = useNodesState([] as Node[]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([] as any[]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<ConceptNodeData>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [renameNodeId, setRenameNodeId] = useState<string | null>(null);
   const [renameText, setRenameText] = useState('');
@@ -96,19 +182,46 @@ export function FlowWorkspace({ isReadOnly = false }: FlowWorkspaceProps) {
 
   const nodeTypes = useMemo(() => ({ conceptNode: FlowNodeCard }), []);
   const edgeTypes = useMemo(() => ({ hierarchy: FlowEdgeHierarchy }), []);
-  const workspaceExtent = useMemo(() => getWorkspaceExtent(nodes), [nodes]);
+  const routedEdges = useMemo(() => buildAdaptiveRoutedEdges(edges, nodes), [edges, nodes]);
+
+  const getParentIdFor = useCallback(
+    (childId: string) => edges.find((edge) => edge.target === childId)?.source ?? null,
+    [edges]
+  );
+
+  const selectedNode = useMemo(
+    () => (selectedNodeId ? nodes.find((node) => node.id === selectedNodeId) ?? null : null),
+    [nodes, selectedNodeId]
+  );
+
+  const selectedParentId = useMemo(
+    () => (selectedNodeId ? getParentIdFor(selectedNodeId) : null),
+    [selectedNodeId, getParentIdFor]
+  );
+
+  const selectedChildCount = useMemo(() => {
+    if (!selectedNodeId) {
+      return 0;
+    }
+    return edges.filter((edge) => edge.source === selectedNodeId).length;
+  }, [edges, selectedNodeId]);
+
+  const selectedPosition = selectedNode
+    ? { x: Math.round(selectedNode.position.x), y: Math.round(selectedNode.position.y) }
+    : null;
+  const selectedNodeLabel = selectedNode ? getNodeLabel(selectedNode) : null;
 
   const persistNodePositions = useCallback(
-    (updates: Array<{ id: string; position: { x: number; y: number } }>) => {
+    (updates: PositionUpdate[]) => {
       if (!doc || updates.length === 0) {
         return;
       }
 
-      const nodesMap = doc.getMap('nodes') as Y.Map<Y.Map<any>>;
+      const nodesMap = doc.getMap<YRecordMap>('nodes') as YNodeStore;
       doc.transact(() => {
         updates.forEach((update) => {
           const nodeData = nodesMap.get(update.id);
-          if (nodeData && nodeData instanceof Y.Map) {
+          if (nodeData) {
             nodeData.set('position', update.position);
           }
         });
@@ -133,11 +246,13 @@ export function FlowWorkspace({ isReadOnly = false }: FlowWorkspaceProps) {
 
   const handleChangeColor = useCallback(
     (nodeId: string, color: string) => {
-      if (isReadOnly || !doc) return;
+      if (isReadOnly || !doc) {
+        return;
+      }
 
-      const nodesMap = doc.getMap('nodes') as Y.Map<Y.Map<any>>;
+      const nodesMap = doc.getMap<YRecordMap>('nodes') as YNodeStore;
       const nodeData = nodesMap.get(nodeId);
-      if (nodeData && nodeData instanceof Y.Map) {
+      if (nodeData) {
         doc.transact(() => {
           nodeData.set('color', color);
         }, 'local');
@@ -184,8 +299,6 @@ export function FlowWorkspace({ isReadOnly = false }: FlowWorkspaceProps) {
     };
   }, [doc]);
 
-  const routedEdges = useMemo(() => buildAdaptiveRoutedEdges(edges, nodes), [edges, nodes]);
-
   useEffect(() => {
     nodeCountRef.current = Math.max(nodeCountRef.current, nodes.length);
   }, [nodes.length]);
@@ -199,28 +312,23 @@ export function FlowWorkspace({ isReadOnly = false }: FlowWorkspaceProps) {
     }
   }, [nodes, selectedNodeId, updatePresence]);
 
-  const getParentIdFor = useCallback(
-    (childId: string) => edges.find((edge) => edge.target === childId)?.source ?? null,
-    [edges]
-  );
 
   useEffect(() => {
     if (!doc) return;
 
-    const nodesMap = doc.getMap<Y.Map<any>>('nodes');
-    const edgesMap = doc.getMap<Y.Map<any>>('edges');
+    const nodesMap = doc.getMap<YRecordMap>('nodes') as YNodeStore;
+    const edgesMap = doc.getMap<YRecordMap>('edges') as YEdgeStore;
 
-    const initialNodes: Node[] = [];
+    const initialNodes: Node<ConceptNodeData>[] = [];
     nodesMap.forEach((nodeData, nodeId) => {
-      if (nodeData instanceof Y.Map) {
-        initialNodes.push(buildNodeFromMap(nodeId, nodeData));
-      }
+      initialNodes.push(buildNodeFromMap(nodeId, nodeData));
     });
 
-    const initialEdges: any[] = [];
+    const initialEdges: Edge[] = [];
     edgesMap.forEach((edgeData, edgeId) => {
-      if (edgeData instanceof Y.Map) {
-        initialEdges.push(buildEdgeFromMap(edgeId, edgeData));
+      const edge = buildEdgeFromMap(edgeId, edgeData);
+      if (edge.source && edge.target) {
+        initialEdges.push(edge);
       }
     });
 
@@ -230,7 +338,7 @@ export function FlowWorkspace({ isReadOnly = false }: FlowWorkspaceProps) {
     nodeCountRef.current = spreadNodes.length;
     setEdges(initialEdges);
 
-    const handleNodesDeep = (events: Y.YEvent<any>[], transaction: Y.Transaction) => {
+    const handleNodesDeep = (events: Y.YEvent<Y.AbstractType<unknown>>[], transaction: Y.Transaction) => {
       if (transaction.origin === 'local') return;
 
       const changedIds = new Set<string>();
@@ -253,7 +361,7 @@ export function FlowWorkspace({ isReadOnly = false }: FlowWorkspaceProps) {
 
         changedIds.forEach((nodeId) => {
           const nodeData = nodesMap.get(nodeId);
-          if (!nodeData || !(nodeData instanceof Y.Map)) {
+          if (!nodeData) {
             if (nextMap.delete(nodeId)) {
               changed = true;
             }
@@ -274,15 +382,11 @@ export function FlowWorkspace({ isReadOnly = false }: FlowWorkspaceProps) {
           }
         });
 
-        if (!changed) {
-          return prev;
-        }
-
-        return Array.from(nextMap.values());
+        return changed ? Array.from(nextMap.values()) : prev;
       });
     };
 
-    const handleEdgesDeep = (events: Y.YEvent<any>[], transaction: Y.Transaction) => {
+    const handleEdgesDeep = (events: Y.YEvent<Y.AbstractType<unknown>>[], transaction: Y.Transaction) => {
       if (transaction.origin === 'local') return;
 
       const changedIds = new Set<string>();
@@ -305,7 +409,7 @@ export function FlowWorkspace({ isReadOnly = false }: FlowWorkspaceProps) {
 
         changedIds.forEach((edgeId) => {
           const edgeData = edgesMap.get(edgeId);
-          if (!edgeData || !(edgeData instanceof Y.Map)) {
+          if (!edgeData) {
             if (nextMap.delete(edgeId)) {
               changed = true;
             }
@@ -315,8 +419,10 @@ export function FlowWorkspace({ isReadOnly = false }: FlowWorkspaceProps) {
           const nextEdge = buildEdgeFromMap(edgeId, edgeData);
           const existing = nextMap.get(edgeId);
           if (!existing) {
-            nextMap.set(edgeId, nextEdge);
-            changed = true;
+            if (nextEdge.source && nextEdge.target) {
+              nextMap.set(edgeId, nextEdge);
+              changed = true;
+            }
             return;
           }
 
@@ -340,7 +446,7 @@ export function FlowWorkspace({ isReadOnly = false }: FlowWorkspaceProps) {
   }, [doc, setNodes, setEdges]);
 
   const handleNodesChange = useCallback(
-    (changes: any) => {
+    (changes: NodeChange[]) => {
       if (isReadOnly) return;
 
       onNodesChange(changes);
@@ -348,8 +454,8 @@ export function FlowWorkspace({ isReadOnly = false }: FlowWorkspaceProps) {
       if (!doc) return;
 
       const positionUpdates = changes
-        .filter((change: any) => change.type === 'position' && change.position)
-        .map((change: any) => ({ id: change.id, position: change.position }));
+        .filter(isPositionChange)
+        .map((change) => ({ id: change.id, position: change.position ?? { x: 0, y: 0 } }));
 
       persistNodePositions(positionUpdates);
     },
@@ -375,7 +481,7 @@ export function FlowWorkspace({ isReadOnly = false }: FlowWorkspaceProps) {
   );
 
   const handleEdgesChange = useCallback(
-    (changes: any) => {
+    (changes: EdgeChange[]) => {
       if (isReadOnly) return;
       onEdgesChange(changes);
     },
@@ -384,28 +490,43 @@ export function FlowWorkspace({ isReadOnly = false }: FlowWorkspaceProps) {
 
   const handleConnect = useCallback(
     (connection: Connection) => {
-      if (isReadOnly || !doc) return;
+      if (isReadOnly || !doc || !connection.source || !connection.target) return;
 
       const edgeId = `edge-${Date.now()}`;
-      const newEdge: any = {
+      const newEdge: Edge = {
         id: edgeId,
-        source: connection.source!,
-        target: connection.target!,
+        source: connection.source,
+        target: connection.target,
         style: EDGE_STYLE,
       };
 
-      const edgesMap = doc.getMap('edges');
+      const baseEdges = addEdge(newEdge, edges);
+      const nextNodes = hasSiblingOverlap(connection.source, nodes, baseEdges)
+        ? spreadChildrenForParent(connection.source, nodes, baseEdges)
+        : nodes;
+      const positionUpdates = getUpdatedNodePositions(nodes, nextNodes);
+
+      const edgesMap = doc.getMap<YRecordMap>('edges') as YEdgeStore;
+      const nodesMap = doc.getMap<YRecordMap>('nodes') as YNodeStore;
       doc.transact(() => {
-        const edgeDataMap = new Y.Map();
+        const edgeDataMap = new Y.Map<unknown>();
         edgeDataMap.set('id', edgeId);
-        edgeDataMap.set('source', connection.source!);
-        edgeDataMap.set('target', connection.target!);
+        edgeDataMap.set('source', connection.source);
+        edgeDataMap.set('target', connection.target);
         edgesMap.set(edgeId, edgeDataMap);
+
+        positionUpdates.forEach((update) => {
+          const nodeData = nodesMap.get(update.id);
+          if (nodeData) {
+            nodeData.set('position', update.position);
+          }
+        });
       }, 'local');
 
-      setEdges((eds) => addEdge(newEdge, eds));
+      setEdges(baseEdges);
+      setNodes(nextNodes);
     },
-    [isReadOnly, doc, setEdges]
+    [isReadOnly, doc, edges, nodes, setEdges, setNodes]
   );
 
   const handleAddNode = useCallback(() => {
@@ -428,9 +549,9 @@ export function FlowWorkspace({ isReadOnly = false }: FlowWorkspaceProps) {
       position: safePos,
     };
 
-    const nodesMap = doc.getMap('nodes');
+    const nodesMap = doc.getMap<YRecordMap>('nodes') as YNodeStore;
     doc.transact(() => {
-      const nodeDataMap = new Y.Map();
+      const nodeDataMap = new Y.Map<unknown>();
       nodeDataMap.set('id', nodeId);
       nodeDataMap.set('label', newNode.data.label);
       nodeDataMap.set('position', newNode.position);
@@ -476,7 +597,7 @@ export function FlowWorkspace({ isReadOnly = false }: FlowWorkspaceProps) {
     };
 
     const edgeId = `edge-${Date.now()}`;
-    const edge = {
+    const edge: Edge = {
       id: edgeId,
       source: selectedNodeId,
       target: childId,
@@ -490,11 +611,11 @@ export function FlowWorkspace({ isReadOnly = false }: FlowWorkspaceProps) {
       : baseNodes;
     const positionUpdates = getUpdatedNodePositions(baseNodes, nextNodes);
 
-    const nodesMap = doc.getMap('nodes') as Y.Map<Y.Map<any>>;
-    const edgesMap = doc.getMap('edges');
+    const nodesMap = doc.getMap<YRecordMap>('nodes') as YNodeStore;
+    const edgesMap = doc.getMap<YRecordMap>('edges') as YEdgeStore;
 
     doc.transact(() => {
-      const nodeDataMap = new Y.Map();
+      const nodeDataMap = new Y.Map<unknown>();
       nodeDataMap.set('id', childId);
       nodeDataMap.set('label', childNode.data.label);
       nodeDataMap.set('position', childNode.position);
@@ -502,12 +623,12 @@ export function FlowWorkspace({ isReadOnly = false }: FlowWorkspaceProps) {
 
       positionUpdates.forEach((update) => {
         const nodeData = nodesMap.get(update.id);
-        if (nodeData && nodeData instanceof Y.Map) {
+        if (nodeData) {
           nodeData.set('position', update.position);
         }
       });
 
-      const edgeDataMap = new Y.Map();
+      const edgeDataMap = new Y.Map<unknown>();
       edgeDataMap.set('id', edgeId);
       edgeDataMap.set('source', selectedNodeId);
       edgeDataMap.set('target', childId);
@@ -556,20 +677,21 @@ export function FlowWorkspace({ isReadOnly = false }: FlowWorkspaceProps) {
       position: siblingPos,
     };
 
-    const edgesMap = doc.getMap('edges') as Y.Map<Y.Map<any>>;
+    const edgesMap = doc.getMap<YRecordMap>('edges') as YEdgeStore;
     let parentId: string | null = parentIdFromState;
 
     if (!parentId) {
-      edgesMap.forEach((edgeData) => {
-        if (edgeData && edgeData instanceof Y.Map && edgeData.get('target') === selectedNodeId) {
-          parentId = edgeData.get('source');
+      edgesMap.forEach((edgeData, edgeId) => {
+        const edgeRecord = toPersistedEdgeRecord(edgeId, edgeData);
+        if (edgeRecord && edgeRecord.target === selectedNodeId) {
+          parentId = edgeRecord.source;
         }
       });
     }
 
     const sourceId = parentId || selectedNodeId;
     const edgeId = `edge-${Date.now()}`;
-    const edge = {
+    const edge: Edge = {
       id: edgeId,
       source: sourceId,
       target: siblingId,
@@ -583,10 +705,10 @@ export function FlowWorkspace({ isReadOnly = false }: FlowWorkspaceProps) {
       : baseNodes;
     const positionUpdates = getUpdatedNodePositions(baseNodes, nextNodes);
 
-    const nodesMap = doc.getMap('nodes') as Y.Map<Y.Map<any>>;
+    const nodesMap = doc.getMap<YRecordMap>('nodes') as YNodeStore;
 
     doc.transact(() => {
-      const nodeDataMap = new Y.Map();
+      const nodeDataMap = new Y.Map<unknown>();
       nodeDataMap.set('id', siblingId);
       nodeDataMap.set('label', siblingNode.data.label);
       nodeDataMap.set('position', siblingNode.position);
@@ -594,12 +716,12 @@ export function FlowWorkspace({ isReadOnly = false }: FlowWorkspaceProps) {
 
       positionUpdates.forEach((update) => {
         const nodeData = nodesMap.get(update.id);
-        if (nodeData && nodeData instanceof Y.Map) {
+        if (nodeData) {
           nodeData.set('position', update.position);
         }
       });
 
-      const edgeDataMap = new Y.Map();
+      const edgeDataMap = new Y.Map<unknown>();
       edgeDataMap.set('id', edgeId);
       edgeDataMap.set('source', sourceId);
       edgeDataMap.set('target', siblingId);
@@ -647,16 +769,16 @@ export function FlowWorkspace({ isReadOnly = false }: FlowWorkspaceProps) {
 
     const edgeId = `edge-${Date.now()}`;
 
-    const nodesMap = doc.getMap('nodes');
-    const edgesMap = doc.getMap('edges');
+    const nodesMap = doc.getMap<YRecordMap>('nodes') as YNodeStore;
+    const edgesMap = doc.getMap<YRecordMap>('edges') as YEdgeStore;
     doc.transact(() => {
-      const nodeDataMap = new Y.Map();
+      const nodeDataMap = new Y.Map<unknown>();
       nodeDataMap.set('id', parentId);
       nodeDataMap.set('label', parentNode.data.label);
       nodeDataMap.set('position', parentNode.position);
       nodesMap.set(parentId, nodeDataMap);
 
-      const edgeDataMap = new Y.Map();
+      const edgeDataMap = new Y.Map<unknown>();
       edgeDataMap.set('id', edgeId);
       edgeDataMap.set('source', parentId);
       edgeDataMap.set('target', selectedNodeId);
@@ -672,16 +794,17 @@ export function FlowWorkspace({ isReadOnly = false }: FlowWorkspaceProps) {
     if (isReadOnly || !selectedNodeId || !doc) return;
 
     const nodesMap = doc.getMap('nodes');
-    const edgesMap = doc.getMap('edges') as Y.Map<Y.Map<any>>;
+    const edgesMap = doc.getMap<YRecordMap>('edges') as YEdgeStore;
 
     const edgesToDelete: string[] = [];
     edgesMap.forEach((edgeData, edgeId) => {
-      if (edgeData && edgeData instanceof Y.Map) {
-        const source = edgeData.get('source');
-        const target = edgeData.get('target');
-        if (source === selectedNodeId || target === selectedNodeId) {
-          edgesToDelete.push(edgeId);
-        }
+      const edgeRecord = toPersistedEdgeRecord(edgeId, edgeData);
+      if (!edgeRecord) {
+        return;
+      }
+
+      if (edgeRecord.source === selectedNodeId || edgeRecord.target === selectedNodeId) {
+        edgesToDelete.push(edgeId);
       }
     });
 
@@ -716,16 +839,16 @@ export function FlowWorkspace({ isReadOnly = false }: FlowWorkspaceProps) {
     const node = nodes.find((n) => n.id === selectedNodeId);
     if (node) {
       setRenameNodeId(selectedNodeId);
-      setRenameText(node.data.label);
+      setRenameText(getNodeLabel(node));
     }
   }, [selectedNodeId, nodes, isReadOnly]);
 
   const handleRenameSave = useCallback(() => {
     if (!renameNodeId || !doc || !renameText.trim()) return;
 
-    const nodesMap = doc.getMap('nodes') as Y.Map<Y.Map<any>>;
+    const nodesMap = doc.getMap<YRecordMap>('nodes') as YNodeStore;
     const nodeData = nodesMap.get(renameNodeId);
-    if (nodeData && nodeData instanceof Y.Map) {
+    if (nodeData) {
       doc.transact(() => {
         nodeData.set('label', renameText.trim());
       }, 'local');
@@ -745,7 +868,7 @@ export function FlowWorkspace({ isReadOnly = false }: FlowWorkspaceProps) {
   }, []);
 
   const handleSelectionChange = useCallback(
-    (selection: { nodes?: Node<ConceptNodeData>[] }) => {
+    (selection: OnSelectionChangeParams) => {
       const nextSelected = selection.nodes?.[0]?.id ?? null;
       setSelectedNodeId((prev) => {
         if (prev === nextSelected) {
@@ -768,6 +891,10 @@ export function FlowWorkspace({ isReadOnly = false }: FlowWorkspaceProps) {
         <>
           <FlowToolbarDesktop
             selectedNodeId={selectedNodeId}
+            selectedNodeLabel={selectedNodeLabel}
+            selectedParentId={selectedParentId}
+            selectedChildCount={selectedChildCount}
+            selectedPosition={selectedPosition}
             canUndo={canUndo}
             canRedo={canRedo}
             snapEnabled={snapEnabled}
@@ -830,7 +957,7 @@ export function FlowWorkspace({ isReadOnly = false }: FlowWorkspaceProps) {
             edgeTypes={edgeTypes}
             fitView
             fitViewOptions={{ padding: 0.2 }}
-            translateExtent={workspaceExtent}
+            translateExtent={UNBOUNDED_TRANSLATE_EXTENT}
             snapToGrid={snapEnabled}
             snapGrid={[GRID_SIZE, GRID_SIZE]}
             attributionPosition="bottom-left"
@@ -930,4 +1057,5 @@ export function FlowWorkspace({ isReadOnly = false }: FlowWorkspaceProps) {
     </div>
   );
 }
+
 

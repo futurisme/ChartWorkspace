@@ -2,6 +2,10 @@
 
 interface FlowToolbarDesktopProps {
   selectedNodeId: string | null;
+  selectedNodeLabel: string | null;
+  selectedParentId: string | null;
+  selectedChildCount: number;
+  selectedPosition: { x: number; y: number } | null;
   canUndo: boolean;
   canRedo: boolean;
   snapEnabled: boolean;
@@ -43,6 +47,10 @@ function SectionHeader({
 
 export function FlowToolbarDesktop({
   selectedNodeId,
+  selectedNodeLabel,
+  selectedParentId,
+  selectedChildCount,
+  selectedPosition,
   canUndo,
   canRedo,
   snapEnabled,
@@ -191,7 +199,7 @@ export function FlowToolbarDesktop({
         </div>
       </div>
 
-      <div className="pointer-events-none absolute right-4 top-4 z-30 hidden w-[250px] sm:block">
+      <div className="pointer-events-none absolute right-4 top-4 z-30 hidden w-[280px] sm:block">
         <div className="pointer-events-auto rounded-xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur">
           <div className="mb-2 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-slate-900">Status Panel</h2>
@@ -207,7 +215,19 @@ export function FlowToolbarDesktop({
           {rightOpen && (
             <div className="space-y-2 text-sm text-slate-700">
               <div className="rounded bg-slate-100 px-3 py-2">
-                Selection: <span className="font-semibold">{selectedNodeId ? 'Node selected' : 'None'}</span>
+                Selection: <span className="font-semibold">{selectedNodeId ? selectedNodeLabel ?? selectedNodeId : 'None'}</span>
+              </div>
+              <div className="rounded bg-slate-100 px-3 py-2">
+                Parent: <span className="font-semibold">{selectedParentId ?? '-'}</span>
+              </div>
+              <div className="rounded bg-slate-100 px-3 py-2">
+                Child count: <span className="font-semibold">{selectedNodeId ? selectedChildCount : 0}</span>
+              </div>
+              <div className="rounded bg-slate-100 px-3 py-2">
+                Position: <span className="font-semibold">{selectedPosition ? `${selectedPosition.x}, ${selectedPosition.y}` : '-'}</span>
+              </div>
+              <div className="rounded bg-slate-100 px-3 py-2">
+                Snap state: <span className="font-semibold">{snapEnabled ? 'ON' : 'OFF'}</span>
               </div>
               <div className="rounded bg-slate-100 px-3 py-2">
                 Connection: <span className="font-semibold">{isConnected ? 'Online' : 'Offline'}</span>
@@ -225,4 +245,3 @@ export function FlowToolbarDesktop({
     </>
   );
 }
-

@@ -11,6 +11,15 @@ function pointsToPath(points: FlowRoutePoint[]) {
     .join(' ');
 }
 
+function isValidPoint(value: unknown): value is FlowRoutePoint {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const point = value as { x?: unknown; y?: unknown };
+  return Number.isFinite(point.x) && Number.isFinite(point.y);
+}
+
 export function FlowEdgeHierarchy({
   id,
   sourceX,
@@ -21,7 +30,7 @@ export function FlowEdgeHierarchy({
   style,
   data,
 }: EdgeProps<FlowRouteData>) {
-  const points = Array.isArray(data?.points) ? data.points : [];
+  const points = Array.isArray(data?.points) ? data.points.filter(isValidPoint) : [];
   const path = points.length > 1 ? pointsToPath(points) : getStraightPath({ sourceX, sourceY, targetX, targetY })[0];
 
   return <BaseEdge id={id} path={path} markerEnd={markerEnd} style={style} />;
