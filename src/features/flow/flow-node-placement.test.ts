@@ -37,6 +37,16 @@ test('spreadChildrenForParent repositions overlapping downward siblings determin
   assert.ok((nextA?.position.y ?? 0) > parent.position.y);
 });
 
+test('hasSiblingOverlap stays false for siblings that are close but not overlapping', () => {
+  const parent = buildNode('parent', 320, 120);
+  const childA = buildNode('child-a', 160, 360);
+  const childB = buildNode('child-b', 340, 360);
+  const nodes = [parent, childA, childB];
+  const edges = [buildEdge('e1', 'parent', 'child-a'), buildEdge('e2', 'parent', 'child-b')];
+
+  assert.equal(hasSiblingOverlap('parent', nodes, edges), false);
+});
+
 test('spreadChildrenForParent keeps upward cluster above parent', () => {
   const parent = buildNode('parent', 320, 420);
   const childA = buildNode('child-a', 300, 180);

@@ -1,7 +1,7 @@
-﻿import assert from 'node:assert/strict';
+import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Edge, Node } from 'reactflow';
-import { ROUTE_COLUMN_TOLERANCE, ROUTE_ROW_TOLERANCE } from './flow-constants';
+import { ROUTE_COLUMN_TOLERANCE, ROUTE_ROW_TOLERANCE, ROUTE_SIDE_BY_SIDE_TOLERANCE } from './flow-constants';
 import { buildAdaptiveRoutedEdges } from './flow-edge-routing';
 
 function buildNode(id: string, x: number, y: number): Node {
@@ -17,13 +17,25 @@ function buildEdge(id: string, source: string, target: string): Edge {
   return { id, source, target } as Edge;
 }
 
-test('same-row tolerance prefers horizontal routing', () => {
-  const nodes = [buildNode('a', 100, 200), buildNode('b', 420, 200 + ROUTE_ROW_TOLERANCE - 1)];
+test('same-row strict alignment uses direct side-to-side route', () => {
+  const nodes = [buildNode('a', 100, 200), buildNode('b', 420, 200)];
   const [routed] = buildAdaptiveRoutedEdges([buildEdge('e1', 'a', 'b')], nodes);
 
   assert.equal(routed.data?.kind, 'horizontal');
   assert.equal(routed.sourceHandle, 's-right');
   assert.equal(routed.targetHandle, 't-left');
+  assert.equal(routed.data?.points.length, 2);
+});
+
+test('horizontal route that is not strictly aligned uses elbow path', () => {
+  const nodes = [
+    buildNode('a', 100, 200),
+    buildNode('b', 420, 200 + Math.max(ROUTE_SIDE_BY_SIDE_TOLERANCE + 2, ROUTE_ROW_TOLERANCE - 1)),
+  ];
+  const [routed] = buildAdaptiveRoutedEdges([buildEdge('e1', 'a', 'b')], nodes);
+
+  assert.equal(routed.data?.kind, 'horizontal');
+  assert.ok((routed.data?.points.length ?? 0) >= 4);
 });
 
 test('same-column tolerance prefers vertical routing', () => {
@@ -90,6 +102,22 @@ test('mixed up/down children create two independent bus groups', () => {
   assert.equal(upRoutes.length, 2);
   assert.equal(new Set(downRoutes.map((edge) => edge.data?.sharedBusId)).size, 1);
   assert.equal(new Set(upRoutes.map((edge) => edge.data?.sharedBusId)).size, 1);
+});
+
+test('flat siblings from same parent are routed without bus grouping', () => {
+  const nodes = [
+    buildNode('parent', 320, 240),
+    buildNode('child-a', 540, 240),
+    buildNode('child-b', 760, 240),
+  ];
+  const edges = [buildEdge('e1', 'parent', 'child-a'), buildEdge('e2', 'parent', 'child-b')];
+  const routed = buildAdaptiveRoutedEdges(edges, nodes);
+
+  routed.forEach((edge) => {
+    assert.equal(edge.data?.kind, 'horizontal');
+    assert.equal(edge.data?.sharedBusId, undefined);
+    assert.equal(edge.data?.directionGroup, 'flat');
+  });
 });
 
 test('bus lane index remains deterministic regardless edge insertion order', () => {
