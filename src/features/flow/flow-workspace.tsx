@@ -40,7 +40,6 @@ import {
   getUpdatedNodePositions,
   hasSiblingOverlap,
   snapToGridPosition,
-  spreadChildrenForAllParents,
   spreadChildrenForParent,
   getNodeSize,
 } from './flow-node-placement';
@@ -161,9 +160,17 @@ function isPositionChange(change: NodeChange): change is Extract<NodeChange, { t
 
 interface FlowWorkspaceProps {
   isReadOnly?: boolean;
+  showDesktopControlsPanel?: boolean;
+  showDesktopStatusPanel?: boolean;
+  showMobileToolsPanel?: boolean;
 }
 
-export function FlowWorkspace({ isReadOnly = false }: FlowWorkspaceProps) {
+export function FlowWorkspace({
+  isReadOnly = false,
+  showDesktopControlsPanel = true,
+  showDesktopStatusPanel = true,
+  showMobileToolsPanel = false,
+}: FlowWorkspaceProps) {
   const { doc, isConnected, updatePresence, remoteUsers, saveErrorCount } = useRealtime();
   const [nodes, setNodes, onNodesChange] = useNodesState<ConceptNodeData>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -332,10 +339,8 @@ export function FlowWorkspace({ isReadOnly = false }: FlowWorkspaceProps) {
       }
     });
 
-    const spreadNodes = spreadChildrenForAllParents(initialNodes, initialEdges);
-
-    setNodes(spreadNodes);
-    nodeCountRef.current = spreadNodes.length;
+    setNodes(initialNodes);
+    nodeCountRef.current = initialNodes.length;
     setEdges(initialEdges);
 
     const handleNodesDeep = (events: Y.YEvent<Y.AbstractType<unknown>>[], transaction: Y.Transaction) => {
@@ -890,6 +895,8 @@ export function FlowWorkspace({ isReadOnly = false }: FlowWorkspaceProps) {
       {!isReadOnly && (
         <>
           <FlowToolbarDesktop
+            showControlsPanel={showDesktopControlsPanel}
+            showStatusPanel={showDesktopStatusPanel}
             selectedNodeId={selectedNodeId}
             selectedNodeLabel={selectedNodeLabel}
             selectedParentId={selectedParentId}
@@ -913,6 +920,7 @@ export function FlowWorkspace({ isReadOnly = false }: FlowWorkspaceProps) {
             onToggleSnap={() => setSnapEnabled((prev) => !prev)}
           />
           <FlowToolbarMobile
+            isOpen={showMobileToolsPanel}
             selectedNodeId={selectedNodeId}
             canUndo={canUndo}
             canRedo={canRedo}
@@ -933,7 +941,10 @@ export function FlowWorkspace({ isReadOnly = false }: FlowWorkspaceProps) {
         </>
       )}
 
-      <div ref={reactFlowWrapperRef} className="relative min-h-0 flex-1 pb-24 lg:pb-0">
+      <div
+        ref={reactFlowWrapperRef}
+        className={`relative min-h-0 flex-1 ${!isReadOnly && showMobileToolsPanel ? 'pb-24 lg:pb-0' : 'pb-0'}`}
+      >
         <NodeActionContext.Provider value={{ onChangeColor: handleChangeColor, isReadOnly }}>
           <ReactFlow
             nodes={nodes}

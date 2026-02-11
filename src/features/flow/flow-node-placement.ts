@@ -213,7 +213,7 @@ export function hasSiblingOverlap(parentId: string, nodes: Node[], edges: Edge[]
         rectsOverlap(
           { x: a.position.x, y: a.position.y, width: sizeA.width, height: sizeA.height },
           { x: b.position.x, y: b.position.y, width: sizeB.width, height: sizeB.height },
-          NODE_GAP * 0.25
+          0
         )
       ) {
         return true;

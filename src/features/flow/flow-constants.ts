@@ -9,6 +9,7 @@ export const ROUTE_GRID_SIZE = 8;
 export const ROUTE_ALIGN_TOLERANCE = 10;
 export const ROUTE_ROW_TOLERANCE = 18;
 export const ROUTE_COLUMN_TOLERANCE = 18;
+export const ROUTE_SIDE_BY_SIDE_TOLERANCE = 4;
 export const ROUTE_LANE_GAP = 18;
 export const ROUTE_BUS_PADDING = 28;
 

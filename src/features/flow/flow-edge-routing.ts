@@ -7,6 +7,7 @@ import {
   ROUTE_GRID_SIZE,
   ROUTE_LANE_GAP,
   ROUTE_ROW_TOLERANCE,
+  ROUTE_SIDE_BY_SIDE_TOLERANCE,
 } from './flow-constants';
 import type {
   FlowDirectionGroup,
@@ -207,22 +208,6 @@ function buildLaneOffsets(items: EdgeRoutingMeta[], axis: 'x' | 'y') {
   return offsetMap;
 }
 
-function busGroupForDirection(
-  directionGroup: FlowDirectionGroup,
-  sourceCenterY: number,
-  targetCenterY: number
-): Extract<FlowDirectionGroup, 'up' | 'down'> {
-  if (directionGroup === 'up') {
-    return 'up';
-  }
-
-  if (directionGroup === 'down') {
-    return 'down';
-  }
-
-  return targetCenterY >= sourceCenterY ? 'down' : 'up';
-}
-
 export function buildAdaptiveRoutedEdges(edges: Edge[], nodes: Node[]): RoutedHierarchyEdge[] {
   if (edges.length === 0) {
     return [];
@@ -252,8 +237,6 @@ export function buildAdaptiveRoutedEdges(edges: Edge[], nodes: Node[]): RoutedHi
       return;
     }
 
-    const sourceCenter = getNodeCenter(sourceNode);
-
     const withTargets = outgoing
       .map((edge) => ({ edge, target: nodeMap.get(edge.target) }))
       .filter((item): item is { edge: Edge; target: Node } => Boolean(item.target))
@@ -276,10 +259,12 @@ export function buildAdaptiveRoutedEdges(edges: Edge[], nodes: Node[]): RoutedHi
     };
 
     withTargets.forEach((item) => {
+      const sourceCenter = getNodeCenter(sourceNode);
       const targetCenter = getNodeCenter(item.target);
       const directionGroup = resolveDirectionGroup(sourceCenter.y, targetCenter.y);
-      const groupKey = busGroupForDirection(directionGroup, sourceCenter.y, targetCenter.y);
-      grouped[groupKey].push(item);
+      if (directionGroup === 'down' || directionGroup === 'up') {
+        grouped[directionGroup].push(item);
+      }
     });
 
     (['down', 'up'] as const).forEach((groupKey) => {
@@ -415,7 +400,7 @@ export function buildAdaptiveRoutedEdges(edges: Edge[], nodes: Node[]): RoutedHi
     const laneMeta = laneMetaMap.get(edge.id) ?? { offset: 0, index: 0 };
 
     if (meta.kind === 'horizontal') {
-      const aligned = Math.abs(meta.sourceAnchor.y - meta.targetAnchor.y) <= ROUTE_ALIGN_TOLERANCE;
+      const aligned = Math.abs(meta.sourceAnchor.y - meta.targetAnchor.y) <= ROUTE_SIDE_BY_SIDE_TOLERANCE;
 
       const points = aligned
         ? buildPath([meta.sourceAnchor, meta.targetAnchor])

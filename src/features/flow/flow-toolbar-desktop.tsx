@@ -1,6 +1,8 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 
 interface FlowToolbarDesktopProps {
+  showControlsPanel: boolean;
+  showStatusPanel: boolean;
   selectedNodeId: string | null;
   selectedNodeLabel: string | null;
   selectedParentId: string | null;
@@ -46,6 +48,8 @@ function SectionHeader({
 }
 
 export function FlowToolbarDesktop({
+  showControlsPanel,
+  showStatusPanel,
   selectedNodeId,
   selectedNodeLabel,
   selectedParentId,
@@ -68,8 +72,6 @@ export function FlowToolbarDesktop({
   onInvite,
   onToggleSnap,
 }: FlowToolbarDesktopProps) {
-  const [leftOpen, setLeftOpen] = useState(true);
-  const [rightOpen, setRightOpen] = useState(true);
   const [nodeSectionOpen, setNodeSectionOpen] = useState(true);
   const [structureSectionOpen, setStructureSectionOpen] = useState(true);
   const [editSectionOpen, setEditSectionOpen] = useState(true);
@@ -77,20 +79,11 @@ export function FlowToolbarDesktop({
 
   return (
     <>
-      <div className="pointer-events-none absolute left-4 top-4 z-30 hidden w-[252px] lg:block xl:w-[280px]">
-        <div className="pointer-events-auto max-h-[calc(100vh-2rem)] overflow-y-auto rounded-xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur">
-          <div className="mb-2 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-900">Workspace Controls</h2>
-            <button
-              type="button"
-              onClick={() => setLeftOpen((prev) => !prev)}
-              className="rounded border border-slate-200 px-2 py-1 text-xs font-medium text-slate-700"
-            >
-              {leftOpen ? 'Collapse' : 'Expand'}
-            </button>
-          </div>
+      {showControlsPanel && (
+        <div className="pointer-events-none absolute left-4 top-3 z-30 hidden w-[252px] lg:block xl:w-[280px]">
+          <div className="pointer-events-auto max-h-[calc(100vh-1.5rem)] overflow-y-auto rounded-xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur">
+            <h2 className="mb-2 text-sm font-semibold text-slate-900">Workspace Controls</h2>
 
-          {leftOpen && (
             <div className="space-y-3">
               <div className="space-y-2">
                 <SectionHeader title="Node" open={nodeSectionOpen} onToggle={() => setNodeSectionOpen((prev) => !prev)} />
@@ -195,24 +188,14 @@ export function FlowToolbarDesktop({
                 )}
               </div>
             </div>
-          )}
-        </div>
-      </div>
-
-      <div className="pointer-events-none absolute right-4 top-4 z-30 hidden w-[252px] lg:block xl:w-[280px]">
-        <div className="pointer-events-auto max-h-[calc(100vh-2rem)] overflow-y-auto rounded-xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur">
-          <div className="mb-2 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-900">Status Panel</h2>
-            <button
-              type="button"
-              onClick={() => setRightOpen((prev) => !prev)}
-              className="rounded border border-slate-200 px-2 py-1 text-xs font-medium text-slate-700"
-            >
-              {rightOpen ? 'Collapse' : 'Expand'}
-            </button>
           </div>
+        </div>
+      )}
 
-          {rightOpen && (
+      {showStatusPanel && (
+        <div className="pointer-events-none absolute right-4 top-3 z-30 hidden w-[252px] lg:block xl:w-[280px]">
+          <div className="pointer-events-auto max-h-[calc(100vh-1.5rem)] overflow-y-auto rounded-xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur">
+            <h2 className="mb-2 text-sm font-semibold text-slate-900">Status Panel</h2>
             <div className="space-y-2 text-sm text-slate-700">
               <div className="rounded bg-slate-100 px-3 py-2">
                 Selection: <span className="font-semibold">{selectedNodeId ? selectedNodeLabel ?? selectedNodeId : 'None'}</span>
@@ -239,9 +222,9 @@ export function FlowToolbarDesktop({
                 Save warnings: <span className="font-semibold">{saveErrorCount}</span>
               </div>
             </div>
-          )}
+          </div>
         </div>
-      </div>
+      )}
     </>
   );
 }

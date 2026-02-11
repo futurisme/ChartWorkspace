@@ -61,19 +61,19 @@ function ViewerContent() {
       mode="view"
     >
       <div className="flex h-screen flex-col">
-        <header className="border-b border-slate-200 bg-slate-50/95 px-4 py-2 backdrop-blur sm:px-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h1 className="text-lg font-bold text-slate-900 sm:text-xl">{title}</h1>
-              <p className="text-xs text-slate-500 sm:text-sm">Workspace-focused viewer</p>
+        <header className="border-b border-slate-200 bg-slate-50/95 px-3 py-1.5 backdrop-blur sm:px-4">
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <h1 className="truncate text-base font-bold text-slate-900 sm:text-lg">{title}</h1>
+              <p className="hidden text-xs text-slate-500 sm:block">Workspace-focused viewer</p>
             </div>
-            <div className="rounded border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 sm:text-sm">
+            <div className="rounded border border-blue-100 bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-700 sm:text-xs">
               View Only
             </div>
           </div>
         </header>
 
-        <PresenceBar />
+        <PresenceBar compact />
 
         <div className="min-h-0 flex-1">
           <FlowWorkspace isReadOnly={true} />
