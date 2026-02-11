@@ -8,27 +8,105 @@ import {
   NODE_GAP,
   WORKSPACE_PADDING,
 } from './flow-constants';
+import type { FlowDirectionGroup } from './flow-types';
 
 interface NodeSize {
   width: number;
   height: number;
 }
 
+interface PlacementRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface CandidatePosition {
+  id: string;
+  x: number;
+  y: number;
+}
+
 function snap(value: number, step: number) {
   return Math.round(value / step) * step;
 }
 
-function rectsOverlap(
-  a: { x: number; y: number; width: number; height: number },
-  b: { x: number; y: number; width: number; height: number },
-  gap: number
-) {
+function rectsOverlap(a: PlacementRect, b: PlacementRect, gap: number) {
   return (
     a.x < b.x + b.width + gap &&
     a.x + a.width + gap > b.x &&
     a.y < b.y + b.height + gap &&
     a.y + a.height + gap > b.y
   );
+}
+
+function candidateToRect(candidate: CandidatePosition): PlacementRect {
+  return {
+    x: candidate.x,
+    y: candidate.y,
+    width: DEFAULT_NODE_SIZE.width,
+    height: DEFAULT_NODE_SIZE.height,
+  };
+}
+
+function sortNodesStable(nodes: Node[]) {
+  return [...nodes].sort((a, b) => (a.position.x === b.position.x ? a.id.localeCompare(b.id) : a.position.x - b.position.x));
+}
+
+function getChildDirection(parentCenterY: number, childCenterY: number): FlowDirectionGroup {
+  if (childCenterY > parentCenterY + GRID_SIZE * 0.25) {
+    return 'down';
+  }
+
+  if (childCenterY < parentCenterY - GRID_SIZE * 0.25) {
+    return 'up';
+  }
+
+  return 'flat';
+}
+
+function buildClusterCandidates(children: Node[], centerStartX: number, rowY: number) {
+  const spacing = DEFAULT_NODE_SIZE.width + NODE_GAP;
+
+  return children.map((child, index) => {
+    const centerX = centerStartX + index * spacing;
+    return {
+      id: child.id,
+      x: snap(centerX - DEFAULT_NODE_SIZE.width / 2, GRID_SIZE),
+      y: rowY,
+    };
+  });
+}
+
+function hasCollision(
+  candidates: CandidatePosition[],
+  blockerRects: PlacementRect[],
+  occupiedRects: PlacementRect[]
+) {
+  return candidates.some((candidate) => {
+    const rect = candidateToRect(candidate);
+
+    const collidesBlocker = blockerRects.some((blocker) => rectsOverlap(rect, blocker, NODE_GAP * 0.2));
+    if (collidesBlocker) {
+      return true;
+    }
+
+    return occupiedRects.some((occupied) => rectsOverlap(rect, occupied, NODE_GAP * 0.2));
+  });
+}
+
+function chooseClusterRowY(direction: Extract<FlowDirectionGroup, 'up' | 'down'>, parent: Node, children: Node[]) {
+  const parentSize = getNodeSize(parent);
+  const avgY = children.reduce((sum, node) => sum + node.position.y, 0) / Math.max(1, children.length);
+
+  if (direction === 'down') {
+    const minAllowed = parent.position.y + parentSize.height + NODE_GAP;
+    return snap(Math.max(minAllowed, avgY), GRID_SIZE);
+  }
+
+  const maxAllowed = parent.position.y - DEFAULT_NODE_SIZE.height - NODE_GAP;
+  return snap(Math.min(maxAllowed, avgY), GRID_SIZE);
 }
 
 export function getNodeSize(node: Node): NodeSize {
@@ -146,15 +224,18 @@ export function hasSiblingOverlap(parentId: string, nodes: Node[], edges: Edge[]
   return false;
 }
 
-function chooseChildRowY(parent: Node, childNodes: Node[]) {
-  const parentSize = getNodeSize(parent);
-  const minAllowed = parent.position.y + parentSize.height + NODE_GAP;
-  const avgY = childNodes.reduce((sum, node) => sum + node.position.y, 0) / childNodes.length;
-  return snap(Math.max(minAllowed, avgY), GRID_SIZE);
-}
-
-function buildNonSiblingNodes(nodes: Node[], parentId: string, childIds: Set<string>) {
-  return nodes.filter((node) => node.id !== parentId && !childIds.has(node.id));
+function buildNonSiblingRects(nodes: Node[], parentId: string, childIds: Set<string>) {
+  return nodes
+    .filter((node) => node.id !== parentId && !childIds.has(node.id))
+    .map((node) => {
+      const size = getNodeSize(node);
+      return {
+        x: node.position.x,
+        y: node.position.y,
+        width: size.width,
+        height: size.height,
+      };
+    });
 }
 
 export function spreadChildrenForParent(parentId: string, nodes: Node[], edges: Edge[]) {
@@ -168,10 +249,11 @@ export function spreadChildrenForParent(parentId: string, nodes: Node[], edges: 
     return nodes;
   }
 
-  const children = childIds
-    .map((id) => nodes.find((node) => node.id === id))
-    .filter((node): node is Node => Boolean(node))
-    .sort((a, b) => (a.position.x === b.position.x ? a.id.localeCompare(b.id) : a.position.x - b.position.x));
+  const children = sortNodesStable(
+    childIds
+      .map((id) => nodes.find((node) => node.id === id))
+      .filter((node): node is Node => Boolean(node))
+  );
 
   if (children.length < 2) {
     return nodes;
@@ -179,58 +261,75 @@ export function spreadChildrenForParent(parentId: string, nodes: Node[], edges: 
 
   const parentCenter = getNodeCenter(parent);
   const childIdsSet = new Set(children.map((node) => node.id));
-  const blockers = buildNonSiblingNodes(nodes, parentId, childIdsSet);
 
-  const spacing = DEFAULT_NODE_SIZE.width + NODE_GAP;
-  const startCenterX = parentCenter.x - ((children.length - 1) * spacing) / 2;
+  let downCount = 0;
+  let upCount = 0;
 
-  let rowY = chooseChildRowY(parent, children);
+  const clusterById = new Map<string, FlowDirectionGroup>();
+  children.forEach((child) => {
+    const childCenter = getNodeCenter(child);
+    const direction = getChildDirection(parentCenter.y, childCenter.y);
+    clusterById.set(child.id, direction);
+    if (direction === 'down') {
+      downCount += 1;
+    } else if (direction === 'up') {
+      upCount += 1;
+    }
+  });
 
-  const candidatePositions = (targetY: number) =>
-    children.map((child, index) => {
-      const centerX = startCenterX + index * spacing;
-      return {
-        id: child.id,
-        x: snap(centerX - DEFAULT_NODE_SIZE.width / 2, GRID_SIZE),
-        y: targetY,
-      };
-    });
+  const dominant: Extract<FlowDirectionGroup, 'up' | 'down'> = downCount >= upCount ? 'down' : 'up';
 
-  const hasBlockingCollision = (candidates: Array<{ id: string; x: number; y: number }>) => {
-    return candidates.some((candidate) => {
-      return blockers.some((blocker) => {
-        const blockerSize = getNodeSize(blocker);
-        return rectsOverlap(
-          {
-            x: candidate.x,
-            y: candidate.y,
-            width: DEFAULT_NODE_SIZE.width,
-            height: DEFAULT_NODE_SIZE.height,
-          },
-          {
-            x: blocker.position.x,
-            y: blocker.position.y,
-            width: blockerSize.width,
-            height: blockerSize.height,
-          },
-          NODE_GAP * 0.2
-        );
-      });
+  const clusters: Record<'down' | 'up', Node[]> = {
+    down: [],
+    up: [],
+  };
+
+  children.forEach((child) => {
+    const direction = clusterById.get(child.id) ?? 'flat';
+    if (direction === 'flat') {
+      clusters[dominant].push(child);
+      return;
+    }
+
+    clusters[direction].push(child);
+  });
+
+  clusters.down = sortNodesStable(clusters.down);
+  clusters.up = sortNodesStable(clusters.up);
+
+  const blockerRects = buildNonSiblingRects(nodes, parentId, childIdsSet);
+  const occupiedRects: PlacementRect[] = [];
+  const positionMap = new Map<string, { x: number; y: number }>();
+
+  const placeCluster = (direction: Extract<FlowDirectionGroup, 'up' | 'down'>) => {
+    const clusterNodes = clusters[direction];
+    if (clusterNodes.length === 0) {
+      return;
+    }
+
+    const spacing = DEFAULT_NODE_SIZE.width + NODE_GAP;
+    const startCenterX = parentCenter.x - ((clusterNodes.length - 1) * spacing) / 2;
+    let rowY = chooseClusterRowY(direction, parent, clusterNodes);
+
+    let candidates = buildClusterCandidates(clusterNodes, startCenterX, rowY);
+
+    for (let i = 0; i < AUTO_MAX_TRIES; i += 1) {
+      if (!hasCollision(candidates, blockerRects, occupiedRects)) {
+        break;
+      }
+
+      rowY = snap(rowY + (direction === 'down' ? GRID_SIZE : -GRID_SIZE), GRID_SIZE);
+      candidates = buildClusterCandidates(clusterNodes, startCenterX, rowY);
+    }
+
+    candidates.forEach((candidate) => {
+      positionMap.set(candidate.id, { x: candidate.x, y: candidate.y });
+      occupiedRects.push(candidateToRect(candidate));
     });
   };
 
-  let chosen = candidatePositions(rowY);
-
-  for (let i = 0; i < AUTO_MAX_TRIES; i += 1) {
-    if (!hasBlockingCollision(chosen)) {
-      break;
-    }
-
-    rowY = snap(rowY + GRID_SIZE, GRID_SIZE);
-    chosen = candidatePositions(rowY);
-  }
-
-  const positionMap = new Map(chosen.map((item) => [item.id, { x: item.x, y: item.y }]));
+  placeCluster('down');
+  placeCluster('up');
 
   let changed = false;
   const next = nodes.map((node) => {
@@ -273,4 +372,3 @@ export function getUpdatedNodePositions(before: Node[], after: Node[]) {
     })
     .map((node) => ({ id: node.id, position: node.position }));
 }
-
