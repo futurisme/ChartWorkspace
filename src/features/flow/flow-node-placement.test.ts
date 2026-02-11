@@ -1,7 +1,7 @@
 ﻿import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Edge, Node } from 'reactflow';
-import { spreadChildrenForParent, hasSiblingOverlap } from './flow-node-placement';
+import { hasSiblingOverlap, spreadChildrenForParent } from './flow-node-placement';
 
 function buildNode(id: string, x: number, y: number): Node {
   return {
@@ -13,32 +13,89 @@ function buildNode(id: string, x: number, y: number): Node {
 }
 
 function buildEdge(id: string, source: string, target: string): Edge {
-  return {
-    id,
-    source,
-    target,
-  } as Edge;
+  return { id, source, target } as Edge;
 }
 
-test('spreadChildrenForParent repositions overlapping siblings deterministically', () => {
-  const parent = buildNode('parent', 300, 100);
-  const childA = buildNode('child-a', 280, 260);
-  const childB = buildNode('child-b', 300, 260);
+test('spreadChildrenForParent repositions overlapping downward siblings deterministically', () => {
+  const parent = buildNode('parent', 320, 120);
+  const childA = buildNode('child-a', 300, 360);
+  const childB = buildNode('child-b', 320, 360);
 
   const nodes = [parent, childA, childB];
   const edges = [buildEdge('e1', 'parent', 'child-a'), buildEdge('e2', 'parent', 'child-b')];
 
   assert.equal(hasSiblingOverlap('parent', nodes, edges), true);
+  const spread = spreadChildrenForParent('parent', nodes, edges);
+
+  const nextA = spread.find((node) => node.id === 'child-a');
+  const nextB = spread.find((node) => node.id === 'child-b');
+
+  assert.ok(nextA);
+  assert.ok(nextB);
+  assert.notEqual(nextA?.position.x, nextB?.position.x);
+  assert.equal(nextA?.position.y, nextB?.position.y);
+  assert.ok((nextA?.position.y ?? 0) > parent.position.y);
+});
+
+test('spreadChildrenForParent keeps upward cluster above parent', () => {
+  const parent = buildNode('parent', 320, 420);
+  const childA = buildNode('child-a', 300, 180);
+  const childB = buildNode('child-b', 320, 180);
+
+  const nodes = [parent, childA, childB];
+  const edges = [buildEdge('e1', 'parent', 'child-a'), buildEdge('e2', 'parent', 'child-b')];
+
+  const spread = spreadChildrenForParent('parent', nodes, edges);
+  const nextA = spread.find((node) => node.id === 'child-a');
+  const nextB = spread.find((node) => node.id === 'child-b');
+
+  assert.ok(nextA);
+  assert.ok(nextB);
+  assert.ok((nextA?.position.y ?? 9999) < parent.position.y);
+  assert.ok((nextB?.position.y ?? 9999) < parent.position.y);
+});
+
+test('spreadChildrenForParent separates mixed up/down clusters', () => {
+  const parent = buildNode('parent', 320, 280);
+  const upA = buildNode('up-a', 300, 100);
+  const upB = buildNode('up-b', 320, 100);
+  const downA = buildNode('down-a', 300, 500);
+  const downB = buildNode('down-b', 320, 500);
+
+  const nodes = [parent, upA, upB, downA, downB];
+  const edges = [
+    buildEdge('e1', 'parent', 'up-a'),
+    buildEdge('e2', 'parent', 'up-b'),
+    buildEdge('e3', 'parent', 'down-a'),
+    buildEdge('e4', 'parent', 'down-b'),
+  ];
 
   const spread = spreadChildrenForParent('parent', nodes, edges);
 
-  const spreadA = spread.find((node) => node.id === 'child-a');
-  const spreadB = spread.find((node) => node.id === 'child-b');
+  const topNodes = spread.filter((node) => node.id.startsWith('up-'));
+  const bottomNodes = spread.filter((node) => node.id.startsWith('down-'));
 
-  assert.ok(spreadA);
-  assert.ok(spreadB);
-  assert.notEqual(spreadA?.position.x, spreadB?.position.x);
-  assert.equal(spreadA?.position.y, spreadB?.position.y);
+  topNodes.forEach((node) => assert.ok(node.position.y < parent.position.y));
+  bottomNodes.forEach((node) => assert.ok(node.position.y > parent.position.y));
+});
+
+test('spreadChildrenForParent is idempotent for same input state', () => {
+  const parent = buildNode('parent', 300, 120);
+  const childA = buildNode('child-a', 280, 360);
+  const childB = buildNode('child-b', 300, 360);
+  const childC = buildNode('child-c', 320, 360);
+
+  const nodes = [parent, childA, childB, childC];
+  const edges = [
+    buildEdge('e1', 'parent', 'child-a'),
+    buildEdge('e2', 'parent', 'child-b'),
+    buildEdge('e3', 'parent', 'child-c'),
+  ];
+
+  const first = spreadChildrenForParent('parent', nodes, edges);
+  const second = spreadChildrenForParent('parent', first, edges);
+
+  assert.deepEqual(second, first);
 });
 
 test('spreadChildrenForParent keeps layout unchanged for single child', () => {
@@ -51,4 +108,3 @@ test('spreadChildrenForParent keeps layout unchanged for single child', () => {
   const spread = spreadChildrenForParent('parent', nodes, edges);
   assert.deepEqual(spread, nodes);
 });
-
