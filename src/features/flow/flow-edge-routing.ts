@@ -1,7 +1,28 @@
 ﻿import type { Edge, Node } from 'reactflow';
-import { EDGE_STYLE, ROUTE_ALIGN_TOLERANCE, ROUTE_BUS_PADDING, ROUTE_GRID_SIZE, ROUTE_LANE_GAP } from './flow-constants';
-import type { FlowRouteData, FlowRouteKind, FlowRoutePoint, RoutedHierarchyEdge } from './flow-types';
+import {
+  EDGE_STYLE,
+  ROUTE_ALIGN_TOLERANCE,
+  ROUTE_BUS_PADDING,
+  ROUTE_COLUMN_TOLERANCE,
+  ROUTE_GRID_SIZE,
+  ROUTE_LANE_GAP,
+  ROUTE_ROW_TOLERANCE,
+} from './flow-constants';
+import type {
+  FlowDirectionGroup,
+  FlowRouteData,
+  FlowRouteKind,
+  FlowRoutePoint,
+  RoutedHierarchyEdge,
+} from './flow-types';
 import { getNodeCenter, getNodeSize } from './flow-node-placement';
+
+interface AnchorMeta {
+  sourceAnchor: FlowRoutePoint;
+  targetAnchor: FlowRoutePoint;
+  sourceHandle: string;
+  targetHandle: string;
+}
 
 interface EdgeRoutingMeta {
   edge: Edge;
@@ -9,6 +30,15 @@ interface EdgeRoutingMeta {
   sign: 1 | -1;
   sourceAnchor: FlowRoutePoint;
   targetAnchor: FlowRoutePoint;
+  sourceHandle: string;
+  targetHandle: string;
+  directionGroup: FlowDirectionGroup;
+}
+
+interface BusEdgeMeta {
+  sourceHandle: string;
+  targetHandle: string;
+  data: FlowRouteData;
 }
 
 function snapToRouteGrid(value: number) {
@@ -29,7 +59,44 @@ function buildPath(points: FlowRoutePoint[]) {
   return normalized;
 }
 
-function getVerticalAnchors(source: Node, target: Node, sign: 1 | -1) {
+function resolveDirectionGroup(sourceY: number, targetY: number): FlowDirectionGroup {
+  if (targetY > sourceY + ROUTE_ROW_TOLERANCE) {
+    return 'down';
+  }
+
+  if (targetY < sourceY - ROUTE_ROW_TOLERANCE) {
+    return 'up';
+  }
+
+  return 'flat';
+}
+
+function resolveOrientation(source: Node, target: Node): FlowRouteKind {
+  const sourceCenter = getNodeCenter(source);
+  const targetCenter = getNodeCenter(target);
+  const sourceSize = getNodeSize(source);
+  const targetSize = getNodeSize(target);
+
+  const dx = targetCenter.x - sourceCenter.x;
+  const dy = targetCenter.y - sourceCenter.y;
+  const absDx = Math.abs(dx);
+  const absDy = Math.abs(dy);
+
+  if (absDy <= ROUTE_ROW_TOLERANCE) {
+    return 'horizontal';
+  }
+
+  if (absDx <= ROUTE_COLUMN_TOLERANCE) {
+    return 'vertical';
+  }
+
+  const normDx = absDx / Math.max(1, sourceSize.width + targetSize.width);
+  const normDy = absDy / Math.max(1, sourceSize.height + targetSize.height);
+
+  return normDx >= normDy ? 'horizontal' : 'vertical';
+}
+
+function getVerticalAnchors(source: Node, target: Node, sign: 1 | -1): AnchorMeta {
   const sourceCenter = getNodeCenter(source);
   const targetCenter = getNodeCenter(target);
   const sourceSize = getNodeSize(source);
@@ -52,7 +119,7 @@ function getVerticalAnchors(source: Node, target: Node, sign: 1 | -1) {
   };
 }
 
-function getHorizontalAnchors(source: Node, target: Node, sign: 1 | -1) {
+function getHorizontalAnchors(source: Node, target: Node, sign: 1 | -1): AnchorMeta {
   const sourceCenter = getNodeCenter(source);
   const targetCenter = getNodeCenter(target);
   const sourceSize = getNodeSize(source);
@@ -80,21 +147,21 @@ function edgeToBusRoute(
   target: Node,
   laneIndex: number,
   sharedBusId: string,
-  directionSign: 1 | -1
-): { sourceHandle: string; targetHandle: string; data: FlowRouteData } {
+  directionGroup: Extract<FlowDirectionGroup, 'up' | 'down'>
+): BusEdgeMeta {
   const sourceCenter = getNodeCenter(source);
   const targetCenter = getNodeCenter(target);
   const sourceSize = getNodeSize(source);
   const targetSize = getNodeSize(target);
 
-  const isDownward = directionSign >= 0;
+  const directionSign: 1 | -1 = directionGroup === 'down' ? 1 : -1;
   const sourceAnchor = {
     x: sourceCenter.x,
-    y: sourceCenter.y + (isDownward ? sourceSize.height / 2 : -sourceSize.height / 2),
+    y: sourceCenter.y + (directionSign > 0 ? sourceSize.height / 2 : -sourceSize.height / 2),
   };
   const targetAnchor = {
     x: targetCenter.x,
-    y: targetCenter.y + (isDownward ? -targetSize.height / 2 : targetSize.height / 2),
+    y: targetCenter.y + (directionSign > 0 ? -targetSize.height / 2 : targetSize.height / 2),
   };
 
   const span = Math.max(1, Math.abs(targetAnchor.y - sourceAnchor.y));
@@ -109,13 +176,14 @@ function edgeToBusRoute(
   ]);
 
   return {
-    sourceHandle: isDownward ? 's-bottom' : 's-top',
-    targetHandle: isDownward ? 't-top' : 't-bottom',
+    sourceHandle: directionSign > 0 ? 's-bottom' : 's-top',
+    targetHandle: directionSign > 0 ? 't-top' : 't-bottom',
     data: {
       kind: 'bus',
       points,
       laneIndex,
       sharedBusId,
+      directionGroup,
     },
   };
 }
@@ -139,6 +207,22 @@ function buildLaneOffsets(items: EdgeRoutingMeta[], axis: 'x' | 'y') {
   return offsetMap;
 }
 
+function busGroupForDirection(
+  directionGroup: FlowDirectionGroup,
+  sourceCenterY: number,
+  targetCenterY: number
+): Extract<FlowDirectionGroup, 'up' | 'down'> {
+  if (directionGroup === 'up') {
+    return 'up';
+  }
+
+  if (directionGroup === 'down') {
+    return 'down';
+  }
+
+  return targetCenterY >= sourceCenterY ? 'down' : 'up';
+}
+
 export function buildAdaptiveRoutedEdges(edges: Edge[], nodes: Node[]): RoutedHierarchyEdge[] {
   if (edges.length === 0) {
     return [];
@@ -156,7 +240,7 @@ export function buildAdaptiveRoutedEdges(edges: Edge[], nodes: Node[]): RoutedHi
     }
   });
 
-  const busEdgeMap = new Map<string, { sourceHandle: string; targetHandle: string; data: FlowRouteData }>();
+  const busEdgeMap = new Map<string, BusEdgeMeta>();
 
   outgoingMap.forEach((outgoing, sourceId) => {
     if (outgoing.length < 2) {
@@ -170,7 +254,7 @@ export function buildAdaptiveRoutedEdges(edges: Edge[], nodes: Node[]): RoutedHi
 
     const sourceCenter = getNodeCenter(sourceNode);
 
-    const sortedTargets = outgoing
+    const withTargets = outgoing
       .map((edge) => ({ edge, target: nodeMap.get(edge.target) }))
       .filter((item): item is { edge: Edge; target: Node } => Boolean(item.target))
       .sort((a, b) => {
@@ -182,17 +266,32 @@ export function buildAdaptiveRoutedEdges(edges: Edge[], nodes: Node[]): RoutedHi
         return centerA.x - centerB.x;
       });
 
-    if (sortedTargets.length < 2) {
+    if (withTargets.length < 2) {
       return;
     }
 
-    const avgTargetY =
-      sortedTargets.reduce((sum, item) => sum + getNodeCenter(item.target).y, 0) / sortedTargets.length;
-    const directionSign = (avgTargetY >= sourceCenter.y ? 1 : -1) as 1 | -1;
-    const sharedBusId = `${sourceId}:${directionSign > 0 ? 'down' : 'up'}:bus`;
+    const grouped: Record<'down' | 'up', Array<{ edge: Edge; target: Node }>> = {
+      down: [],
+      up: [],
+    };
 
-    sortedTargets.forEach((item, index) => {
-      busEdgeMap.set(item.edge.id, edgeToBusRoute(sourceNode, item.target, index, sharedBusId, directionSign));
+    withTargets.forEach((item) => {
+      const targetCenter = getNodeCenter(item.target);
+      const directionGroup = resolveDirectionGroup(sourceCenter.y, targetCenter.y);
+      const groupKey = busGroupForDirection(directionGroup, sourceCenter.y, targetCenter.y);
+      grouped[groupKey].push(item);
+    });
+
+    (['down', 'up'] as const).forEach((groupKey) => {
+      const groupItems = grouped[groupKey];
+      if (groupItems.length < 2) {
+        return;
+      }
+
+      const sharedBusId = `${sourceId}:${groupKey}:bus`;
+      groupItems.forEach((item, index) => {
+        busEdgeMap.set(item.edge.id, edgeToBusRoute(sourceNode, item.target, index, sharedBusId, groupKey));
+      });
     });
   });
 
@@ -211,12 +310,12 @@ export function buildAdaptiveRoutedEdges(edges: Edge[], nodes: Node[]): RoutedHi
 
     const sourceCenter = getNodeCenter(sourceNode);
     const targetCenter = getNodeCenter(targetNode);
+    const directionGroup = resolveDirectionGroup(sourceCenter.y, targetCenter.y);
 
-    const dx = targetCenter.x - sourceCenter.x;
-    const dy = targetCenter.y - sourceCenter.y;
+    const orientation = resolveOrientation(sourceNode, targetNode);
 
-    if (Math.abs(dx) > Math.abs(dy)) {
-      const sign = (dx >= 0 ? 1 : -1) as 1 | -1;
+    if (orientation === 'horizontal') {
+      const sign = (targetCenter.x >= sourceCenter.x ? 1 : -1) as 1 | -1;
       const anchors = getHorizontalAnchors(sourceNode, targetNode, sign);
       linearMetas.push({
         edge,
@@ -224,11 +323,14 @@ export function buildAdaptiveRoutedEdges(edges: Edge[], nodes: Node[]): RoutedHi
         sign,
         sourceAnchor: anchors.sourceAnchor,
         targetAnchor: anchors.targetAnchor,
+        sourceHandle: anchors.sourceHandle,
+        targetHandle: anchors.targetHandle,
+        directionGroup,
       });
       return;
     }
 
-    const sign = (dy >= 0 ? 1 : -1) as 1 | -1;
+    const sign = (targetCenter.y >= sourceCenter.y ? 1 : -1) as 1 | -1;
     const anchors = getVerticalAnchors(sourceNode, targetNode, sign);
     linearMetas.push({
       edge,
@@ -236,22 +338,25 @@ export function buildAdaptiveRoutedEdges(edges: Edge[], nodes: Node[]): RoutedHi
       sign,
       sourceAnchor: anchors.sourceAnchor,
       targetAnchor: anchors.targetAnchor,
+      sourceHandle: anchors.sourceHandle,
+      targetHandle: anchors.targetHandle,
+      directionGroup,
     });
   });
 
-  const grouped = new Map<string, EdgeRoutingMeta[]>();
+  const groupedLinear = new Map<string, EdgeRoutingMeta[]>();
   linearMetas.forEach((meta) => {
-    const key = `${meta.edge.source}:${meta.kind}:${meta.sign}`;
-    const list = grouped.get(key);
+    const key = `${meta.edge.source}:${meta.kind}:${meta.sign}:${meta.directionGroup}`;
+    const list = groupedLinear.get(key);
     if (list) {
       list.push(meta);
     } else {
-      grouped.set(key, [meta]);
+      groupedLinear.set(key, [meta]);
     }
   });
 
   const laneMetaMap = new Map<string, { offset: number; index: number }>();
-  grouped.forEach((items, key) => {
+  groupedLinear.forEach((items, key) => {
     if (items.length === 1) {
       laneMetaMap.set(items[0].edge.id, { offset: 0, index: 0 });
       return;
@@ -275,6 +380,7 @@ export function buildAdaptiveRoutedEdges(edges: Edge[], nodes: Node[]): RoutedHi
           kind: 'vertical',
           points: [],
           laneIndex: 0,
+          directionGroup: 'flat',
         },
       } as RoutedHierarchyEdge;
     }
@@ -291,78 +397,83 @@ export function buildAdaptiveRoutedEdges(edges: Edge[], nodes: Node[]): RoutedHi
       } as RoutedHierarchyEdge;
     }
 
-    const sourceCenter = getNodeCenter(sourceNode);
-    const targetCenter = getNodeCenter(targetNode);
-    const dx = targetCenter.x - sourceCenter.x;
-    const dy = targetCenter.y - sourceCenter.y;
+    const meta = linearMetas.find((item) => item.edge.id === edge.id);
+    if (!meta) {
+      return {
+        ...edge,
+        type: 'hierarchy',
+        style: EDGE_STYLE,
+        data: {
+          kind: 'vertical',
+          points: [],
+          laneIndex: 0,
+          directionGroup: 'flat',
+        },
+      } as RoutedHierarchyEdge;
+    }
 
-    if (Math.abs(dx) > Math.abs(dy)) {
-      const sign = (dx >= 0 ? 1 : -1) as 1 | -1;
-      const anchors = getHorizontalAnchors(sourceNode, targetNode, sign);
-      const laneMeta = laneMetaMap.get(edge.id) ?? { offset: 0, index: 0 };
-      const laneOffset = laneMeta.offset;
-      const aligned = Math.abs(anchors.sourceAnchor.y - anchors.targetAnchor.y) <= ROUTE_ALIGN_TOLERANCE;
+    const laneMeta = laneMetaMap.get(edge.id) ?? { offset: 0, index: 0 };
+
+    if (meta.kind === 'horizontal') {
+      const aligned = Math.abs(meta.sourceAnchor.y - meta.targetAnchor.y) <= ROUTE_ALIGN_TOLERANCE;
 
       const points = aligned
-        ? buildPath([anchors.sourceAnchor, anchors.targetAnchor])
+        ? buildPath([meta.sourceAnchor, meta.targetAnchor])
         : buildPath([
-            anchors.sourceAnchor,
+            meta.sourceAnchor,
             {
-              x: snapToRouteGrid((anchors.sourceAnchor.x + anchors.targetAnchor.x) / 2 + laneOffset),
-              y: anchors.sourceAnchor.y,
+              x: snapToRouteGrid((meta.sourceAnchor.x + meta.targetAnchor.x) / 2 + laneMeta.offset),
+              y: meta.sourceAnchor.y,
             },
             {
-              x: snapToRouteGrid((anchors.sourceAnchor.x + anchors.targetAnchor.x) / 2 + laneOffset),
-              y: anchors.targetAnchor.y,
+              x: snapToRouteGrid((meta.sourceAnchor.x + meta.targetAnchor.x) / 2 + laneMeta.offset),
+              y: meta.targetAnchor.y,
             },
-            anchors.targetAnchor,
+            meta.targetAnchor,
           ]);
 
       return {
         ...edge,
         type: 'hierarchy',
         style: EDGE_STYLE,
-        sourceHandle: anchors.sourceHandle,
-        targetHandle: anchors.targetHandle,
+        sourceHandle: meta.sourceHandle,
+        targetHandle: meta.targetHandle,
         data: {
           kind: 'horizontal',
           points,
           laneIndex: laneMeta.index,
+          directionGroup: meta.directionGroup,
         },
       } as RoutedHierarchyEdge;
     }
 
-    const sign = (dy >= 0 ? 1 : -1) as 1 | -1;
-    const anchors = getVerticalAnchors(sourceNode, targetNode, sign);
-    const laneMeta = laneMetaMap.get(edge.id) ?? { offset: 0, index: 0 };
-    const laneOffset = laneMeta.offset;
-    const aligned = Math.abs(anchors.sourceAnchor.x - anchors.targetAnchor.x) <= ROUTE_ALIGN_TOLERANCE;
-
+    const aligned = Math.abs(meta.sourceAnchor.x - meta.targetAnchor.x) <= ROUTE_ALIGN_TOLERANCE;
     const points = aligned
-      ? buildPath([anchors.sourceAnchor, anchors.targetAnchor])
+      ? buildPath([meta.sourceAnchor, meta.targetAnchor])
       : buildPath([
-          anchors.sourceAnchor,
+          meta.sourceAnchor,
           {
-            x: anchors.sourceAnchor.x,
-            y: snapToRouteGrid((anchors.sourceAnchor.y + anchors.targetAnchor.y) / 2 + laneOffset),
+            x: meta.sourceAnchor.x,
+            y: snapToRouteGrid((meta.sourceAnchor.y + meta.targetAnchor.y) / 2 + laneMeta.offset),
           },
           {
-            x: anchors.targetAnchor.x,
-            y: snapToRouteGrid((anchors.sourceAnchor.y + anchors.targetAnchor.y) / 2 + laneOffset),
+            x: meta.targetAnchor.x,
+            y: snapToRouteGrid((meta.sourceAnchor.y + meta.targetAnchor.y) / 2 + laneMeta.offset),
           },
-          anchors.targetAnchor,
+          meta.targetAnchor,
         ]);
 
     return {
       ...edge,
       type: 'hierarchy',
       style: EDGE_STYLE,
-      sourceHandle: anchors.sourceHandle,
-      targetHandle: anchors.targetHandle,
+      sourceHandle: meta.sourceHandle,
+      targetHandle: meta.targetHandle,
       data: {
         kind: 'vertical',
         points,
         laneIndex: laneMeta.index,
+        directionGroup: meta.directionGroup,
       },
     } as RoutedHierarchyEdge;
   });
