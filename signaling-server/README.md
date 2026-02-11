@@ -1,17 +1,35 @@
-# ChartMaker Signaling Server (Production)
+# ChartMaker Signaling Server
 
-This folder contains a minimal production signaling server for WebRTC collaboration.
+Folder ini adalah service signaling WebRTC untuk ChartMaker.  
+Service ini dipakai sebagai service kedua di Railway dari repo yang sama.
 
-## Deploy to Railway
+## Local Run
 
-1. Create a new Railway project.
-2. Add a new service from this folder.
-3. Railway will run `npm install` and `npm start` automatically.
-4. Copy the Railway public URL (HTTPS).
-5. Set your app env:
-   `NEXT_PUBLIC_WEBRTC_URL="wss://your-railway-app.up.railway.app"`
+```bash
+npm --prefix signaling-server install
+npm run dev:signaling
+```
+
+Default port mengikuti env `PORT` (fallback `4444`).
+
+## Railway Deployment (Same Repo, Two Services)
+
+1. Pastikan repo ini sudah terhubung ke Railway.
+2. Buat service web (Next.js) dari root repo `/`.
+3. Buat service kedua untuk signaling dari repo yang sama.
+4. Pada service signaling:
+   - Set `Root Directory` ke `signaling-server`
+   - Build command: `npm install`
+   - Start command: `npm run start`
+5. Generate public domain untuk service signaling.
+6. Cek domain signaling membuka response `okay`:
+   - `https://<your-signaling-service>.up.railway.app`
+7. Pada service web, set env:
+   - `NEXT_PUBLIC_WEBRTC_URL=wss://<your-signaling-service>.up.railway.app`
+8. Redeploy service web agar env publik terikut di build.
 
 ## Notes
 
-- The server only provides signaling. The document data is P2P between clients.
-- Use a stable URL and keep the service always on for best collaboration.
+- Signaling server hanya untuk handshake peer WebRTC, bukan penyimpanan dokumen.
+- Jangan arahkan `NEXT_PUBLIC_WEBRTC_URL` ke domain app Next.js.
+- Hindari host default publik yang tidak stabil untuk production.

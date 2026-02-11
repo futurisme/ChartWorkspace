@@ -66,6 +66,7 @@ ChartMaker adalah editor peta konsep kolaboratif real-time berbasis Next.js, Rea
 - Map ID utils: `src/lib/mapId.ts`
 - Snapshot utils: `src/lib/snapshot.ts`
 - Prisma schema: `prisma/schema.prisma`
+- Signaling service: `signaling-server/package.json`
 
 ### Unit Test Baru
 - `src/features/flow/flow-edge-routing.test.ts`
@@ -103,6 +104,29 @@ Jalankan setiap selesai perubahan besar:
 npm run lint
 npm run test:unit
 npm run build
+```
+
+### Deploy Railway (Satu Repo, Dua Service)
+Gunakan repo yang sama untuk app dan signaling, tapi service dipisah:
+
+1. Service web (Next.js):
+   - Root directory: `/`
+   - Build command: `npm run build`
+   - Start command: `npm run start`
+2. Service signaling (WebRTC):
+   - Root directory: `/signaling-server`
+   - Build command: `npm install`
+   - Start command: `npm run start`
+3. Generate domain publik untuk service signaling, lalu set env di service web:
+```env
+NEXT_PUBLIC_WEBRTC_URL="wss://<your-signaling-service>.up.railway.app"
+```
+4. Redeploy service web setelah update env.
+
+Script lokal terkait signaling:
+```bash
+npm run install:signaling
+npm run dev:signaling
 ```
 
 ### Known Limits & Troubleshooting
@@ -161,11 +185,30 @@ ChartMaker is a real-time collaborative concept-map editor built with Next.js, R
 ### Key Commands
 ```bash
 npm run dev
+npm run install:signaling
+npm run dev:signaling
 npm run lint
 npm run test:unit
 npm run build
 npm run start
 ```
+
+### Railway Deploy (Single Repo, Two Services)
+Deploy both services from this repository with different root directories:
+
+1. Web app service:
+   - Root directory: `/`
+   - Build command: `npm run build`
+   - Start command: `npm run start`
+2. Signaling service:
+   - Root directory: `/signaling-server`
+   - Build command: `npm install`
+   - Start command: `npm run start`
+3. Create a public domain for signaling and set:
+```env
+NEXT_PUBLIC_WEBRTC_URL="wss://<your-signaling-service>.up.railway.app"
+```
+4. Redeploy the web service after updating env vars.
 
 ### Known Limits and Troubleshooting
 - On very large maps, routing stays deterministic but browser render throughput can become the limiting factor.

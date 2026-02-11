@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:signaling": "npm --prefix signaling-server run start",
+    "install:signaling": "npm --prefix signaling-server install",
     "build": "npx prisma generate && node -e \"if(process.env.DATABASE_URL){require('child_process').execSync('npx prisma migrate deploy',{stdio:'inherit'})}else{console.log('Skipping prisma migrate deploy because DATABASE_URL not set')}\" && next build",
     "start": "next start",
     "lint": "next lint",
