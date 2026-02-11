@@ -1,191 +1,207 @@
-﻿# ChartMaker - Real-time Collaborative Concept Map Editor
+# ChartMaker
+
+Real-time collaborative concept-map editor built with Next.js, React Flow, Yjs, Prisma, and PostgreSQL.
 
 ## Bahasa Indonesia
 
-### Ringkasan
-ChartMaker adalah editor peta konsep kolaboratif real-time berbasis Next.js, React Flow, Yjs, dan Prisma.
+### 1) Ringkasan
+- Editor peta konsep kolaboratif realtime.
+- Routing konektor orthogonal adaptif (hierarki + sibling).
+- Auto-save snapshot Yjs ke database.
+- UI workspace-first untuk desktop dan mobile.
 
-### Fitur Utama
-- Kolaborasi real-time (Yjs + WebRTC)
-- Auto-save snapshot ke PostgreSQL
-- Presence (online, mode edit/view)
-- Routing garis orthogonal adaptif
-- Auto-spread child ketika sibling berdekatan
-- Workspace-first UI dengan panel/dock collapsible (desktop + mobile)
+### 2) Root Cause 404 `/api/maps/0001` dan Fix
+Masalah sebelumnya:
+- Membuka `/editor/0001` memicu `GET /api/maps/0001` (map belum ada) -> `404`.
+- Realtime gagal init karena fetch map gagal.
 
-### Aturan Routing Garis (Auto Connector)
-- Vertikal: `middle-to-middle` (bottom-center source ke top-center target)
-- Horizontal: `side-to-side` (center side source ke center side target)
-- Parent dengan >= 2 child:
-  - Parent menuju jalur bus horizontal
-  - Bus horizontal ke posisi atas tiap child
-  - Lalu drop vertikal tepat ke top-center child
-- Semua edge mengikuti adaptive orthogonal routing
+Perbaikan saat ini:
+- `GET /api/maps/[id]?ensure=1` akan auto-create map jika belum ada.
+- Editor + Realtime mode edit memakai endpoint `ensure=1`.
+- `POST /api/maps/save` sekarang `upsert`, jadi tidak 404 saat save map baru.
 
-### Routing Edge Cases
-- Same-row tolerance diprioritaskan jadi horizontal route terlebih dulu.
-- Same-column tolerance diprioritaskan jadi vertical route terlebih dulu.
-- Parent dengan child campuran atas/bawah dibagi menjadi 2 bus terpisah (`up` dan `down`).
-- Penentuan lane route bersifat deterministik (urut posisi target + tie-break `edge.id`).
+### 3) Arsitektur Saat Ini
 
-### Auto-Spread Rules
-- Sibling overlap dideteksi dari bounding box + gap minimum.
-- Jika mayoritas child berada di bawah parent, spread dilakukan di row bawah.
-- Jika mayoritas child berada di atas parent, spread dilakukan di row atas.
-- Jika mixed up/down, spread dilakukan per-cluster secara terpisah.
-- Operasi spread bersifat idempotent untuk state yang sama (tidak jitter).
+#### App Routes
+- `src/app/page.tsx`: landing/create flow entry.
+- `src/app/editor/[mapId]/page.tsx`: editor mode (read-write).
+- `src/app/view/[mapId]/page.tsx`: viewer mode (read-only).
 
-### Arsitektur Baru (Flow Feature Modules)
-- `src/features/flow/flow-workspace.tsx`
-  Orkestrator editor flow, binding Yjs, modal, panel, React Flow canvas.
-- `src/features/flow/flow-edge-routing.ts`
-  Engine adaptive orthogonal routing + bus sibling.
-- `src/features/flow/flow-edge-hierarchy.tsx`
-  Renderer edge polyline orthogonal dari route points.
-- `src/features/flow/flow-node-placement.ts`
-  Utility node placement, workspace extent, overlap detection, auto-spread sibling.
-- `src/features/flow/flow-node-card.tsx`
-  Komponen node + color toolbar.
-- `src/features/flow/flow-toolbar-desktop.tsx`
-  Panel aksi desktop collapsible.
-- `src/features/flow/flow-toolbar-mobile.tsx`
-  Bottom dock mobile collapsible.
-- `src/features/flow/flow-constants.ts`
-  Konstanta flow.
-- `src/features/flow/flow-types.ts`
-  Type shared flow.
+#### API
+- `src/app/api/maps/route.ts`: `POST` create map baru.
+- `src/app/api/maps/[id]/route.ts`: `GET` map by id, support `?ensure=1`.
+- `src/app/api/maps/save/route.ts`: `POST` save snapshot (last-write-wins via upsert).
 
-### Peta File Kunci
-- Realtime provider: `src/components/RealtimeProvider.tsx`
-- Presence bar: `src/components/PresenceBar.tsx`
-- Editor page: `src/app/editor/[mapId]/page.tsx`
-- Viewer page: `src/app/view/[mapId]/page.tsx`
-- API create map: `src/app/api/maps/route.ts`
-- API get map: `src/app/api/maps/[id]/route.ts`
-- API save map: `src/app/api/maps/save/route.ts`
-- Map ID utils: `src/lib/mapId.ts`
-- Snapshot utils: `src/lib/snapshot.ts`
-- Prisma schema: `prisma/schema.prisma`
-- Signaling service: `signaling-server/package.json`
+#### Realtime + Presence
+- `src/components/RealtimeProvider.tsx`: bootstrap Y.Doc, signaling, awareness, autosave.
+- `src/components/PresenceBar.tsx`: status connected/offline + online users.
 
-### Unit Test Baru
-- `src/features/flow/flow-edge-routing.test.ts`
-- `src/features/flow/flow-node-placement.test.ts`
-- `src/features/flow/flow-flow.integration.test.ts`
+#### Flow Feature Modules
+- `src/features/flow/flow-workspace.tsx`: orchestration canvas + action handlers + Yjs sync.
+- `src/features/flow/flow-edge-routing.ts`: adaptive orthogonal routing + sibling bus logic.
+- `src/features/flow/flow-edge-hierarchy.tsx`: edge renderer polyline orthogonal.
+- `src/features/flow/flow-node-placement.ts`: placement, overlap detection, deterministic spread.
+- `src/features/flow/flow-node-card.tsx`: custom node card + color actions.
+- `src/features/flow/flow-toolbar-desktop.tsx`: desktop controls/status panels.
+- `src/features/flow/flow-toolbar-mobile.tsx`: mobile bottom dock.
+- `src/features/flow/flow-constants.ts`: shared constants (grid, route, spacing, extents).
+- `src/features/flow/flow-types.ts`: shared types route/node/persisted records.
 
-### Setup Cepat
-1. Install
-```bash
-npm install
-cp .env.example .env.local
-```
+#### Shared Lib
+- `src/lib/snapshot.ts`: snapshot encode/decode/apply/get current/create doc.
+- `src/lib/mapId.ts`: `formatMapId`, `parseMapId`.
+- `src/lib/presence.ts`: awareness presence helpers.
+- `src/lib/prisma.ts`: prisma singleton.
 
-2. Isi `.env.local`
+### 4) Peta Fungsi Ekspor (Core)
+
+#### `src/lib/snapshot.ts`
+- `encodeYjsSnapshot(doc)`
+- `decodeYjsSnapshot(snapshot)`
+- `applyYjsSnapshot(doc, snapshot)`
+- `getCurrentSnapshot(doc)`
+- `createDocWithSnapshot(snapshot?)`
+
+#### `src/lib/mapId.ts`
+- `formatMapId(id)`
+- `parseMapId(raw)`
+
+#### `src/lib/presence.ts`
+- `generateUserColor()`
+- `setupAwareness(awareness, presence)`
+- `getRemoteUsers(awareness, localClientId?)`
+
+#### `src/components/RealtimeProvider.tsx`
+- `useRealtime()`
+- `RealtimeProvider(props)`
+
+#### `src/components/PresenceBar.tsx`
+- `PresenceBar({ compact })`
+
+#### `src/features/flow/flow-edge-routing.ts`
+- `buildAdaptiveRoutedEdges(edges, nodes)`
+
+#### `src/features/flow/flow-node-placement.ts`
+- `getNodeSize(node)`
+- `getNodeCenter(node)`
+- `snapToGridPosition(position)`
+- `getWorkspaceExtent(nodes)`
+- `findOpenPosition(position, nodes, shift?)`
+- `hasSiblingOverlap(parentId, nodes, edges)`
+- `spreadChildrenForParent(parentId, nodes, edges)`
+- `spreadChildrenForAllParents(nodes, edges)`
+- `getUpdatedNodePositions(before, after)`
+
+#### `src/features/flow/flow-workspace.tsx`
+- `FlowWorkspace(props)`
+
+#### `src/features/flow/flow-node-card.tsx`
+- `NodeActionContext`
+- `FlowNodeCard(props)`
+
+#### `src/features/flow/flow-edge-hierarchy.tsx`
+- `FlowEdgeHierarchy(props)`
+
+#### `src/features/flow/flow-toolbar-desktop.tsx`
+- `FlowToolbarDesktop(props)`
+
+#### `src/features/flow/flow-toolbar-mobile.tsx`
+- `FlowToolbarMobile(props)`
+
+### 5) Aturan Routing Konektor (Current Behavior)
+- Same-row ketat: side-to-side langsung (horizontal direct).
+- Tidak sejajar: elbow orthogonal (horizontal lalu naik/turun).
+- Parent multi-child vertikal: bus horizontal bersama + drop vertikal ke child.
+- Plain orthogonal line (tanpa arrowhead).
+
+### 6) Aturan Placement
+- Posisi node hasil simpan dipertahankan saat reload.
+- Auto-spread hanya saat event edit: add child/sibling, connect, drag stop overlap.
+- Overlap trigger berbasis tabrakan nyata, bukan sekadar berdekatan.
+- Deterministik untuk kolaborasi (urut stabil + update posisi yang berubah saja).
+
+### 7) Environment Variables
 ```env
 DATABASE_URL="postgresql://user:password@host:5432/chartmaker"
-NEXT_PUBLIC_WEBRTC_URL="wss://your-signaling-server"
+NEXT_PUBLIC_WEBRTC_URL="wss://your-signaling-service.up.railway.app"
 NEXT_PUBLIC_API_URL="http://localhost:3000"
 ```
 
-3. Generate Prisma + migrasi local
+### 8) Menjalankan Lokal
 ```bash
+npm install
+npm run install:signaling
 npx prisma generate
 npx prisma migrate dev --name init
-```
-
-4. Jalankan aplikasi
-```bash
 npm run dev
 ```
 
-### Validation & Safety Checks (Anti Domino Error)
-Jalankan setiap selesai perubahan besar:
+Jalankan signaling lokal:
+```bash
+npm run dev:signaling
+```
+
+### 9) Validation Gate (Anti Domino Error)
+Jalankan sebelum push:
 ```bash
 npm run lint
 npm run test:unit
 npm run build
 ```
 
-### Deploy Railway (Satu Repo, Dua Service)
-Gunakan repo yang sama untuk app dan signaling, tapi service dipisah:
+### 10) Railway (Satu Repo, Dua Service)
+Gunakan repo yang sama, pisah service:
+- Web app service:
+  - Root directory: `/`
+  - Build: `npm run build`
+  - Start: `npm run start`
+- Signaling service:
+  - Root directory: `/signaling-server`
+  - Build: `npm install`
+  - Start: `npm run start`
 
-1. Service web (Next.js):
-   - Root directory: `/`
-   - Build command: `npm run build`
-   - Start command: `npm run start`
-2. Service signaling (WebRTC):
-   - Root directory: `/signaling-server`
-   - Build command: `npm install`
-   - Start command: `npm run start`
-3. Generate domain publik untuk service signaling, lalu set env di service web:
+Set env di web app:
 ```env
-NEXT_PUBLIC_WEBRTC_URL="wss://<your-signaling-service>.up.railway.app"
+NEXT_PUBLIC_WEBRTC_URL="wss://<service-signaling>.up.railway.app"
 ```
-4. Redeploy service web setelah update env.
-
-Script lokal terkait signaling:
-```bash
-npm run install:signaling
-npm run dev:signaling
-```
-
-### Known Limits & Troubleshooting
-- Untuk jumlah node sangat besar, route recalculation tetap linear namun render canvas dapat menjadi bottleneck browser.
-- Jika node terlihat terlalu padat setelah operasi massal, jalankan drag ringan pada parent untuk memicu re-spread deterministik.
-- Jika koneksi realtime putus, status panel akan menunjukkan offline; perubahan lokal tetap tersimpan dan disinkronkan saat koneksi kembali.
 
 ---
 
 ## English
 
-### Summary
-ChartMaker is a real-time collaborative concept-map editor built with Next.js, React Flow, Yjs, and Prisma.
+### 1) Overview
+- Real-time collaborative concept-map editor.
+- Adaptive orthogonal connectors with hierarchy-aware routing.
+- Yjs snapshot persistence to PostgreSQL.
+- Workspace-first responsive UI.
 
-### Highlights
-- Real-time collaboration (Yjs + WebRTC)
-- Snapshot auto-save to PostgreSQL
-- Live presence (edit/view modes)
-- Adaptive orthogonal connector routing
-- Automatic child spreading for crowded sibling nodes
-- Workspace-focused UI with collapsible desktop/mobile controls
+### 2) 404 `/api/maps/0001` Root Cause and Fix
+Previous issue:
+- Opening `/editor/0001` requested a map that did not exist yet, causing `404`.
+- Realtime init then failed due to failed map fetch.
 
-### Connector Routing Rules
-- Vertical relation: middle-to-middle (source bottom-center to target top-center)
-- Horizontal relation: side-to-side (source side-center to target side-center)
-- Parent with >=2 children:
-  - Parent goes to a shared horizontal bus
-  - Bus routes over each child top center
-  - Vertical drop to each child top center
-- Applied to all edges in adaptive mode
+Current fix:
+- `GET /api/maps/[id]?ensure=1` auto-creates missing map IDs.
+- Editor and edit-mode realtime now use `ensure=1`.
+- `POST /api/maps/save` uses upsert to prevent save-time 404 for newly opened IDs.
 
-### Routing Edge Cases
-- Same-row tolerance is prioritized to horizontal routing.
-- Same-column tolerance is prioritized to vertical routing.
-- Mixed up/down children are split into two independent bus groups.
-- Lane ordering is deterministic by target axis and `edge.id` tie-break.
+### 3) Current Architecture
+- App routes: `src/app/editor/[mapId]/page.tsx`, `src/app/view/[mapId]/page.tsx`
+- APIs: `src/app/api/maps/route.ts`, `src/app/api/maps/[id]/route.ts`, `src/app/api/maps/save/route.ts`
+- Realtime: `src/components/RealtimeProvider.tsx`
+- Presence UI: `src/components/PresenceBar.tsx`
+- Flow modules: `src/features/flow/*`
+- Shared libs: `src/lib/snapshot.ts`, `src/lib/mapId.ts`, `src/lib/presence.ts`, `src/lib/prisma.ts`
 
-### Auto-Spread Rules
-- Sibling overlap is detected using bounding boxes plus minimum spacing.
-- Downward-majority children spread on a lower row.
-- Upward-majority children spread on an upper row.
-- Mixed up/down children are spread per cluster.
-- Spread operation is idempotent for the same input state.
+### 4) Core Runtime Rules
+- Strict same-row sibling alignment -> direct side-to-side connector.
+- Non-aligned nodes -> orthogonal elbow connector.
+- Multi-child vertical hierarchy -> shared bus + vertical drops.
+- Persisted layout is preserved on reload; no auto-spread at initial hydration.
 
-### New Architecture (Flow Modules)
-- `src/features/flow/flow-workspace.tsx`
-- `src/features/flow/flow-edge-routing.ts`
-- `src/features/flow/flow-edge-hierarchy.tsx`
-- `src/features/flow/flow-node-placement.ts`
-- `src/features/flow/flow-node-card.tsx`
-- `src/features/flow/flow-toolbar-desktop.tsx`
-- `src/features/flow/flow-toolbar-mobile.tsx`
-- `src/features/flow/flow-constants.ts`
-- `src/features/flow/flow-types.ts`
-
-### Key Commands
+### 5) Local Commands
 ```bash
 npm run dev
-npm run install:signaling
 npm run dev:signaling
 npm run lint
 npm run test:unit
@@ -193,27 +209,8 @@ npm run build
 npm run start
 ```
 
-### Railway Deploy (Single Repo, Two Services)
-Deploy both services from this repository with different root directories:
+### 6) Deployment Notes
+- Vercel for web app.
+- Railway signaling service with `wss://...up.railway.app`.
+- Set `NEXT_PUBLIC_WEBRTC_URL` in production and redeploy web app.
 
-1. Web app service:
-   - Root directory: `/`
-   - Build command: `npm run build`
-   - Start command: `npm run start`
-2. Signaling service:
-   - Root directory: `/signaling-server`
-   - Build command: `npm install`
-   - Start command: `npm run start`
-3. Create a public domain for signaling and set:
-```env
-NEXT_PUBLIC_WEBRTC_URL="wss://<your-signaling-service>.up.railway.app"
-```
-4. Redeploy the web service after updating env vars.
-
-### Known Limits and Troubleshooting
-- On very large maps, routing stays deterministic but browser render throughput can become the limiting factor.
-- If nodes remain visually dense after bulk edits, drag a parent node slightly to trigger deterministic re-spread.
-- When realtime signaling disconnects, offline status is shown and local updates continue before re-sync.
-
-### License
-MIT
