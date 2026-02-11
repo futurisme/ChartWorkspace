@@ -22,6 +22,19 @@ ChartMaker adalah editor peta konsep kolaboratif real-time berbasis Next.js, Rea
   - Lalu drop vertikal tepat ke top-center child
 - Semua edge mengikuti adaptive orthogonal routing
 
+### Routing Edge Cases
+- Same-row tolerance diprioritaskan jadi horizontal route terlebih dulu.
+- Same-column tolerance diprioritaskan jadi vertical route terlebih dulu.
+- Parent dengan child campuran atas/bawah dibagi menjadi 2 bus terpisah (`up` dan `down`).
+- Penentuan lane route bersifat deterministik (urut posisi target + tie-break `edge.id`).
+
+### Auto-Spread Rules
+- Sibling overlap dideteksi dari bounding box + gap minimum.
+- Jika mayoritas child berada di bawah parent, spread dilakukan di row bawah.
+- Jika mayoritas child berada di atas parent, spread dilakukan di row atas.
+- Jika mixed up/down, spread dilakukan per-cluster secara terpisah.
+- Operasi spread bersifat idempotent untuk state yang sama (tidak jitter).
+
 ### Arsitektur Baru (Flow Feature Modules)
 - `src/features/flow/flow-workspace.tsx`
   Orkestrator editor flow, binding Yjs, modal, panel, React Flow canvas.
@@ -57,6 +70,7 @@ ChartMaker adalah editor peta konsep kolaboratif real-time berbasis Next.js, Rea
 ### Unit Test Baru
 - `src/features/flow/flow-edge-routing.test.ts`
 - `src/features/flow/flow-node-placement.test.ts`
+- `src/features/flow/flow-flow.integration.test.ts`
 
 ### Setup Cepat
 1. Install
@@ -91,6 +105,11 @@ npm run test:unit
 npm run build
 ```
 
+### Known Limits & Troubleshooting
+- Untuk jumlah node sangat besar, route recalculation tetap linear namun render canvas dapat menjadi bottleneck browser.
+- Jika node terlihat terlalu padat setelah operasi massal, jalankan drag ringan pada parent untuk memicu re-spread deterministik.
+- Jika koneksi realtime putus, status panel akan menunjukkan offline; perubahan lokal tetap tersimpan dan disinkronkan saat koneksi kembali.
+
 ---
 
 ## English
@@ -115,6 +134,19 @@ ChartMaker is a real-time collaborative concept-map editor built with Next.js, R
   - Vertical drop to each child top center
 - Applied to all edges in adaptive mode
 
+### Routing Edge Cases
+- Same-row tolerance is prioritized to horizontal routing.
+- Same-column tolerance is prioritized to vertical routing.
+- Mixed up/down children are split into two independent bus groups.
+- Lane ordering is deterministic by target axis and `edge.id` tie-break.
+
+### Auto-Spread Rules
+- Sibling overlap is detected using bounding boxes plus minimum spacing.
+- Downward-majority children spread on a lower row.
+- Upward-majority children spread on an upper row.
+- Mixed up/down children are spread per cluster.
+- Spread operation is idempotent for the same input state.
+
 ### New Architecture (Flow Modules)
 - `src/features/flow/flow-workspace.tsx`
 - `src/features/flow/flow-edge-routing.ts`
@@ -134,6 +166,11 @@ npm run test:unit
 npm run build
 npm run start
 ```
+
+### Known Limits and Troubleshooting
+- On very large maps, routing stays deterministic but browser render throughput can become the limiting factor.
+- If nodes remain visually dense after bulk edits, drag a parent node slightly to trigger deterministic re-spread.
+- When realtime signaling disconnects, offline status is shown and local updates continue before re-sync.
 
 ### License
 MIT
