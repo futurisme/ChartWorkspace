@@ -933,7 +933,7 @@ export function FlowWorkspace({ isReadOnly = false }: FlowWorkspaceProps) {
         </>
       )}
 
-      <div ref={reactFlowWrapperRef} className="flex-1 pb-16 sm:pb-0">
+      <div ref={reactFlowWrapperRef} className="flex-1 pb-24 lg:pb-0">
         <NodeActionContext.Provider value={{ onChangeColor: handleChangeColor, isReadOnly }}>
           <ReactFlow
             nodes={nodes}
@@ -975,7 +975,7 @@ export function FlowWorkspace({ isReadOnly = false }: FlowWorkspaceProps) {
             <Background gap={ROUTE_GRID_SIZE} size={0.5} color="#dbeafe" variant={BackgroundVariant.Lines} />
             <Background gap={GRID_SIZE} size={1} color="#cbd5e1" variant={BackgroundVariant.Lines} />
             <Controls />
-            <div className="hidden sm:block">
+            <div className="hidden lg:block">
               <MiniMap />
             </div>
           </ReactFlow>

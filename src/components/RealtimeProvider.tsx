@@ -14,6 +14,51 @@ import { WebrtcProvider } from 'y-webrtc';
 import { UserPresence, setupAwareness, getRemoteUsers, generateUserColor } from '@/lib/presence';
 import { applyYjsSnapshot, getCurrentSnapshot } from '@/lib/snapshot';
 
+const LOCAL_SIGNALING_URL = 'ws://localhost:4444';
+const BLOCKED_SIGNALING_HOSTS = new Set(['signaling.yjs.dev', 'www.signaling.yjs.dev', 'yjs.dev']);
+
+function isLocalHostname(hostname: string) {
+  return hostname === 'localhost' || hostname === '127.0.0.1';
+}
+
+function normalizeSignalingUrl(rawUrl: string): string | null {
+  const trimmed = rawUrl.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const withScheme = /^wss?:\/\//i.test(trimmed) ? trimmed : `wss://${trimmed}`;
+
+  try {
+    const parsed = new URL(withScheme);
+    if (parsed.protocol !== 'ws:' && parsed.protocol !== 'wss:') {
+      return null;
+    }
+
+    const hostname = parsed.hostname.toLowerCase();
+    if (BLOCKED_SIGNALING_HOSTS.has(hostname) || hostname.endsWith('.yjs.dev')) {
+      return null;
+    }
+
+    parsed.hash = '';
+    parsed.search = '';
+
+    return parsed.toString().replace(/\/$/, '');
+  } catch {
+    return null;
+  }
+}
+
+function parseSignalingUrls(rawValue: string) {
+  const dedupedUrls = new Set<string>();
+  rawValue
+    .split(',')
+    .map((part) => normalizeSignalingUrl(part))
+    .filter((url): url is string => Boolean(url))
+    .forEach((url) => dedupedUrls.add(url));
+  return Array.from(dedupedUrls);
+}
+
 export interface RealtimeContextType {
   doc: Y.Doc | null;
   provider: WebrtcProvider | null;
@@ -68,39 +113,22 @@ export function RealtimeProvider({
   const signalingUrlsRef = useRef<string[] | null>(null);
 
   if (signalingUrlsRef.current === null) {
-    const raw = process.env.NEXT_PUBLIC_WEBRTC_URL ?? '';
-    const urls = raw
-      .split(',')
-      .map((value) => value.trim())
-      .filter(Boolean);
-    if (urls.length === 0 && typeof window !== 'undefined') {
-      const isLocalhost =
-        window.location.hostname === 'localhost' ||
-        window.location.hostname === '127.0.0.1';
-      signalingUrlsRef.current = isLocalhost ? ['ws://localhost:4444'] : [];
+    const parsedEnvUrls = parseSignalingUrls(process.env.NEXT_PUBLIC_WEBRTC_URL ?? '');
+    if (parsedEnvUrls.length > 0) {
+      signalingUrlsRef.current = parsedEnvUrls;
+    } else if (typeof window !== 'undefined' && isLocalHostname(window.location.hostname)) {
+      signalingUrlsRef.current = [LOCAL_SIGNALING_URL];
     } else {
-      signalingUrlsRef.current = urls;
+      signalingUrlsRef.current = [];
     }
   }
-
-  const probeSignalingUrl = useCallback(async (url: string) => {
-    const probeUrl = url
-      .replace(/^wss:/, 'https:')
-      .replace(/^ws:/, 'http:');
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 1500);
-      await fetch(probeUrl, { mode: 'no-cors', signal: controller.signal });
-      clearTimeout(timeoutId);
-      return true;
-    } catch {
-      return false;
-    }
-  }, []);
 
   // Initialize document and provider
   useEffect(() => {
     let isMounted = true;
+    let activeDoc: Y.Doc | null = null;
+    let activeProvider: WebrtcProvider | null = null;
+    let detachRealtimeHandlers: (() => void) | null = null;
 
     const initializeRealtime = async () => {
       try {
@@ -112,6 +140,7 @@ export function RealtimeProvider({
 
         // Create Yjs doc
         const newDoc = new Y.Doc();
+        activeDoc = newDoc;
         newDoc.getMap('nodes');
         newDoc.getMap('edges');
         newDoc.getMap('selected');
@@ -126,7 +155,11 @@ export function RealtimeProvider({
           }
         }
 
-        if (!isMounted) return;
+        if (!isMounted) {
+          newDoc.destroy();
+          activeDoc = null;
+          return;
+        }
 
         setDoc(newDoc);
         setCurrentVersion(version);
@@ -145,35 +178,13 @@ export function RealtimeProvider({
 
         // Setup WebRTC provider
         const signalingUrls = signalingUrlsRef.current ?? [];
-        let reachableUrls = signalingUrls;
-
         if (signalingUrls.length > 0) {
-          const checks = await Promise.all(
-            signalingUrls.map(async (url) => ({
-              url,
-              ok: await probeSignalingUrl(url),
-            }))
-          );
-          reachableUrls = checks.filter((item) => item.ok).map((item) => item.url);
-        }
-
-        if (reachableUrls.length === 0 && typeof window !== 'undefined') {
-          const isLocalhost =
-            window.location.hostname === 'localhost' ||
-            window.location.hostname === '127.0.0.1';
-          if (isLocalhost) {
-            const localUrl = 'ws://localhost:4444';
-            const localOk = await probeSignalingUrl(localUrl);
-            reachableUrls = localOk ? [localUrl] : [];
-          }
-        }
-
-        if (reachableUrls.length > 0) {
           const newProvider = new WebrtcProvider(
             `chartmaker-${mapId}`,
             newDoc,
-            { signaling: reachableUrls }
+            { signaling: signalingUrls }
           );
+          activeProvider = newProvider;
 
           setProvider(newProvider);
 
@@ -197,7 +208,7 @@ export function RealtimeProvider({
           newAwareness.on('change', handleAwarenessChange);
 
           // Connection status
-          const handleStatus = (event: any) => {
+          const handleStatus = (event: { status?: string; connected?: boolean }) => {
             if (isMounted) {
               setIsConnected(event.connected ?? event.status === 'connected');
             }
@@ -205,10 +216,11 @@ export function RealtimeProvider({
 
           newProvider.on('status', handleStatus);
 
-          return () => {
+          detachRealtimeHandlers = () => {
             newAwareness.off('change', handleAwarenessChange);
             newProvider.off('status', handleStatus);
           };
+          return;
         }
 
         setProvider(null);
@@ -224,8 +236,20 @@ export function RealtimeProvider({
 
     return () => {
       isMounted = false;
+      if (detachRealtimeHandlers) {
+        detachRealtimeHandlers();
+        detachRealtimeHandlers = null;
+      }
+      if (activeProvider) {
+        activeProvider.destroy();
+        activeProvider = null;
+      }
+      if (activeDoc) {
+        activeDoc.destroy();
+        activeDoc = null;
+      }
     };
-  }, [mapId, userId, displayName, mode, probeSignalingUrl]);
+  }, [mapId, userId, displayName, mode]);
 
   // Debounced snapshot save - last-write-wins strategy
   const saveSnapshot = useCallback(async () => {

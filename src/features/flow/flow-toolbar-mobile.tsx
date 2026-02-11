@@ -40,7 +40,7 @@ export function FlowToolbarMobile({
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="sm:hidden fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white/95 p-2 backdrop-blur">
+    <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white/95 p-2 pb-[max(env(safe-area-inset-bottom),0.5rem)] backdrop-blur lg:hidden">
       <div className="mb-2 flex items-center justify-between px-1">
         <div className="text-xs font-semibold text-slate-700">
           {isConnected ? 'Online' : 'Offline'} · {remoteUsersCount + 1} online

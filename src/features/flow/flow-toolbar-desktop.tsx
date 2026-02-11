@@ -77,8 +77,8 @@ export function FlowToolbarDesktop({
 
   return (
     <>
-      <div className="pointer-events-none absolute left-4 top-4 z-30 hidden w-[280px] sm:block">
-        <div className="pointer-events-auto rounded-xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur">
+      <div className="pointer-events-none absolute left-4 top-4 z-30 hidden w-[252px] lg:block xl:w-[280px]">
+        <div className="pointer-events-auto max-h-[calc(100vh-2rem)] overflow-y-auto rounded-xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur">
           <div className="mb-2 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-slate-900">Workspace Controls</h2>
             <button
@@ -199,8 +199,8 @@ export function FlowToolbarDesktop({
         </div>
       </div>
 
-      <div className="pointer-events-none absolute right-4 top-4 z-30 hidden w-[280px] sm:block">
-        <div className="pointer-events-auto rounded-xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur">
+      <div className="pointer-events-none absolute right-4 top-4 z-30 hidden w-[252px] lg:block xl:w-[280px]">
+        <div className="pointer-events-auto max-h-[calc(100vh-2rem)] overflow-y-auto rounded-xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur">
           <div className="mb-2 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-slate-900">Status Panel</h2>
             <button

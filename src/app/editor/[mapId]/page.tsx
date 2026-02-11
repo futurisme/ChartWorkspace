@@ -69,7 +69,7 @@ function EditorContent() {
               <p className="text-xs text-slate-500 sm:text-sm">Workspace-first collaborative editing</p>
             </div>
             <div className="rounded border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
-              Edit Mode · Map #{mapId}
+              Edit Mode - Map #{mapId}
             </div>
           </div>
         </header>
