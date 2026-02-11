@@ -75,7 +75,7 @@ function ViewerContent() {
 
         <PresenceBar />
 
-        <div className="flex-1">
+        <div className="min-h-0 flex-1">
           <FlowWorkspace isReadOnly={true} />
         </div>
       </div>

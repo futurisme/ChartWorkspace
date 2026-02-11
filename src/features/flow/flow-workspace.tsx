@@ -886,7 +886,7 @@ export function FlowWorkspace({ isReadOnly = false }: FlowWorkspaceProps) {
   }, []);
 
   return (
-    <div className="relative flex h-full flex-col bg-slate-50">
+    <div className="relative flex h-full min-h-0 flex-col bg-slate-50">
       {!isReadOnly && (
         <>
           <FlowToolbarDesktop
@@ -933,7 +933,7 @@ export function FlowWorkspace({ isReadOnly = false }: FlowWorkspaceProps) {
         </>
       )}
 
-      <div ref={reactFlowWrapperRef} className="flex-1 pb-24 lg:pb-0">
+      <div ref={reactFlowWrapperRef} className="relative min-h-0 flex-1 pb-24 lg:pb-0">
         <NodeActionContext.Provider value={{ onChangeColor: handleChangeColor, isReadOnly }}>
           <ReactFlow
             nodes={nodes}
@@ -980,6 +980,29 @@ export function FlowWorkspace({ isReadOnly = false }: FlowWorkspaceProps) {
             </div>
           </ReactFlow>
         </NodeActionContext.Provider>
+        {doc && nodes.length === 0 && (
+          <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center p-4">
+            <div className="pointer-events-auto w-full max-w-md rounded-xl border border-slate-200 bg-white/95 p-5 text-center shadow-lg backdrop-blur">
+              <h3 className="text-lg font-semibold text-slate-900">Workspace masih kosong</h3>
+              <p className="mt-2 text-sm text-slate-600">
+                Belum ada node di peta ini. Tambahkan node pertama untuk mulai menyusun konsep.
+              </p>
+              {!isReadOnly ? (
+                <button
+                  type="button"
+                  onClick={handleAddNode}
+                  className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                >
+                  Add First Node
+                </button>
+              ) : (
+                <p className="mt-4 text-xs font-medium uppercase tracking-wide text-slate-500">
+                  View only mode
+                </p>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {showInviteModal && (
