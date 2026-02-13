@@ -57,21 +57,27 @@ function ActionButton({
   label: string;
   onClick: () => void;
   disabled?: boolean;
-  tone?: 'neutral' | 'brand' | 'danger';
+  tone?: 'neutral' | 'brand' | 'success' | 'warning' | 'danger' | 'info';
   full?: boolean;
 }) {
   const toneClass =
     tone === 'brand'
-      ? 'border-cyan-300/45 bg-cyan-500/15 text-cyan-100 hover:bg-cyan-500/25'
-      : tone === 'danger'
-        ? 'border-rose-300/40 bg-rose-500/15 text-rose-100 hover:bg-rose-500/25'
-        : 'border-cyan-500/25 bg-slate-900/75 text-slate-100 hover:bg-slate-800/80';
+      ? 'border-cyan-300/55 bg-cyan-500/22 text-cyan-50 hover:bg-cyan-500/32 active:bg-cyan-500/38'
+      : tone === 'success'
+        ? 'border-emerald-300/60 bg-emerald-500/24 text-emerald-50 hover:bg-emerald-500/34 active:bg-emerald-500/40'
+        : tone === 'warning'
+          ? 'border-amber-300/65 bg-amber-500/28 text-amber-50 hover:bg-amber-500/38 active:bg-amber-500/46'
+          : tone === 'danger'
+            ? 'border-red-300/75 bg-red-600/40 text-red-50 hover:bg-red-600/52 active:bg-red-600/60'
+            : tone === 'info'
+              ? 'border-violet-300/60 bg-violet-500/24 text-violet-50 hover:bg-violet-500/34 active:bg-violet-500/40'
+              : 'border-slate-300/35 bg-slate-800/82 text-slate-100 hover:bg-slate-700/90 active:bg-slate-700';
 
   return (
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`${full ? 'col-span-2' : ''} rounded-md border px-2 py-1 text-[10px] font-semibold tracking-wide transition ${toneClass} disabled:border-slate-700/60 disabled:bg-slate-900/50 disabled:text-slate-500 disabled:opacity-100`}
+      className={`${full ? 'col-span-2' : ''} rounded-md border px-2 py-1 text-[10px] font-semibold tracking-wide transition-colors ${toneClass} disabled:border-slate-700/60 disabled:bg-slate-900/50 disabled:text-slate-500 disabled:opacity-100`}
     >
       {label}
     </button>
@@ -130,7 +136,7 @@ export function FlowToolbarDesktop({
                 {nodeSectionOpen && (
                   <div className="grid grid-cols-2 gap-1">
                     <ActionButton label="Add Node" onClick={onAddNode} tone="brand" />
-                    <ActionButton label="Rename" onClick={onRename} disabled={!selectedNodeId} />
+                    <ActionButton label="Rename" onClick={onRename} disabled={!selectedNodeId} tone="info" />
                   </div>
                 )}
               </div>
@@ -139,9 +145,9 @@ export function FlowToolbarDesktop({
                 <SectionHeader title="Structure" open={structureSectionOpen} onToggle={() => setStructureSectionOpen((prev) => !prev)} />
                 {structureSectionOpen && (
                   <div className="grid grid-cols-2 gap-1">
-                    <ActionButton label="Child" onClick={onAddChild} disabled={!selectedNodeId} />
-                    <ActionButton label="Sibling" onClick={onAddSibling} disabled={!selectedNodeId} />
-                    <ActionButton label="Parent" onClick={onAddParent} disabled={!selectedNodeId} full />
+                    <ActionButton label="Child" onClick={onAddChild} disabled={!selectedNodeId} tone="success" />
+                    <ActionButton label="Sibling" onClick={onAddSibling} disabled={!selectedNodeId} tone="success" />
+                    <ActionButton label="Parent" onClick={onAddParent} disabled={!selectedNodeId} tone="success" full />
                   </div>
                 )}
               </div>
@@ -150,8 +156,8 @@ export function FlowToolbarDesktop({
                 <SectionHeader title="Edit" open={editSectionOpen} onToggle={() => setEditSectionOpen((prev) => !prev)} />
                 {editSectionOpen && (
                   <div className="grid grid-cols-2 gap-1">
-                    <ActionButton label="Undo" onClick={onUndo} disabled={!canUndo} />
-                    <ActionButton label="Redo" onClick={onRedo} disabled={!canRedo} />
+                    <ActionButton label="Undo" onClick={onUndo} disabled={!canUndo} tone="warning" />
+                    <ActionButton label="Redo" onClick={onRedo} disabled={!canRedo} tone="warning" />
                     <ActionButton label="Delete" onClick={onDelete} disabled={!selectedNodeId} tone="danger" full />
                   </div>
                 )}
@@ -161,8 +167,8 @@ export function FlowToolbarDesktop({
                 <SectionHeader title="View" open={viewSectionOpen} onToggle={() => setViewSectionOpen((prev) => !prev)} />
                 {viewSectionOpen && (
                   <div className="grid grid-cols-2 gap-1">
-                    <ActionButton label={`Snap ${snapEnabled ? 'ON' : 'OFF'}`} onClick={onToggleSnap} />
-                    <ActionButton label="Invite" onClick={onInvite} />
+                    <ActionButton label={`Snap ${snapEnabled ? 'ON' : 'OFF'}`} onClick={onToggleSnap} tone="neutral" />
+                    <ActionButton label="Invite" onClick={onInvite} tone="brand" />
                   </div>
                 )}
               </div>
