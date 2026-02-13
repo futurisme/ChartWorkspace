@@ -1159,7 +1159,7 @@ export function FlowWorkspace({
             fitView
             fitViewOptions={{ padding: 0.2 }}
             translateExtent={UNBOUNDED_TRANSLATE_EXTENT}
-            snapToGrid={snapEnabled}
+            snapToGrid={snapEnabled && !isMobileViewport}
             snapGrid={[GRID_SIZE, GRID_SIZE]}
             attributionPosition="bottom-left"
             connectionLineType={ConnectionLineType.Straight}
