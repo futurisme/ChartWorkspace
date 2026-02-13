@@ -1146,8 +1146,7 @@ export function FlowWorkspace({
             panOnDrag
             panOnScroll
             zoomOnPinch
-            nodeClickDistance={24}
-            paneClickDistance={8}
+            nodeDragThreshold={3}
             onlyRenderVisibleElements
             defaultEdgeOptions={{
               type: 'hierarchy',
