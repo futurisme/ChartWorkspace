@@ -6,12 +6,14 @@ interface FlowToolbarMobileProps {
   isConnected: boolean;
   remoteUsersCount: number;
   isConnectArmed: boolean;
+  isUnconnectArmed: boolean;
   onAddNode: () => void;
   onUndo: () => void;
   onRedo: () => void;
   onRename: () => void;
   onDelete: () => void;
   onConnectStart: () => void;
+  onUnconnectStart: () => void;
 }
 
 function ActionButton({
@@ -57,12 +59,14 @@ export function FlowToolbarMobile({
   isConnected,
   remoteUsersCount,
   isConnectArmed,
+  isUnconnectArmed,
   onAddNode,
   onUndo,
   onRedo,
   onRename,
   onDelete,
   onConnectStart,
+  onUnconnectStart,
 }: FlowToolbarMobileProps) {
   if (!isOpen) {
     return null;
@@ -72,16 +76,28 @@ export function FlowToolbarMobile({
     <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-cyan-400/20 bg-slate-950/90 p-1 pb-[max(env(safe-area-inset-bottom),0.35rem)] shadow-[0_-8px_24px_rgba(34,211,238,0.12)] backdrop-blur lg:hidden">
       <div className="mb-1 flex items-center justify-between rounded-md border border-cyan-500/20 bg-slate-900/70 px-1.5 py-1 text-[9px] font-semibold uppercase tracking-[0.08em] text-cyan-100/90">
         <span>{isConnected ? 'Online' : 'Offline'}</span>
-        <span>{isConnectArmed ? 'Select target node' : `${remoteUsersCount + 1} Active`}</span>
+        <span>
+          {isConnectArmed
+            ? 'Select connect target'
+            : isUnconnectArmed
+              ? 'Select unconnect target'
+              : `${remoteUsersCount + 1} Active`}
+        </span>
       </div>
 
-      <div className="grid grid-cols-3 gap-1">
+      <div className="grid grid-cols-4 gap-1">
         <ActionButton label="Add" onClick={onAddNode} tone="brand" />
         <ActionButton
           label={isConnectArmed ? 'Connecting…' : 'Connect'}
           onClick={onConnectStart}
           disabled={!selectedNodeId}
           tone={isConnectArmed ? 'success' : 'info'}
+        />
+        <ActionButton
+          label={isUnconnectArmed ? 'Unconnecting…' : 'Unconnect'}
+          onClick={onUnconnectStart}
+          disabled={!selectedNodeId}
+          tone="warning"
         />
         <ActionButton label="Rename" onClick={onRename} disabled={!selectedNodeId} tone="info" />
         <ActionButton label="Undo" onClick={onUndo} disabled={!canUndo} tone="warning" />

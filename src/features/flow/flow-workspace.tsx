@@ -267,6 +267,7 @@ export function FlowWorkspace({
   const [canRedo, setCanRedo] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [connectSourceNodeId, setConnectSourceNodeId] = useState<string | null>(null);
+  const [unconnectSourceNodeId, setUnconnectSourceNodeId] = useState<string | null>(null);
 
   const nodeCountRef = useRef(0);
   const undoManagerRef = useRef<Y.UndoManager | null>(null);
@@ -680,8 +681,7 @@ export function FlowWorkspace({
     (sourceId: string, targetId: string) => {
       if (isReadOnly || !doc || !sourceId || !targetId || sourceId === targetId) return;
 
-      const existingFromSource = edges.filter((edge) => edge.source === sourceId);
-      const alreadyConnected = existingFromSource.some((edge) => edge.target === targetId);
+      const alreadyConnected = edges.some((edge) => edge.source === sourceId && edge.target === targetId);
       if (alreadyConnected) {
         return;
       }
@@ -694,16 +694,9 @@ export function FlowWorkspace({
         style: EDGE_STYLE,
       };
 
-      const removedEdgeIds = existingFromSource.map((edge) => edge.id);
-      const remainingEdges = edges.filter((edge) => edge.source !== sourceId);
-      const baseEdges = addEdge(newEdge, remainingEdges);
-
+      const baseEdges = addEdge(newEdge, edges);
       const edgesMap = doc.getMap<YRecordMap>('edges') as YEdgeStore;
       doc.transact(() => {
-        removedEdgeIds.forEach((edgeIdToDelete) => {
-          edgesMap.delete(edgeIdToDelete);
-        });
-
         const edgeDataMap = new Y.Map<unknown>();
         edgeDataMap.set('id', edgeId);
         edgeDataMap.set('source', sourceId);
@@ -722,6 +715,25 @@ export function FlowWorkspace({
       createConnectionEdge(connection.source, connection.target);
     },
     [createConnectionEdge]
+  );
+
+  const removeConnectionEdge = useCallback(
+    (sourceId: string, targetId: string) => {
+      if (isReadOnly || !doc || !sourceId || !targetId) return;
+
+      const edgeToRemove = edges.find((edge) => edge.source === sourceId && edge.target === targetId);
+      if (!edgeToRemove) {
+        return;
+      }
+
+      const edgesMap = doc.getMap<YRecordMap>('edges') as YEdgeStore;
+      doc.transact(() => {
+        edgesMap.delete(edgeToRemove.id);
+      }, 'local');
+
+      setEdges((prev) => prev.filter((edge) => edge.id !== edgeToRemove.id));
+    },
+    [isReadOnly, doc, edges, setEdges]
   );
 
   const handleAddNode = useCallback(() => {
@@ -1014,7 +1026,14 @@ export function FlowWorkspace({
 
   const handleStartConnect = useCallback(() => {
     if (!selectedNodeId || isReadOnly) return;
+    setUnconnectSourceNodeId(null);
     setConnectSourceNodeId(selectedNodeId);
+  }, [selectedNodeId, isReadOnly]);
+
+  const handleStartUnconnect = useCallback(() => {
+    if (!selectedNodeId || isReadOnly) return;
+    setConnectSourceNodeId(null);
+    setUnconnectSourceNodeId(selectedNodeId);
   }, [selectedNodeId, isReadOnly]);
 
   const handleRenameStart = useCallback(() => {
@@ -1146,7 +1165,9 @@ export function FlowWorkspace({
             onUndo={handleUndo}
             onRedo={handleRedo}
             isConnectArmed={Boolean(connectSourceNodeId)}
+            isUnconnectArmed={Boolean(unconnectSourceNodeId)}
             onConnectStart={handleStartConnect}
+            onUnconnectStart={handleStartUnconnect}
           />
           <FlowToolbarMobile
             isOpen={showMobileToolsPanel}
@@ -1161,7 +1182,9 @@ export function FlowWorkspace({
             onRename={handleRenameStart}
             onDelete={handleDeleteNode}
             isConnectArmed={Boolean(connectSourceNodeId)}
+            isUnconnectArmed={Boolean(unconnectSourceNodeId)}
             onConnectStart={handleStartConnect}
+            onUnconnectStart={handleStartUnconnect}
           />
         </>
       )}
@@ -1170,7 +1193,7 @@ export function FlowWorkspace({
         <div className="pointer-events-none absolute right-2 top-2 z-40 flex max-w-[min(92vw,560px)] flex-col gap-1 rounded-lg border border-cyan-400/25 bg-slate-950/92 p-2 shadow-[0_12px_26px_rgba(34,211,238,0.15)] backdrop-blur">
           <div className="pointer-events-auto flex items-center justify-between gap-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-cyan-100">
             <span>{isConnected ? 'Online' : 'Offline'}</span>
-            <span className="truncate text-cyan-200/85">Color: {selectedNodeLabel ?? selectedNodeId}</span>
+            <span className="truncate text-cyan-200/85">{connectSourceNodeId ? 'Connect mode' : unconnectSourceNodeId ? 'Unconnect mode' : `Color: ${selectedNodeLabel ?? selectedNodeId}`}</span>
           </div>
           <div className="pointer-events-auto flex flex-wrap gap-1">
             {COLOR_OPTIONS.map((color) => (
@@ -1226,6 +1249,13 @@ export function FlowWorkspace({
               if (connectSourceNodeId && connectSourceNodeId !== node.id) {
                 createConnectionEdge(connectSourceNodeId, node.id);
                 setConnectSourceNodeId(null);
+                setUnconnectSourceNodeId(null);
+                return;
+              }
+
+              if (unconnectSourceNodeId && unconnectSourceNodeId !== node.id) {
+                removeConnectionEdge(unconnectSourceNodeId, node.id);
+                setUnconnectSourceNodeId(null);
               }
             }}
             onPaneClick={() => {
@@ -1234,6 +1264,7 @@ export function FlowWorkspace({
                 updatePresence({ currentNodeId: undefined });
                 onSelectNode?.(null);
                 setConnectSourceNodeId(null);
+                setUnconnectSourceNodeId(null);
                 return null;
               });
             }}
