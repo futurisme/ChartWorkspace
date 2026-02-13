@@ -668,8 +668,9 @@ export function FlowWorkspace({
     (sourceId: string, targetId: string) => {
       if (isReadOnly || !doc || !sourceId || !targetId || sourceId === targetId) return;
 
-      const exists = edges.some((edge) => edge.source === sourceId && edge.target === targetId);
-      if (exists) {
+      const existingFromSource = edges.filter((edge) => edge.source === sourceId);
+      const alreadyConnected = existingFromSource.some((edge) => edge.target === targetId);
+      if (alreadyConnected) {
         return;
       }
 
@@ -681,9 +682,16 @@ export function FlowWorkspace({
         style: EDGE_STYLE,
       };
 
-      const baseEdges = addEdge(newEdge, edges);
+      const removedEdgeIds = existingFromSource.map((edge) => edge.id);
+      const remainingEdges = edges.filter((edge) => edge.source !== sourceId);
+      const baseEdges = addEdge(newEdge, remainingEdges);
+
       const edgesMap = doc.getMap<YRecordMap>('edges') as YEdgeStore;
       doc.transact(() => {
+        removedEdgeIds.forEach((edgeIdToDelete) => {
+          edgesMap.delete(edgeIdToDelete);
+        });
+
         const edgeDataMap = new Y.Map<unknown>();
         edgeDataMap.set('id', edgeId);
         edgeDataMap.set('source', sourceId);
@@ -1188,12 +1196,13 @@ export function FlowWorkspace({
             attributionPosition="bottom-left"
             connectionLineType={ConnectionLineType.Straight}
             selectionOnDrag={false}
-            panOnDrag
-            panOnScroll={!isMobileViewport}
+            panOnDrag={!isMobileViewport}
+            panOnScroll={false}
             zoomOnPinch
             zoomOnScroll={!isMobileViewport}
             preventScrolling={isMobileViewport}
-            nodeDragThreshold={isMobileViewport ? 1 : 3}
+            minZoom={isMobileViewport ? 0.45 : 0.2}
+            nodeDragThreshold={isMobileViewport ? 0 : 3}
             onlyRenderVisibleElements
             defaultEdgeOptions={{
               type: 'hierarchy',

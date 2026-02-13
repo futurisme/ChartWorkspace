@@ -1,30 +1,38 @@
 import type { Metadata } from 'next';
 import './globals.css';
 
+const siteUrl = 'https://mindmapper.qzz.io';
 const siteName = 'MindMapper Workspace';
 const defaultTitle = 'MindMapper Workspace | Cybernetic Concept Mapping';
 const defaultDescription =
   'Build futuristic concept maps in MindMapper Workspace with real-time collaboration, fast editing, and immersive cybernetic visuals.';
+const socialImage = `${siteUrl}/social-preview-whatsapp.jpg`;
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://mindmapper.qzz.io'),
+  metadataBase: new URL(siteUrl),
   title: {
     default: defaultTitle,
     template: '%s | MindMapper Workspace',
   },
   description: defaultDescription,
+  alternates: {
+    canonical: '/',
+  },
   applicationName: siteName,
   openGraph: {
     type: 'website',
-    url: '/',
+    locale: 'en_US',
+    url: siteUrl,
     siteName,
     title: defaultTitle,
     description: defaultDescription,
     images: [
       {
-        url: '/opengraph-image',
+        url: socialImage,
+        secureUrl: socialImage,
         width: 1200,
         height: 630,
+        type: 'image/jpeg',
         alt: 'MindMapper Workspace futuristic landing preview',
       },
     ],
@@ -33,7 +41,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: defaultTitle,
     description: defaultDescription,
-    images: ['/twitter-image'],
+    images: [socialImage],
   },
 };
 
