@@ -1116,7 +1116,6 @@ export function FlowWorkspace({
             selectedPosition={selectedPosition}
             canUndo={canUndo}
             canRedo={canRedo}
-            snapEnabled={snapEnabled}
             remoteUsersCount={remoteUsers.length}
             isConnected={isConnected}
             saveErrorCount={saveErrorCount}
@@ -1133,7 +1132,6 @@ export function FlowWorkspace({
             selectedNodeId={selectedNodeId}
             canUndo={canUndo}
             canRedo={canRedo}
-            snapEnabled={snapEnabled}
             isConnected={isConnected}
             remoteUsersCount={remoteUsers.length}
             onAddNode={handleAddNode}
