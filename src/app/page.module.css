@@ -144,3 +144,13 @@
     transform: translateY(42px);
   }
 }
+
+
+@media (prefers-reduced-motion: reduce) {
+  .grid,
+  .glow,
+  .button {
+    animation: none;
+    transition: none;
+  }
+}

@@ -1,14 +1,12 @@
 'use client';
 
 import { Orbitron } from 'next/font/google';
-import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import styles from './page.module.css';
 
 const orbitron = Orbitron({ subsets: ['latin'], weight: ['400', '500', '700'] });
 
 export default function LandingPage() {
-  const router = useRouter();
-
   return (
     <main className={styles.main}>
       <div className={styles.grid} aria-hidden="true" />
@@ -28,13 +26,9 @@ export default function LandingPage() {
               previous flow with real-time editing and futuristic interaction.
             </p>
 
-            <button
-              type="button"
-              onClick={() => router.push('/workspace')}
-              className={`${styles.button} ${orbitron.className}`}
-            >
+            <Link href="/workspace" className={`${styles.button} ${orbitron.className}`} aria-label="Get started and open workspace">
               Get Started
-            </button>
+            </Link>
           </div>
 
           <aside className={styles.credit}>

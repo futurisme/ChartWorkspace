@@ -97,6 +97,17 @@ export default function WorkspaceHome() {
               </p>
             )}
           </form>
+
+          <div className="mt-8 border-t pt-6">
+            <p className="text-center text-sm text-gray-600">Features:</p>
+            <ul className="mt-3 space-y-2 text-sm text-gray-700">
+              <li>Real-time collaboration</li>
+              <li>Live presence awareness</li>
+              <li>Conflict-free editing (CRDT)</li>
+              <li>Auto-save to database</li>
+              <li>Editor and viewer modes</li>
+            </ul>
+          </div>
         </div>
       </div>
     </main>
