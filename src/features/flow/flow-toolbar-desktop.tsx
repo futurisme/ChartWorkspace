@@ -39,11 +39,51 @@ function SectionHeader({
     <button
       type="button"
       onClick={onToggle}
-      className="flex w-full items-center justify-between rounded-md bg-slate-100 px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-700"
+      className="flex w-full items-center justify-between rounded-md border border-cyan-500/20 bg-slate-900/70 px-2.5 py-1.5 text-left text-[10px] font-semibold uppercase tracking-[0.11em] text-cyan-100/90"
     >
       <span>{title}</span>
-      <span>{open ? 'Hide' : 'Show'}</span>
+      <span className="text-cyan-200/70">{open ? '−' : '+'}</span>
     </button>
+  );
+}
+
+function ActionButton({
+  label,
+  onClick,
+  disabled,
+  tone = 'neutral',
+  full = false,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  tone?: 'neutral' | 'brand' | 'danger';
+  full?: boolean;
+}) {
+  const toneClass =
+    tone === 'brand'
+      ? 'border-cyan-300/45 bg-cyan-500/15 text-cyan-100 hover:bg-cyan-500/25'
+      : tone === 'danger'
+        ? 'border-rose-300/40 bg-rose-500/15 text-rose-100 hover:bg-rose-500/25'
+        : 'border-cyan-500/25 bg-slate-900/75 text-slate-100 hover:bg-slate-800/80';
+
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`${full ? 'col-span-2' : ''} rounded-md border px-2 py-1.5 text-[11px] font-semibold tracking-wide transition ${toneClass} disabled:opacity-35`}
+    >
+      {label}
+    </button>
+  );
+}
+
+function StatusItem({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="rounded-md border border-cyan-500/15 bg-slate-900/65 px-2 py-1.5 text-[11px] text-slate-200">
+      <span className="mr-1 text-cyan-200/75">{label}:</span>
+      <span className="font-semibold text-slate-50">{value}</span>
+    </div>
   );
 }
 
@@ -80,110 +120,49 @@ export function FlowToolbarDesktop({
   return (
     <>
       {showControlsPanel && (
-        <div className="pointer-events-none absolute left-4 top-3 z-30 hidden w-[252px] lg:block xl:w-[280px]">
-          <div className="pointer-events-auto max-h-[calc(100vh-1.5rem)] overflow-y-auto rounded-xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur">
-            <h2 className="mb-2 text-sm font-semibold text-slate-900">Workspace Controls</h2>
+        <div className="pointer-events-none absolute left-3 top-2.5 z-30 hidden w-[236px] lg:block xl:w-[248px]">
+          <div className="pointer-events-auto max-h-[calc(100vh-1rem)] overflow-y-auto rounded-lg border border-cyan-500/25 bg-slate-950/82 p-2 shadow-[0_12px_30px_rgba(34,211,238,0.13)] backdrop-blur">
+            <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.13em] text-cyan-100">Workspace Controls</h2>
 
-            <div className="space-y-3">
-              <div className="space-y-2">
+            <div className="space-y-2">
+              <div className="space-y-1.5">
                 <SectionHeader title="Node" open={nodeSectionOpen} onToggle={() => setNodeSectionOpen((prev) => !prev)} />
                 {nodeSectionOpen && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={onAddNode}
-                      className="rounded bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-                    >
-                      Add Node
-                    </button>
-                    <button
-                      onClick={onRename}
-                      disabled={!selectedNodeId}
-                      className="rounded bg-amber-500 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                    >
-                      Rename
-                    </button>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <ActionButton label="Add Node" onClick={onAddNode} tone="brand" />
+                    <ActionButton label="Rename" onClick={onRename} disabled={!selectedNodeId} />
                   </div>
                 )}
               </div>
 
-              <div className="space-y-2">
-                <SectionHeader
-                  title="Structure"
-                  open={structureSectionOpen}
-                  onToggle={() => setStructureSectionOpen((prev) => !prev)}
-                />
+              <div className="space-y-1.5">
+                <SectionHeader title="Structure" open={structureSectionOpen} onToggle={() => setStructureSectionOpen((prev) => !prev)} />
                 {structureSectionOpen && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={onAddChild}
-                      disabled={!selectedNodeId}
-                      className="rounded bg-indigo-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                    >
-                      Child
-                    </button>
-                    <button
-                      onClick={onAddSibling}
-                      disabled={!selectedNodeId}
-                      className="rounded bg-indigo-500 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                    >
-                      Sibling
-                    </button>
-                    <button
-                      onClick={onAddParent}
-                      disabled={!selectedNodeId}
-                      className="col-span-2 rounded bg-indigo-400 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                    >
-                      Parent
-                    </button>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <ActionButton label="Child" onClick={onAddChild} disabled={!selectedNodeId} />
+                    <ActionButton label="Sibling" onClick={onAddSibling} disabled={!selectedNodeId} />
+                    <ActionButton label="Parent" onClick={onAddParent} disabled={!selectedNodeId} full />
                   </div>
                 )}
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <SectionHeader title="Edit" open={editSectionOpen} onToggle={() => setEditSectionOpen((prev) => !prev)} />
                 {editSectionOpen && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={onUndo}
-                      disabled={!canUndo}
-                      className="rounded border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50"
-                    >
-                      Undo
-                    </button>
-                    <button
-                      onClick={onRedo}
-                      disabled={!canRedo}
-                      className="rounded border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50"
-                    >
-                      Redo
-                    </button>
-                    <button
-                      onClick={onDelete}
-                      disabled={!selectedNodeId}
-                      className="col-span-2 rounded bg-red-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                    >
-                      Delete
-                    </button>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <ActionButton label="Undo" onClick={onUndo} disabled={!canUndo} />
+                    <ActionButton label="Redo" onClick={onRedo} disabled={!canRedo} />
+                    <ActionButton label="Delete" onClick={onDelete} disabled={!selectedNodeId} tone="danger" full />
                   </div>
                 )}
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <SectionHeader title="View" open={viewSectionOpen} onToggle={() => setViewSectionOpen((prev) => !prev)} />
                 {viewSectionOpen && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={onToggleSnap}
-                      className="rounded border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
-                    >
-                      Snap: {snapEnabled ? 'ON' : 'OFF'}
-                    </button>
-                    <button
-                      onClick={onInvite}
-                      className="rounded border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
-                    >
-                      Invite
-                    </button>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <ActionButton label={`Snap ${snapEnabled ? 'ON' : 'OFF'}`} onClick={onToggleSnap} />
+                    <ActionButton label="Invite" onClick={onInvite} />
                   </div>
                 )}
               </div>
@@ -193,34 +172,21 @@ export function FlowToolbarDesktop({
       )}
 
       {showStatusPanel && (
-        <div className="pointer-events-none absolute right-4 top-3 z-30 hidden w-[252px] lg:block xl:w-[280px]">
-          <div className="pointer-events-auto max-h-[calc(100vh-1.5rem)] overflow-y-auto rounded-xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur">
-            <h2 className="mb-2 text-sm font-semibold text-slate-900">Status Panel</h2>
-            <div className="space-y-2 text-sm text-slate-700">
-              <div className="rounded bg-slate-100 px-3 py-2">
-                Selection: <span className="font-semibold">{selectedNodeId ? selectedNodeLabel ?? selectedNodeId : 'None'}</span>
-              </div>
-              <div className="rounded bg-slate-100 px-3 py-2">
-                Parent: <span className="font-semibold">{selectedParentId ?? '-'}</span>
-              </div>
-              <div className="rounded bg-slate-100 px-3 py-2">
-                Child count: <span className="font-semibold">{selectedNodeId ? selectedChildCount : 0}</span>
-              </div>
-              <div className="rounded bg-slate-100 px-3 py-2">
-                Position: <span className="font-semibold">{selectedPosition ? `${selectedPosition.x}, ${selectedPosition.y}` : '-'}</span>
-              </div>
-              <div className="rounded bg-slate-100 px-3 py-2">
-                Snap state: <span className="font-semibold">{snapEnabled ? 'ON' : 'OFF'}</span>
-              </div>
-              <div className="rounded bg-slate-100 px-3 py-2">
-                Connection: <span className="font-semibold">{isConnected ? 'Online' : 'Offline'}</span>
-              </div>
-              <div className="rounded bg-slate-100 px-3 py-2">
-                Collaborators: <span className="font-semibold">{remoteUsersCount + 1}</span>
-              </div>
-              <div className="rounded bg-slate-100 px-3 py-2">
-                Save warnings: <span className="font-semibold">{saveErrorCount}</span>
-              </div>
+        <div className="pointer-events-none absolute right-3 top-2.5 z-30 hidden w-[236px] lg:block xl:w-[248px]">
+          <div className="pointer-events-auto max-h-[calc(100vh-1rem)] overflow-y-auto rounded-lg border border-cyan-500/25 bg-slate-950/82 p-2 shadow-[0_12px_30px_rgba(34,211,238,0.13)] backdrop-blur">
+            <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.13em] text-cyan-100">Status</h2>
+            <div className="space-y-1.5">
+              <StatusItem label="Selection" value={selectedNodeId ? selectedNodeLabel ?? selectedNodeId : 'None'} />
+              <StatusItem label="Parent" value={selectedParentId ?? '-'} />
+              <StatusItem label="Children" value={selectedNodeId ? selectedChildCount : 0} />
+              <StatusItem
+                label="Position"
+                value={selectedPosition ? `${selectedPosition.x}, ${selectedPosition.y}` : '-'}
+              />
+              <StatusItem label="Snap" value={snapEnabled ? 'ON' : 'OFF'} />
+              <StatusItem label="Connection" value={isConnected ? 'Online' : 'Offline'} />
+              <StatusItem label="Collaborators" value={remoteUsersCount + 1} />
+              <StatusItem label="Save warnings" value={saveErrorCount} />
             </div>
           </div>
         </div>

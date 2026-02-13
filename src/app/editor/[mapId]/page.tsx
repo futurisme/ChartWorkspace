@@ -56,6 +56,15 @@ function EditorContent() {
   if (typeof window !== 'undefined') {
     localStorage.setItem('userId', userId);
   }
+  const handleNodeSelection = (nodeId: string | null) => {
+    if (!nodeId || typeof window === 'undefined') {
+      return;
+    }
+
+    if (window.matchMedia('(max-width: 1023px)').matches) {
+      setShowMobileToolsPanel(true);
+    }
+  };
 
   return (
     <RealtimeProvider
@@ -65,35 +74,35 @@ function EditorContent() {
       mode="edit"
     >
       <div className="flex h-screen flex-col">
-        <header className="border-b border-slate-200 bg-white/95 px-3 py-1.5 backdrop-blur sm:px-4">
+        <header className="border-b border-cyan-500/25 bg-slate-950/90 px-2.5 py-1.5 shadow-[0_6px_20px_rgba(6,182,212,0.12)] backdrop-blur sm:px-3">
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
-              <h1 className="truncate text-base font-bold text-slate-900 sm:text-lg">{title}</h1>
-              <p className="hidden text-xs text-slate-500 sm:block">Collaborative concept workspace</p>
+              <h1 className="truncate text-sm font-semibold tracking-wide text-cyan-100 sm:text-base">{title}</h1>
+              <p className="hidden text-[10px] uppercase tracking-[0.12em] text-cyan-300/70 sm:block">Collaborative concept workspace</p>
             </div>
             <div className="flex items-center gap-1.5 sm:gap-2">
               <button
                 type="button"
                 onClick={() => setShowMobileToolsPanel((prev) => !prev)}
-                className="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 lg:hidden"
+                className="rounded-md border border-cyan-400/40 bg-cyan-500/10 px-2 py-1 text-[10px] font-semibold text-cyan-100 transition hover:bg-cyan-500/20 lg:hidden"
               >
                 {showMobileToolsPanel ? 'Hide Tools' : 'Show Tools'}
               </button>
               <button
                 type="button"
                 onClick={() => setShowDesktopControlsPanel((prev) => !prev)}
-                className="hidden rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 lg:inline-flex"
+                className="hidden rounded-md border border-cyan-400/30 bg-slate-900/70 px-2 py-1 text-[11px] font-semibold text-cyan-100 transition hover:bg-slate-900 lg:inline-flex"
               >
                 {showDesktopControlsPanel ? 'Hide Controls' : 'Show Controls'}
               </button>
               <button
                 type="button"
                 onClick={() => setShowDesktopStatusPanel((prev) => !prev)}
-                className="hidden rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 lg:inline-flex"
+                className="hidden rounded-md border border-cyan-400/30 bg-slate-900/70 px-2 py-1 text-[11px] font-semibold text-cyan-100 transition hover:bg-slate-900 lg:inline-flex"
               >
                 {showDesktopStatusPanel ? 'Hide Status' : 'Show Status'}
               </button>
-              <div className="rounded border border-blue-100 bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-700 sm:text-xs">
+              <div className="rounded-md border border-cyan-300/30 bg-cyan-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-cyan-100 sm:text-[11px]">
                 Edit #{mapId}
               </div>
             </div>
@@ -108,6 +117,7 @@ function EditorContent() {
             showDesktopControlsPanel={showDesktopControlsPanel}
             showDesktopStatusPanel={showDesktopStatusPanel}
             showMobileToolsPanel={showMobileToolsPanel}
+            onSelectNode={handleNodeSelection}
           />
         </div>
       </div>

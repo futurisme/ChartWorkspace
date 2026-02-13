@@ -232,6 +232,7 @@ interface FlowWorkspaceProps {
   showDesktopControlsPanel?: boolean;
   showDesktopStatusPanel?: boolean;
   showMobileToolsPanel?: boolean;
+  onSelectNode?: (nodeId: string | null) => void;
 }
 
 export function FlowWorkspace({
@@ -239,6 +240,7 @@ export function FlowWorkspace({
   showDesktopControlsPanel = true,
   showDesktopStatusPanel = true,
   showMobileToolsPanel = false,
+  onSelectNode,
 }: FlowWorkspaceProps) {
   const { doc, isConnected, updatePresence, remoteUsers, saveErrorCount } = useRealtime();
   const [nodes, setNodes, onNodesChange] = useNodesState<ConceptNodeData>([]);
@@ -1014,10 +1016,11 @@ export function FlowWorkspace({
           return prev;
         }
         updatePresence({ currentNodeId: nextSelected ?? undefined });
+        onSelectNode?.(nextSelected);
         return nextSelected;
       });
     },
-    [updatePresence]
+    [onSelectNode, updatePresence]
   );
 
   const handleInvite = useCallback(() => {
