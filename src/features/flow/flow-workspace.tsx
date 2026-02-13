@@ -26,6 +26,7 @@ import * as Y from 'yjs';
 import { useRealtime } from '@/components/RealtimeProvider';
 import {
   EDGE_STYLE,
+  COLOR_OPTIONS,
   AUTO_SHIFT,
   DEFAULT_NODE_SIZE,
   GRID_SIZE,
@@ -54,6 +55,15 @@ import type {
 type YRecordMap = Y.Map<unknown>;
 type YNodeStore = Y.Map<YRecordMap>;
 type YEdgeStore = Y.Map<YRecordMap>;
+
+const GRADIENT_COLOR_OPTIONS = [
+  '#06b6d4',
+  '#8b5cf6',
+  '#ec4899',
+  '#f97316',
+  '#84cc16',
+  '#14b8a6',
+];
 
 interface PositionUpdate {
   id: string;
@@ -301,6 +311,8 @@ export function FlowWorkspace({
     ? { x: Math.round(selectedNode.position.x), y: Math.round(selectedNode.position.y) }
     : null;
   const selectedNodeLabel = selectedNode ? getNodeLabel(selectedNode) : null;
+  const selectedNodeColor = (selectedNode?.data as ConceptNodeData | undefined)?.color ?? COLOR_OPTIONS[0];
+
 
   const persistNodePositions = useCallback(
     (updates: PositionUpdate[]) => {
@@ -1154,6 +1166,45 @@ export function FlowWorkspace({
         </>
       )}
 
+      {!isReadOnly && selectedNodeId && (
+        <div className="pointer-events-none absolute right-2 top-2 z-40 flex max-w-[min(92vw,560px)] flex-col gap-1 rounded-lg border border-cyan-400/25 bg-slate-950/92 p-2 shadow-[0_12px_26px_rgba(34,211,238,0.15)] backdrop-blur">
+          <div className="pointer-events-auto flex items-center justify-between gap-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-cyan-100">
+            <span>{isConnected ? 'Online' : 'Offline'}</span>
+            <span className="truncate text-cyan-200/85">Color: {selectedNodeLabel ?? selectedNodeId}</span>
+          </div>
+          <div className="pointer-events-auto flex flex-wrap gap-1">
+            {COLOR_OPTIONS.map((color) => (
+              <button
+                key={color}
+                type="button"
+                onClick={() => handleChangeColor(selectedNodeId, color)}
+                className={`h-6 w-6 rounded-md border-2 ${selectedNodeColor === color ? 'border-white' : 'border-slate-800'}`}
+                style={{ backgroundColor: color }}
+                aria-label={`Set primary color ${color}`}
+              />
+            ))}
+          </div>
+          <details className="pointer-events-auto rounded border border-cyan-500/25 bg-slate-900/80 p-1 text-[10px] text-cyan-100">
+            <summary className="cursor-pointer select-none font-semibold uppercase tracking-[0.08em]">More gradients / accent colors</summary>
+            <div className="mt-1 flex flex-wrap gap-1">
+              {GRADIENT_COLOR_OPTIONS.map((color) => (
+                <button
+                  key={`gradient-${color}`}
+                  type="button"
+                  onClick={() => handleChangeColor(selectedNodeId, color)}
+                  className={`h-6 w-6 rounded-md border-2 ${selectedNodeColor === color ? 'border-white' : 'border-slate-800'}`}
+                  style={{
+                    backgroundImage: `linear-gradient(135deg, ${color}, #ffffff22)`,
+                    backgroundColor: color,
+                  }}
+                  aria-label={`Set gradient color ${color}`}
+                />
+              ))}
+            </div>
+          </details>
+        </div>
+      )}
+
       <div
         ref={reactFlowWrapperRef}
         className={`relative min-h-0 flex-1 overflow-hidden ${!isReadOnly && showMobileToolsPanel ? 'pb-20 lg:pb-0' : 'pb-0'}`}
@@ -1196,13 +1247,13 @@ export function FlowWorkspace({
             attributionPosition="bottom-left"
             connectionLineType={ConnectionLineType.Straight}
             selectionOnDrag={false}
-            panOnDrag={!isMobileViewport}
+            panOnDrag
             panOnScroll={false}
             zoomOnPinch
             zoomOnScroll={!isMobileViewport}
             preventScrolling={isMobileViewport}
-            minZoom={isMobileViewport ? 0.45 : 0.2}
-            nodeDragThreshold={isMobileViewport ? 0 : 3}
+            minZoom={isMobileViewport ? 0.35 : 0.2}
+            nodeDragThreshold={isMobileViewport ? 1 : 3}
             onlyRenderVisibleElements
             defaultEdgeOptions={{
               type: 'hierarchy',
