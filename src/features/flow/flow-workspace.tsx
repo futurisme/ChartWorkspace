@@ -233,6 +233,8 @@ interface FlowWorkspaceProps {
   showDesktopStatusPanel?: boolean;
   showMobileToolsPanel?: boolean;
   onSelectNode?: (nodeId: string | null) => void;
+  snapEnabled: boolean;
+  inviteRequestToken: number;
 }
 
 export function FlowWorkspace({
@@ -241,6 +243,8 @@ export function FlowWorkspace({
   showDesktopStatusPanel = true,
   showMobileToolsPanel = false,
   onSelectNode,
+  snapEnabled,
+  inviteRequestToken,
 }: FlowWorkspaceProps) {
   const { doc, isConnected, updatePresence, remoteUsers, saveErrorCount } = useRealtime();
   const [nodes, setNodes, onNodesChange] = useNodesState<ConceptNodeData>([]);
@@ -251,8 +255,8 @@ export function FlowWorkspace({
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
-  const [snapEnabled, setSnapEnabled] = useState(true);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
+  const [connectSourceNodeId, setConnectSourceNodeId] = useState<string | null>(null);
 
   const nodeCountRef = useRef(0);
   const undoManagerRef = useRef<Y.UndoManager | null>(null);
@@ -660,32 +664,44 @@ export function FlowWorkspace({
     [isReadOnly, doc, onEdgesChange]
   );
 
-  const handleConnect = useCallback(
-    (connection: Connection) => {
-      if (isReadOnly || !doc || !connection.source || !connection.target) return;
+  const createConnectionEdge = useCallback(
+    (sourceId: string, targetId: string) => {
+      if (isReadOnly || !doc || !sourceId || !targetId || sourceId === targetId) return;
+
+      const exists = edges.some((edge) => edge.source === sourceId && edge.target === targetId);
+      if (exists) {
+        return;
+      }
 
       const edgeId = `edge-${Date.now()}`;
       const newEdge: Edge = {
         id: edgeId,
-        source: connection.source,
-        target: connection.target,
+        source: sourceId,
+        target: targetId,
         style: EDGE_STYLE,
       };
 
       const baseEdges = addEdge(newEdge, edges);
-
       const edgesMap = doc.getMap<YRecordMap>('edges') as YEdgeStore;
       doc.transact(() => {
         const edgeDataMap = new Y.Map<unknown>();
         edgeDataMap.set('id', edgeId);
-        edgeDataMap.set('source', connection.source);
-        edgeDataMap.set('target', connection.target);
+        edgeDataMap.set('source', sourceId);
+        edgeDataMap.set('target', targetId);
         edgesMap.set(edgeId, edgeDataMap);
       }, 'local');
 
       setEdges(baseEdges);
     },
     [isReadOnly, doc, edges, setEdges]
+  );
+
+  const handleConnect = useCallback(
+    (connection: Connection) => {
+      if (!connection.source || !connection.target) return;
+      createConnectionEdge(connection.source, connection.target);
+    },
+    [createConnectionEdge]
   );
 
   const handleAddNode = useCallback(() => {
@@ -976,6 +992,11 @@ export function FlowWorkspace({
     }
   }, []);
 
+  const handleStartConnect = useCallback(() => {
+    if (!selectedNodeId || isReadOnly) return;
+    setConnectSourceNodeId(selectedNodeId);
+  }, [selectedNodeId, isReadOnly]);
+
   const handleRenameStart = useCallback(() => {
     if (!selectedNodeId || isReadOnly) return;
     const node = nodes.find((n) => n.id === selectedNodeId);
@@ -1024,9 +1045,12 @@ export function FlowWorkspace({
     [onSelectNode, updatePresence]
   );
 
-  const handleInvite = useCallback(() => {
-    setShowInviteModal(true);
-  }, []);
+
+  useEffect(() => {
+    if (inviteRequestToken > 0) {
+      setShowInviteModal(true);
+    }
+  }, [inviteRequestToken]);
 
   const nodeActionContextValue = useMemo<NodeActionContextValue>(
     () => ({ onChangeColor: handleChangeColor, isReadOnly }),
@@ -1097,15 +1121,12 @@ export function FlowWorkspace({
             isConnected={isConnected}
             saveErrorCount={saveErrorCount}
             onAddNode={handleAddNode}
-            onAddChild={handleAddChild}
-            onAddSibling={handleAddSibling}
-            onAddParent={handleAddParent}
             onRename={handleRenameStart}
             onDelete={handleDeleteNode}
             onUndo={handleUndo}
             onRedo={handleRedo}
-            onInvite={handleInvite}
-            onToggleSnap={() => setSnapEnabled((prev) => !prev)}
+            isConnectArmed={Boolean(connectSourceNodeId)}
+            onConnectStart={handleStartConnect}
           />
           <FlowToolbarMobile
             isOpen={showMobileToolsPanel}
@@ -1116,15 +1137,12 @@ export function FlowWorkspace({
             isConnected={isConnected}
             remoteUsersCount={remoteUsers.length}
             onAddNode={handleAddNode}
-            onAddChild={handleAddChild}
-            onAddSibling={handleAddSibling}
-            onAddParent={handleAddParent}
             onUndo={handleUndo}
             onRedo={handleRedo}
             onRename={handleRenameStart}
             onDelete={handleDeleteNode}
-            onToggleSnap={() => setSnapEnabled((prev) => !prev)}
-            onInvite={handleInvite}
+            isConnectArmed={Boolean(connectSourceNodeId)}
+            onConnectStart={handleStartConnect}
           />
         </>
       )}
@@ -1146,11 +1164,18 @@ export function FlowWorkspace({
             onConnect={handleConnect}
             onSelectionChange={handleSelectionChange}
             onMove={handleMove}
+            onNodeClick={(_event, node) => {
+              if (connectSourceNodeId && connectSourceNodeId !== node.id) {
+                createConnectionEdge(connectSourceNodeId, node.id);
+                setConnectSourceNodeId(null);
+              }
+            }}
             onPaneClick={() => {
               setSelectedNodeId((prev) => {
                 if (!prev) return prev;
                 updatePresence({ currentNodeId: undefined });
                 onSelectNode?.(null);
+                setConnectSourceNodeId(null);
                 return null;
               });
             }}
@@ -1169,7 +1194,7 @@ export function FlowWorkspace({
             zoomOnPinch
             zoomOnScroll={!isMobileViewport}
             preventScrolling={isMobileViewport}
-            nodeDragThreshold={isMobileViewport ? 3 : 3}
+            nodeDragThreshold={isMobileViewport ? 1 : 3}
             onlyRenderVisibleElements
             defaultEdgeOptions={{
               type: 'hierarchy',

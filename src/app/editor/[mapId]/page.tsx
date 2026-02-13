@@ -15,6 +15,8 @@ function EditorContent() {
   const [showDesktopControlsPanel, setShowDesktopControlsPanel] = useState(true);
   const [showDesktopStatusPanel, setShowDesktopStatusPanel] = useState(true);
   const [showMobileToolsPanel, setShowMobileToolsPanel] = useState(false);
+  const [snapEnabled, setSnapEnabled] = useState(true);
+  const [inviteRequestToken, setInviteRequestToken] = useState(0);
 
   useEffect(() => {
     const loadMap = async () => {
@@ -105,6 +107,20 @@ function EditorContent() {
               >
                 {showDesktopStatusPanel ? 'Hide Status' : 'Show Status'}
               </button>
+              <button
+                type="button"
+                onClick={() => setSnapEnabled((prev) => !prev)}
+                className="rounded-md border border-cyan-400/30 bg-slate-900/70 px-2 py-1 text-[10px] font-semibold text-cyan-100 transition hover:bg-slate-900 sm:text-[11px]"
+              >
+                Snap {snapEnabled ? 'ON' : 'OFF'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setInviteRequestToken((prev) => prev + 1)}
+                className="rounded-md border border-cyan-400/30 bg-slate-900/70 px-2 py-1 text-[10px] font-semibold text-cyan-100 transition hover:bg-slate-900 sm:text-[11px]"
+              >
+                Invite
+              </button>
               <div className="rounded-md border border-cyan-300/30 bg-cyan-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-cyan-100 sm:text-[11px]">
                 Edit #{mapId}
               </div>
@@ -121,6 +137,8 @@ function EditorContent() {
             showDesktopStatusPanel={showDesktopStatusPanel}
             showMobileToolsPanel={showMobileToolsPanel}
             onSelectNode={handleNodeSelection}
+            snapEnabled={snapEnabled}
+            inviteRequestToken={inviteRequestToken}
           />
         </div>
       </div>
