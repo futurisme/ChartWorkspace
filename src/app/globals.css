@@ -44,8 +44,14 @@ body {
 }
 
 @media (pointer: coarse) {
+  .react-flow__pane,
+  .react-flow__viewport {
+    touch-action: none;
+  }
+
   .react-flow__node {
     touch-action: none;
+    will-change: transform;
   }
 }
 
