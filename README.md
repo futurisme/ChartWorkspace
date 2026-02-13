@@ -199,6 +199,7 @@ Current fix:
 - Presence UI: `src/components/PresenceBar.tsx`
 - Flow modules: `src/features/flow/*`
 - Shared libs: `src/lib/snapshot.ts`, `src/lib/mapId.ts`, `src/lib/presence.ts`, `src/lib/prisma.ts`
+- Layout now uses system fonts from CSS (`src/app/globals.css`) to avoid external font fetch at build/runtime, improving reliability and reducing bandwidth use.
 - Node/edge change handlers now persist `add/remove/reset/position` into Yjs transactions for full peer sync.
 
 ### 4) Core Runtime Rules
@@ -222,3 +223,37 @@ npm run start
 - Vercel for web app.
 - Railway signaling service with `wss://...up.railway.app`.
 - Set `NEXT_PUBLIC_WEBRTC_URL` in production and redeploy web app.
+
+
+### 11) Huge Checking Report (Latest)
+Status from latest validation run:
+- ✅ Lint clean (`npm run lint`).
+- ✅ Unit tests pass (`npm run test:unit`, 15/15).
+- ✅ TypeScript type-check clean (`npx tsc --noEmit`).
+- ✅ Production build passes (`npm run build`).
+- ✅ Route response timing in local production run:
+  - `/`: TTFB ~150ms
+  - `/editor/0001`: TTFB ~119ms
+  - `/view/0001`: TTFB ~33ms
+
+Key hidden/potential/domino/conditional issue fixed:
+- **Conditional build/runtime failure** due to `next/font/google` fetching Inter from Google in restricted/offline environments.
+  - Impact chain (domino): font fetch fails -> Next build fails -> production cannot deploy.
+  - Fix: remove Google font dependency and rely on existing system font stack in `globals.css`.
+  - Performance impact: removes external font request, reduces bytes transferred, lowers cold-start rendering risk, and is more quota-friendly for users.
+
+Recommended web performance targets (reference web testing scores):
+- Lighthouse Performance: **>= 90**
+- Accessibility: **>= 95**
+- Best Practices: **>= 95**
+- SEO: **>= 90**
+
+Quick check commands:
+```bash
+npm run lint
+npm run test:unit
+npx tsc --noEmit
+npm run build
+npm run start
+curl -s -o /dev/null -w 'root ttfb=%{time_starttransfer} total=%{time_total}\n' http://localhost:3000/
+```
