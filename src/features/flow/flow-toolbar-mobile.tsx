@@ -33,22 +33,22 @@ function ActionButton({
 }) {
   const toneClass =
     tone === 'brand'
-      ? 'border-cyan-300/55 bg-cyan-500/22 text-cyan-50 hover:bg-cyan-500/32 active:bg-cyan-500/38'
+      ? 'border-cyan-300 bg-cyan-600 text-white shadow-[0_0_0_1px_rgba(34,211,238,0.3)] hover:bg-cyan-500 active:bg-cyan-700'
       : tone === 'success'
-        ? 'border-emerald-300/60 bg-emerald-500/24 text-emerald-50 hover:bg-emerald-500/34 active:bg-emerald-500/40'
+        ? 'border-emerald-300 bg-emerald-600 text-white shadow-[0_0_0_1px_rgba(16,185,129,0.3)] hover:bg-emerald-500 active:bg-emerald-700'
         : tone === 'warning'
-          ? 'border-amber-300/65 bg-amber-500/28 text-amber-50 hover:bg-amber-500/38 active:bg-amber-500/46'
+          ? 'border-amber-300 bg-amber-500 text-slate-950 shadow-[0_0_0_1px_rgba(245,158,11,0.3)] hover:bg-amber-400 active:bg-amber-600'
           : tone === 'danger'
-            ? 'border-red-300/75 bg-red-600/40 text-red-50 hover:bg-red-600/52 active:bg-red-600/60'
+            ? 'border-red-300 bg-red-600 text-white shadow-[0_0_0_1px_rgba(239,68,68,0.35)] hover:bg-red-500 active:bg-red-700'
             : tone === 'info'
-              ? 'border-violet-300/60 bg-violet-500/24 text-violet-50 hover:bg-violet-500/34 active:bg-violet-500/40'
-              : 'border-slate-300/35 bg-slate-800/82 text-slate-100 hover:bg-slate-700/90 active:bg-slate-700';
+              ? 'border-violet-300 bg-violet-600 text-white shadow-[0_0_0_1px_rgba(139,92,246,0.3)] hover:bg-violet-500 active:bg-violet-700'
+              : 'border-slate-300 bg-slate-600 text-white shadow-[0_0_0_1px_rgba(148,163,184,0.2)] hover:bg-slate-500 active:bg-slate-700';
 
   return (
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`${full ? 'col-span-2' : ''} rounded-md border px-1.5 py-1 text-[10px] font-semibold tracking-wide transition-colors ${toneClass} disabled:border-slate-700/60 disabled:bg-slate-900/50 disabled:text-slate-500 disabled:opacity-100`}
+      className={`${full ? 'col-span-2' : ''} rounded-md border px-1.5 py-1 text-[10px] font-semibold tracking-wide transition-colors ${toneClass} disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-800 disabled:text-slate-500 disabled:shadow-none`}
     >
       {label}
     </button>
