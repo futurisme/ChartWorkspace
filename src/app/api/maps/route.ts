@@ -3,6 +3,44 @@ import { prisma } from '@/lib/prisma';
 import { createDocWithSnapshot, getCurrentSnapshot } from '@/lib/snapshot';
 import { formatMapId } from '@/lib/mapId';
 
+export async function GET(request: NextRequest) {
+  try {
+    if (!process.env.DATABASE_URL) {
+      return NextResponse.json({ error: 'Database configuration missing' }, { status: 500 });
+    }
+
+    const query = request.nextUrl.searchParams.get('q')?.trim();
+    const maps = await prisma.map.findMany({
+      where: query
+        ? {
+            title: {
+              contains: query,
+              mode: 'insensitive',
+            },
+          }
+        : undefined,
+      orderBy: { updatedAt: 'desc' },
+      take: 100,
+      select: {
+        id: true,
+        title: true,
+        updatedAt: true,
+      },
+    });
+
+    return NextResponse.json({
+      maps: maps.map((map) => ({
+        id: formatMapId(map.id),
+        title: map.title,
+        updatedAt: map.updatedAt,
+      })),
+    });
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    return NextResponse.json({ error: 'Failed to fetch maps', message: errorMsg }, { status: 500 });
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Validate env
