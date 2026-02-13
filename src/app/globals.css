@@ -43,6 +43,12 @@ body {
   touch-action: pan-x pan-y;
 }
 
+@media (pointer: coarse) {
+  .react-flow__node {
+    touch-action: none;
+  }
+}
+
 /* Smooth transitions */
 @layer components {
   .smooth-transition {
