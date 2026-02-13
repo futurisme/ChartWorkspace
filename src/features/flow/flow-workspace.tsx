@@ -16,6 +16,7 @@ import {
   ReactFlow,
   type ReactFlowInstance,
   type XYPosition,
+  type Viewport,
   addEdge,
   useEdgesState,
   useNodesState,
@@ -255,6 +256,8 @@ export function FlowWorkspace({
   const reactFlowWrapperRef = useRef<HTMLDivElement | null>(null);
   const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
   const persistedPositionsRef = useRef<Map<string, XYPosition>>(new Map());
+  const zoomRafRef = useRef<number | null>(null);
+  const lastZoomRef = useRef(1);
 
   const nodeTypes = useMemo(() => ({ conceptNode: FlowNodeCard }), []);
   const edgeTypes = useMemo(() => ({ hierarchy: FlowEdgeHierarchy }), []);
@@ -1026,6 +1029,32 @@ export function FlowWorkspace({
     [handleChangeColor, isReadOnly]
   );
 
+  const handleMove = useCallback((_event: MouseEvent | TouchEvent | null, viewport: Viewport) => {
+    const zoom = viewport.zoom > 0 ? viewport.zoom : 1;
+    if (Math.abs(zoom - lastZoomRef.current) < 0.01) {
+      return;
+    }
+    lastZoomRef.current = zoom;
+
+    if (zoomRafRef.current != null) {
+      cancelAnimationFrame(zoomRafRef.current);
+    }
+
+    zoomRafRef.current = requestAnimationFrame(() => {
+      reactFlowWrapperRef.current?.style.setProperty('--flow-zoom', String(zoom));
+      zoomRafRef.current = null;
+    });
+  }, []);
+
+  useEffect(() => {
+    reactFlowWrapperRef.current?.style.setProperty('--flow-zoom', '1');
+    return () => {
+      if (zoomRafRef.current != null) {
+        cancelAnimationFrame(zoomRafRef.current);
+      }
+    };
+  }, []);
+
   return (
     <div className="relative flex h-full min-h-0 flex-col bg-slate-50">
       {!isReadOnly && (
@@ -1093,6 +1122,7 @@ export function FlowWorkspace({
             onEdgesChange={handleEdgesChange}
             onConnect={handleConnect}
             onSelectionChange={handleSelectionChange}
+            onMove={handleMove}
             onPaneClick={() => {
               setSelectedNodeId((prev) => {
                 if (!prev) return prev;
@@ -1113,6 +1143,8 @@ export function FlowWorkspace({
             panOnDrag
             panOnScroll
             zoomOnPinch
+            nodeClickDistance={24}
+            paneClickDistance={8}
             onlyRenderVisibleElements
             defaultEdgeOptions={{
               type: 'hierarchy',
