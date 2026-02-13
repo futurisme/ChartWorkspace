@@ -1111,7 +1111,7 @@ export function FlowWorkspace({
 
       <div
         ref={reactFlowWrapperRef}
-        className={`relative min-h-0 flex-1 ${!isReadOnly && showMobileToolsPanel ? 'pb-24 lg:pb-0' : 'pb-0'}`}
+        className={`relative min-h-0 flex-1 ${!isReadOnly && showMobileToolsPanel ? 'pb-20 lg:pb-0' : 'pb-0'}`}
       >
         <NodeActionContext.Provider value={nodeActionContextValue}>
           <ReactFlow
@@ -1130,6 +1130,7 @@ export function FlowWorkspace({
               setSelectedNodeId((prev) => {
                 if (!prev) return prev;
                 updatePresence({ currentNodeId: undefined });
+                onSelectNode?.(null);
                 return null;
               });
             }}

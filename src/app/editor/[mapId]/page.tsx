@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { RealtimeProvider } from '@/components/RealtimeProvider';
 import { FlowWorkspace } from '@/features/flow/flow-workspace';
@@ -38,6 +38,18 @@ function EditorContent() {
     loadMap();
   }, [mapId]);
 
+  const handleNodeSelection = useCallback((nodeId: string | null) => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    if (!window.matchMedia('(max-width: 1023px)').matches) {
+      return;
+    }
+
+    setShowMobileToolsPanel(Boolean(nodeId));
+  }, []);
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-100">
@@ -56,15 +68,6 @@ function EditorContent() {
   if (typeof window !== 'undefined') {
     localStorage.setItem('userId', userId);
   }
-  const handleNodeSelection = (nodeId: string | null) => {
-    if (!nodeId || typeof window === 'undefined') {
-      return;
-    }
-
-    if (window.matchMedia('(max-width: 1023px)').matches) {
-      setShowMobileToolsPanel(true);
-    }
-  };
 
   return (
     <RealtimeProvider
@@ -128,4 +131,3 @@ function EditorContent() {
 export default function EditorPage() {
   return <EditorContent />;
 }
-
