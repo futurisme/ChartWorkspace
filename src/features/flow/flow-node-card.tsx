@@ -37,7 +37,7 @@ function FlowNodeCardComponent({ data, selected, id }: NodeProps<ConceptNodeData
       </NodeToolbar>
 
       <div
-        className={`relative max-w-xs cursor-grab touch-none select-none rounded-lg border-2 bg-white px-3 py-2 shadow-lg active:cursor-grabbing ${
+        className={`relative max-w-xs cursor-grab touch-none select-none rounded-lg border-2 bg-white px-3 py-2 shadow-lg active:cursor-grabbing before:absolute before:-inset-2 before:content-[''] before:rounded-[inherit] sm:before:inset-0 ${
           selected
             ? 'border-lime-400 ring-2 ring-lime-400/80 shadow-[0_0_14px_rgba(132,204,22,0.55)]'
             : ''
