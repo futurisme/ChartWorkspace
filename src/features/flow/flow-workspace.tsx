@@ -252,6 +252,7 @@ export function FlowWorkspace({
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [snapEnabled, setSnapEnabled] = useState(true);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
 
   const nodeCountRef = useRef(0);
   const undoManagerRef = useRef<Y.UndoManager | null>(null);
@@ -1049,6 +1050,25 @@ export function FlowWorkspace({
     });
   }, []);
 
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia('(max-width: 1023px)');
+    const handleViewportChange = (event: MediaQueryListEvent) => {
+      setIsMobileViewport(event.matches);
+    };
+
+    setIsMobileViewport(mediaQuery.matches);
+    mediaQuery.addEventListener('change', handleViewportChange);
+
+    return () => {
+      mediaQuery.removeEventListener('change', handleViewportChange);
+    };
+  }, []);
+
   useEffect(() => {
     reactFlowWrapperRef.current?.style.setProperty('--flow-zoom', '1');
     return () => {
@@ -1111,7 +1131,7 @@ export function FlowWorkspace({
 
       <div
         ref={reactFlowWrapperRef}
-        className={`relative min-h-0 flex-1 ${!isReadOnly && showMobileToolsPanel ? 'pb-20 lg:pb-0' : 'pb-0'}`}
+        className={`relative min-h-0 flex-1 overflow-hidden ${!isReadOnly && showMobileToolsPanel ? 'pb-20 lg:pb-0' : 'pb-0'}`}
       >
         <NodeActionContext.Provider value={nodeActionContextValue}>
           <ReactFlow
@@ -1145,8 +1165,10 @@ export function FlowWorkspace({
             connectionLineType={ConnectionLineType.Straight}
             selectionOnDrag={false}
             panOnDrag
-            panOnScroll
+            panOnScroll={!isMobileViewport}
             zoomOnPinch
+            zoomOnScroll={!isMobileViewport}
+            preventScrolling={false}
             nodeDragThreshold={3}
             onlyRenderVisibleElements
             defaultEdgeOptions={{
@@ -1156,7 +1178,9 @@ export function FlowWorkspace({
           >
             <Background gap={ROUTE_GRID_SIZE} size={0.5} color="#dbeafe" variant={BackgroundVariant.Lines} />
             <Background gap={GRID_SIZE} size={1} color="#cbd5e1" variant={BackgroundVariant.Lines} />
-            <Controls />
+            <div className="hidden lg:block">
+              <Controls />
+            </div>
             <div className="hidden lg:block">
               <MiniMap />
             </div>

@@ -118,8 +118,13 @@ export function RealtimeProvider({
     const parsedEnvUrls = parseSignalingUrls(process.env.NEXT_PUBLIC_WEBRTC_URL ?? '');
     if (parsedEnvUrls.length > 0) {
       signalingUrlsRef.current = parsedEnvUrls;
-    } else if (typeof window !== 'undefined' && isLocalHostname(window.location.hostname)) {
-      signalingUrlsRef.current = [LOCAL_SIGNALING_URL];
+    } else if (typeof window !== 'undefined') {
+      const { hostname, protocol } = window.location;
+      const fallback = protocol === 'https:' ? 'wss' : 'ws';
+      const fallbackHostUrl = `${fallback}://${hostname}:4444`;
+      signalingUrlsRef.current = isLocalHostname(hostname)
+        ? [LOCAL_SIGNALING_URL]
+        : [fallbackHostUrl];
     } else {
       signalingUrlsRef.current = [];
     }

@@ -60,7 +60,7 @@ function ViewerContent() {
       displayName="Viewer"
       mode="view"
     >
-      <div className="flex h-screen flex-col">
+      <div className="flex h-[100dvh] flex-col overflow-hidden">
         <header className="border-b border-slate-200 bg-slate-50/95 px-3 py-1.5 backdrop-blur sm:px-4">
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
@@ -75,7 +75,7 @@ function ViewerContent() {
 
         <PresenceBar compact />
 
-        <div className="min-h-0 flex-1">
+        <div className="min-h-0 flex-1 overflow-hidden">
           <FlowWorkspace isReadOnly={true} />
         </div>
       </div>

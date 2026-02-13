@@ -76,7 +76,7 @@ function EditorContent() {
       displayName={displayName}
       mode="edit"
     >
-      <div className="flex h-screen flex-col">
+      <div className="flex h-[100dvh] flex-col overflow-hidden">
         <header className="border-b border-cyan-500/25 bg-slate-950/90 px-2.5 py-1.5 shadow-[0_6px_20px_rgba(6,182,212,0.12)] backdrop-blur sm:px-3">
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
@@ -114,7 +114,7 @@ function EditorContent() {
 
         <PresenceBar compact />
 
-        <div className="min-h-0 flex-1">
+        <div className="min-h-0 flex-1 overflow-hidden">
           <FlowWorkspace
             isReadOnly={false}
             showDesktopControlsPanel={showDesktopControlsPanel}
