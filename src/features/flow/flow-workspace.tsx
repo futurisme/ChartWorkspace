@@ -233,8 +233,8 @@ interface FlowWorkspaceProps {
   showDesktopStatusPanel?: boolean;
   showMobileToolsPanel?: boolean;
   onSelectNode?: (nodeId: string | null) => void;
-  snapEnabled: boolean;
-  inviteRequestToken: number;
+  snapEnabled?: boolean;
+  inviteRequestToken?: number;
 }
 
 export function FlowWorkspace({
@@ -243,8 +243,8 @@ export function FlowWorkspace({
   showDesktopStatusPanel = true,
   showMobileToolsPanel = false,
   onSelectNode,
-  snapEnabled,
-  inviteRequestToken,
+  snapEnabled = true,
+  inviteRequestToken = 0,
 }: FlowWorkspaceProps) {
   const { doc, isConnected, updatePresence, remoteUsers, saveErrorCount } = useRealtime();
   const [nodes, setNodes, onNodesChange] = useNodesState<ConceptNodeData>([]);
@@ -1116,6 +1116,7 @@ export function FlowWorkspace({
             selectedPosition={selectedPosition}
             canUndo={canUndo}
             canRedo={canRedo}
+            snapEnabled={snapEnabled}
             remoteUsersCount={remoteUsers.length}
             isConnected={isConnected}
             saveErrorCount={saveErrorCount}
