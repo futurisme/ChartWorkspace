@@ -141,3 +141,13 @@ test('bus lane index remains deterministic regardless edge insertion order', () 
   assert.equal(laneByTarget.get('center'), 1);
   assert.equal(laneByTarget.get('right'), 2);
 });
+
+
+test('near-aligned horizontal routes share a clean central elbow', () => {
+  const nodes = [buildNode('a', 100, 200), buildNode('b', 420, 200 + ROUTE_SIDE_BY_SIDE_TOLERANCE + 1)];
+  const [routed] = buildAdaptiveRoutedEdges([buildEdge('e1', 'a', 'b')], nodes);
+
+  assert.equal(routed.data?.kind, 'horizontal');
+  assert.ok((routed.data?.points.length ?? 0) >= 3);
+  assert.notEqual(routed.data?.points[1]?.x, routed.data?.points[0]?.x);
+});

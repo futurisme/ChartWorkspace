@@ -118,3 +118,24 @@ test('spreadChildrenForParent keeps layout unchanged for single child', () => {
   const spread = spreadChildrenForParent('parent', nodes, edges);
   assert.deepEqual(spread, nodes);
 });
+
+
+test('spreadChildrenForParent keeps one child vertically centered under parent as anchor for odd clusters', () => {
+  const parent = buildNode('parent', 320, 120);
+  const childLeft = buildNode('child-left', 120, 360);
+  const childCenter = buildNode('child-center', 320, 360);
+  const childRight = buildNode('child-right', 520, 360);
+
+  const nodes = [parent, childLeft, childCenter, childRight];
+  const edges = [
+    buildEdge('e1', 'parent', 'child-left'),
+    buildEdge('e2', 'parent', 'child-center'),
+    buildEdge('e3', 'parent', 'child-right'),
+  ];
+
+  const spread = spreadChildrenForParent('parent', nodes, edges);
+  const centered = spread.find((node) => node.id === 'child-center');
+
+  assert.ok(centered);
+  assert.equal(centered?.position.x, parent.position.x);
+});

@@ -66,6 +66,48 @@ function getChildDirection(parentCenterY: number, childCenterY: number): FlowDir
   return 'flat';
 }
 
+
+function rebalanceClusterAroundParent(children: Node[], parentCenterX: number) {
+  if (children.length < 3) {
+    return children;
+  }
+
+  const ordered = sortNodesStable(children);
+  const middleIndex = Math.floor(ordered.length / 2);
+
+  let pivotIndex = 0;
+  let minDistance = Number.POSITIVE_INFINITY;
+  ordered.forEach((child, index) => {
+    const childCenter = getNodeCenter(child);
+    const distance = Math.abs(childCenter.x - parentCenterX);
+    if (distance < minDistance) {
+      minDistance = distance;
+      pivotIndex = index;
+    }
+  });
+
+  const pivot = ordered[pivotIndex];
+  const remaining = ordered.filter((_, index) => index !== pivotIndex);
+
+  const result: Node[] = new Array(ordered.length);
+  result[middleIndex] = pivot;
+
+  let left = middleIndex - 1;
+  let right = middleIndex + 1;
+  remaining.forEach((child, index) => {
+    if (index % 2 === 0) {
+      result[left] = child;
+      left -= 1;
+      return;
+    }
+
+    result[right] = child;
+    right += 1;
+  });
+
+  return result.filter((node): node is Node => Boolean(node));
+}
+
 function buildClusterCandidates(children: Node[], centerStartX: number, rowY: number) {
   const spacing = DEFAULT_NODE_SIZE.width + NODE_GAP;
 
@@ -302,7 +344,7 @@ export function spreadChildrenForParent(parentId: string, nodes: Node[], edges: 
   const positionMap = new Map<string, { x: number; y: number }>();
 
   const placeCluster = (direction: Extract<FlowDirectionGroup, 'up' | 'down'>) => {
-    const clusterNodes = clusters[direction];
+    const clusterNodes = rebalanceClusterAroundParent(clusters[direction], parentCenter.x);
     if (clusterNodes.length === 0) {
       return;
     }

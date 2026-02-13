@@ -18,7 +18,7 @@
   background-position: center;
   opacity: 0.45;
   mix-blend-mode: screen;
-  animation: driftPulse 12s ease-in-out infinite;
+  animation: driftPulse 2.8s ease-in-out infinite;
 }
 
 .grid {
@@ -28,7 +28,7 @@
     linear-gradient(90deg, rgba(34, 211, 238, 0.18) 1px, transparent 1px);
   background-size: 36px 36px;
   mask-image: radial-gradient(circle at center, black 44%, transparent 92%);
-  animation: gridShift 9s linear infinite;
+  animation: gridShift 1.9s linear infinite;
 }
 
 .glow {
@@ -38,7 +38,7 @@
   border-radius: 999px;
   filter: blur(74px);
   opacity: 0.44;
-  animation: pulseGlow 4.6s ease-in-out infinite;
+  animation: pulseGlow 1.4s ease-in-out infinite;
 }
 
 .glowTop {
@@ -74,7 +74,7 @@
   letter-spacing: 0.09em;
   color: rgb(224 242 254);
   text-shadow: 0 0 18px rgba(34, 211, 238, 0.45);
-  animation: quoteGlow 3.2s ease-in-out infinite;
+  animation: quoteGlow 1.1s ease-in-out infinite;
 }
 
 .quoteAuthor {
@@ -115,11 +115,11 @@
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  animation: titleShift 4.3s ease-in-out infinite;
+  animation: titleShift 0.55s linear infinite;
 }
 
 .dynamicWord {
-  animation: titleShift 4.3s ease-in-out infinite, wordPulse 1s ease-in-out infinite;
+  animation: titleShift 0.55s linear infinite, wordPulse 0.2s linear infinite;
 }
 
 .titlePrimary {
@@ -148,14 +148,16 @@
   justify-content: center;
   border-radius: 0.8rem;
   border: 1px solid rgba(34, 211, 238, 0.85);
-  background: linear-gradient(140deg, rgba(6, 78, 129, 0.95), rgba(91, 33, 182, 0.82));
+  background: linear-gradient(140deg, rgba(6, 78, 129, 0.95), rgba(91, 33, 182, 0.82), rgba(236, 72, 153, 0.9));
+  background-size: 240% 240%;
+  animation: buttonFlux 0.38s linear infinite;
   padding: 0.88rem 2.2rem;
   font-size: 0.96rem;
   font-weight: 700;
   letter-spacing: 0.16em;
   color: rgb(240 249 255);
   box-shadow: 0 0 20px rgba(34, 211, 238, 0.52), inset 0 0 10px rgba(56, 189, 248, 0.32);
-  transition: transform 180ms ease, box-shadow 180ms ease;
+  transition: transform 120ms ease, box-shadow 120ms ease;
 }
 
 .button::before {
@@ -282,11 +284,10 @@
 }
 
 @keyframes titleShift {
-  0%,
-  100% {
+  0% {
     background-position: 0% 50%;
   }
-  50% {
+  100% {
     background-position: 100% 50%;
   }
 }
@@ -320,6 +321,15 @@
   }
   50% {
     filter: brightness(1.22);
+  }
+}
+
+@keyframes buttonFlux {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 100% 50%;
   }
 }
 

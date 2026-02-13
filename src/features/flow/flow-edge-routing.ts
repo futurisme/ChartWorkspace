@@ -402,18 +402,24 @@ export function buildAdaptiveRoutedEdges(edges: Edge[], nodes: Node[]): RoutedHi
     const laneMeta = laneMetaMap.get(edge.id) ?? { offset: 0, index: 0 };
 
     if (meta.kind === 'horizontal') {
-      const aligned = Math.abs(meta.sourceAnchor.y - meta.targetAnchor.y) <= ROUTE_SIDE_BY_SIDE_TOLERANCE;
+      const deltaY = Math.abs(meta.sourceAnchor.y - meta.targetAnchor.y);
+      const aligned = deltaY <= ROUTE_SIDE_BY_SIDE_TOLERANCE;
+      const nearAligned = deltaY <= ROUTE_SIDE_BY_SIDE_TOLERANCE * 2;
+
+      const elbowX = nearAligned
+        ? snapToRouteGrid((meta.sourceAnchor.x + meta.targetAnchor.x) / 2)
+        : snapToRouteGrid((meta.sourceAnchor.x + meta.targetAnchor.x) / 2 + laneMeta.offset);
 
       const points = aligned
         ? buildPath([meta.sourceAnchor, meta.targetAnchor])
         : buildPath([
             meta.sourceAnchor,
             {
-              x: snapToRouteGrid((meta.sourceAnchor.x + meta.targetAnchor.x) / 2 + laneMeta.offset),
+              x: elbowX,
               y: meta.sourceAnchor.y,
             },
             {
-              x: snapToRouteGrid((meta.sourceAnchor.x + meta.targetAnchor.x) / 2 + laneMeta.offset),
+              x: elbowX,
               y: meta.targetAnchor.y,
             },
             meta.targetAnchor,

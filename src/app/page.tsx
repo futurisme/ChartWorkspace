@@ -20,7 +20,7 @@ export default function LandingPage() {
   useEffect(() => {
     const timer = window.setInterval(() => {
       setStageIndex((prev) => (prev + 1) % heroStages.length);
-    }, 1000);
+    }, 120);
 
     return () => window.clearInterval(timer);
   }, []);
