@@ -1,0 +1,26 @@
+name: Perf Regression Alert
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+jobs:
+  compare-weeks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compare weekly web vitals
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PERF_REGRESSION_THRESHOLD: '0.1'
+        run: node scripts/check-perf-regressions.mjs

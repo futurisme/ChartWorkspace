@@ -16,8 +16,8 @@ export function toCompactRouteNodes(nodes: Node[]): CompactRouteNode[] {
     id: node.id,
     x: node.position.x,
     y: node.position.y,
-    width: node.width,
-    height: node.height,
+    width: node.width ?? undefined,
+    height: node.height ?? undefined,
   }));
 }
 

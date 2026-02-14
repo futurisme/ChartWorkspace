@@ -257,3 +257,12 @@ npm run build
 npm run start
 curl -s -o /dev/null -w 'root ttfb=%{time_starttransfer} total=%{time_total}\n' http://localhost:3000/
 ```
+
+
+### 12) Performance Monitoring
+- Client-side web vitals (`LCP`, `CLS`, `INP`, `TTFB`) and `LONG_TASK` metrics are collected via `web-vitals` in `src/components/performance-metrics.tsx`.
+- Metrics are ingested by `POST /api/perf` and persisted into the `PerfMetric` table.
+- Dashboard API `GET /api/perf/dashboard?days=7` returns summaries split by `routeType` (`editor` vs `non-editor`).
+- Lighthouse CI runs in `.github/workflows/lighthouse-ci.yml` for both mobile and desktop with performance score and budget assertions.
+- Weekly regression checks run in `.github/workflows/perf-regression-alert.yml` and fail when week-over-week degradation exceeds threshold.
+- See `docs/performance-dashboard.md` for dashboard panel setup.

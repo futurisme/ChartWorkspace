@@ -1,0 +1,29 @@
+name: Lighthouse CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  lighthouse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build app
+        run: npm run build
+
+      - name: Lighthouse mobile budgets
+        run: npx @lhci/cli@0.14.x autorun --config=lighthouserc.mobile.json
+
+      - name: Lighthouse desktop budgets
+        run: npx @lhci/cli@0.14.x autorun --config=lighthouserc.desktop.json
