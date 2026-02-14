@@ -17,6 +17,33 @@ import { applyYjsSnapshot, getCurrentSnapshot } from '@/lib/snapshot';
 const LOCAL_SIGNALING_URL = 'ws://localhost:4444';
 const BLOCKED_SIGNALING_HOSTS = new Set(['signaling.yjs.dev', 'www.signaling.yjs.dev', 'yjs.dev']);
 
+const FRAME_BUDGET_MS = 16.7;
+const PRESENCE_UPDATE_CADENCE_MS = 120;
+
+type SchedulerWithPostTask = {
+  postTask?: (callback: () => void, options?: { priority?: 'background' | 'user-visible' | 'user-blocking'; delay?: number }) => Promise<void>;
+};
+
+function scheduleNonUrgentWork(callback: () => void) {
+  if (typeof window === 'undefined') {
+    callback();
+    return;
+  }
+
+  const schedulerApi = (globalThis as { scheduler?: SchedulerWithPostTask }).scheduler;
+  if (schedulerApi?.postTask) {
+    void schedulerApi.postTask(callback, { priority: 'background' });
+    return;
+  }
+
+  if (typeof window.requestIdleCallback === 'function') {
+    window.requestIdleCallback(callback, { timeout: 150 });
+    return;
+  }
+
+  window.setTimeout(callback, 0);
+}
+
 function isLocalHostname(hostname: string) {
   return hostname === 'localhost' || hostname === '127.0.0.1';
 }
@@ -113,6 +140,10 @@ export function RealtimeProvider({
   const signalingUrlsRef = useRef<string[] | null>(null);
   const saveInFlightRef = useRef(false);
   const queuedSaveRef = useRef(false);
+  const telemetryRef = useRef<Record<string, { samples: number; totalDurationMs: number; droppedFrames: number; maxDurationMs: number }>>({});
+  const pendingPresenceRef = useRef<Partial<UserPresence> | null>(null);
+  const presenceFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastPresenceFlushRef = useRef(0);
 
   if (signalingUrlsRef.current === null) {
     const parsedEnvUrls = parseSignalingUrls(process.env.NEXT_PUBLIC_WEBRTC_URL ?? '');
@@ -214,7 +245,9 @@ export function RealtimeProvider({
                 newAwareness,
                 newAwareness.clientID
               );
-              setRemoteUsers(remote);
+              scheduleNonUrgentWork(() => {
+                setRemoteUsers(remote);
+              });
             }
           };
 
@@ -273,6 +306,88 @@ export function RealtimeProvider({
       }
     };
   }, [mapId, userId, displayName, mode]);
+
+
+  const trackTelemetry = useCallback((handler: string, durationMs: number) => {
+    const droppedFrames = Math.max(0, Math.floor(durationMs / FRAME_BUDGET_MS) - 1);
+    const current = telemetryRef.current[handler] ?? {
+      samples: 0,
+      totalDurationMs: 0,
+      droppedFrames: 0,
+      maxDurationMs: 0,
+    };
+
+    const next = {
+      samples: current.samples + 1,
+      totalDurationMs: current.totalDurationMs + durationMs,
+      droppedFrames: current.droppedFrames + droppedFrames,
+      maxDurationMs: Math.max(current.maxDurationMs, durationMs),
+    };
+
+    telemetryRef.current[handler] = next;
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('flow:telemetry', {
+          detail: {
+            handler,
+            durationMs,
+            droppedFrames,
+            averageDurationMs: next.totalDurationMs / next.samples,
+            samples: next.samples,
+          },
+        })
+      );
+    }
+  }, []);
+
+  const profileHandler = useCallback(<T,>(handler: string, callback: () => T): T => {
+    const start = performance.now();
+    const result = callback();
+    trackTelemetry(handler, performance.now() - start);
+    return result;
+  }, [trackTelemetry]);
+
+  const flushPresenceUpdates = useCallback(() => {
+    const updates = pendingPresenceRef.current;
+    if (!updates || !awareness) {
+      return;
+    }
+
+    const presence = localPresenceRef.current;
+    if (!presence) {
+      return;
+    }
+
+    pendingPresenceRef.current = null;
+    lastPresenceFlushRef.current = Date.now();
+
+    profileHandler('presence.update.flush', () => {
+      const updated = {
+        ...presence,
+        ...updates,
+        lastUpdated: Date.now(),
+      };
+
+      localPresenceRef.current = updated;
+      setupAwareness(awareness, updated);
+
+      scheduleNonUrgentWork(() => {
+        setLocalPresence((prev) => {
+          if (!prev) return updated;
+          const same =
+            prev.userId === updated.userId &&
+            prev.displayName === updated.displayName &&
+            prev.color === updated.color &&
+            prev.mode === updated.mode &&
+            prev.currentNodeId === updated.currentNodeId &&
+            prev.cursorX === updated.cursorX &&
+            prev.cursorY === updated.cursorY;
+          return same ? prev : updated;
+        });
+      });
+    });
+  }, [awareness, profileHandler]);
 
   // Debounced snapshot save - last-write-wins strategy
   const saveSnapshot = useCallback(async () => {
@@ -351,7 +466,7 @@ export function RealtimeProvider({
       saveSnapshot();
     };
 
-    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('beforeunload', handleBeforeUnload, { passive: true });
 
     return () => {
       doc.off('update', handleChange);
@@ -388,33 +503,43 @@ export function RealtimeProvider({
   const updatePresence = useCallback(
     (updates: Partial<UserPresence>) => {
       if (!awareness) return;
-      const presence = localPresenceRef.current;
-      if (!presence) return;
 
-      const updated = {
-        ...presence,
-        ...updates,
-        lastUpdated: Date.now(),
-      };
+      profileHandler('presence.update.request', () => {
+        pendingPresenceRef.current = {
+          ...(pendingPresenceRef.current ?? {}),
+          ...updates,
+        };
 
-      localPresenceRef.current = updated;
-      setupAwareness(awareness, updated);
+        const now = Date.now();
+        const elapsed = now - lastPresenceFlushRef.current;
+        const touchesCursor = typeof updates.cursorX === 'number' || typeof updates.cursorY === 'number';
 
-      setLocalPresence((prev) => {
-        if (!prev) return updated;
-        const same =
-          prev.userId === updated.userId &&
-          prev.displayName === updated.displayName &&
-          prev.color === updated.color &&
-          prev.mode === updated.mode &&
-          prev.currentNodeId === updated.currentNodeId &&
-          prev.cursorX === updated.cursorX &&
-          prev.cursorY === updated.cursorY;
-        return same ? prev : updated;
+        if (!touchesCursor || elapsed >= PRESENCE_UPDATE_CADENCE_MS) {
+          flushPresenceUpdates();
+          return;
+        }
+
+        if (presenceFlushTimerRef.current) {
+          return;
+        }
+
+        presenceFlushTimerRef.current = setTimeout(() => {
+          presenceFlushTimerRef.current = null;
+          flushPresenceUpdates();
+        }, PRESENCE_UPDATE_CADENCE_MS - elapsed);
       });
     },
-    [awareness]
+    [awareness, flushPresenceUpdates, profileHandler]
   );
+
+
+  useEffect(() => () => {
+    if (presenceFlushTimerRef.current) {
+      clearTimeout(presenceFlushTimerRef.current);
+      presenceFlushTimerRef.current = null;
+    }
+    flushPresenceUpdates();
+  }, [flushPresenceUpdates]);
 
   return (
     <RealtimeContext.Provider

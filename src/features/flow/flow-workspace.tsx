@@ -92,6 +92,33 @@ interface WorkerRouteResult {
   edges: RoutedEdgeGeometry[];
 }
 
+const FRAME_BUDGET_MS = 16.7;
+const PRESENCE_MOVE_CADENCE_MS = 120;
+
+type SchedulerWithPostTask = {
+  postTask?: (callback: () => void, options?: { priority?: 'background' | 'user-visible' | 'user-blocking'; delay?: number }) => Promise<void>;
+};
+
+function scheduleNonUrgentWork(callback: () => void) {
+  if (typeof window === 'undefined') {
+    callback();
+    return;
+  }
+
+  const schedulerApi = (globalThis as { scheduler?: SchedulerWithPostTask }).scheduler;
+  if (schedulerApi?.postTask) {
+    void schedulerApi.postTask(callback, { priority: 'background' });
+    return;
+  }
+
+  if (typeof window.requestIdleCallback === 'function') {
+    window.requestIdleCallback(callback, { timeout: 120 });
+    return;
+  }
+
+  window.setTimeout(callback, 0);
+}
+
 type NodeAddOrResetChange = Extract<NodeChange, { type: 'add' | 'reset'; item: Node<ConceptNodeData> }>;
 type NodeRemoveChange = Extract<NodeChange, { type: 'remove' }>;
 type EdgeAddOrResetChange = Extract<EdgeChange, { type: 'add' | 'reset'; item: Edge }>;
@@ -306,6 +333,10 @@ export function FlowWorkspace({
   const routingWorkerFailedRef = useRef(false);
   const latestRouteHashRef = useRef<string | null>(null);
   const latestDeferredEdgesRef = useRef<Edge[]>(deferredEdges);
+  const telemetryRef = useRef<Record<string, { samples: number; totalDurationMs: number; droppedFrames: number; maxDurationMs: number }>>({});
+  const lastMovePresenceUpdateRef = useRef(0);
+  const pendingMovePresenceRef = useRef<{ cursorX: number; cursorY: number } | null>(null);
+  const movePresenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const getParentIdFor = useCallback(
     (childId: string) => edges.find((edge) => edge.target === childId)?.source ?? null,
@@ -338,6 +369,75 @@ export function FlowWorkspace({
   useEffect(() => {
     latestDeferredEdgesRef.current = deferredEdges;
   }, [deferredEdges]);
+
+  const trackTelemetry = useCallback((handler: string, durationMs: number) => {
+    const droppedFrames = Math.max(0, Math.floor(durationMs / FRAME_BUDGET_MS) - 1);
+    const current = telemetryRef.current[handler] ?? {
+      samples: 0,
+      totalDurationMs: 0,
+      droppedFrames: 0,
+      maxDurationMs: 0,
+    };
+
+    const next = {
+      samples: current.samples + 1,
+      totalDurationMs: current.totalDurationMs + durationMs,
+      droppedFrames: current.droppedFrames + droppedFrames,
+      maxDurationMs: Math.max(current.maxDurationMs, durationMs),
+    };
+
+    telemetryRef.current[handler] = next;
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('flow:telemetry', {
+        detail: {
+          handler,
+          durationMs,
+          droppedFrames,
+          averageDurationMs: next.totalDurationMs / next.samples,
+          samples: next.samples,
+        },
+      }));
+    }
+  }, []);
+
+  const profileHandler = useCallback(<T,>(handler: string, callback: () => T): T => {
+    const start = performance.now();
+    const result = callback();
+    trackTelemetry(handler, performance.now() - start);
+    return result;
+  }, [trackTelemetry]);
+
+  const flushMovePresence = useCallback(() => {
+    const pending = pendingMovePresenceRef.current;
+    if (!pending) {
+      return;
+    }
+
+    pendingMovePresenceRef.current = null;
+    lastMovePresenceUpdateRef.current = Date.now();
+    profileHandler('presence.update.move', () => updatePresence(pending));
+  }, [profileHandler, updatePresence]);
+
+  const scheduleMovePresenceFlush = useCallback((cursorX: number, cursorY: number) => {
+    pendingMovePresenceRef.current = { cursorX, cursorY };
+
+    const now = Date.now();
+    const elapsed = now - lastMovePresenceUpdateRef.current;
+    if (elapsed >= PRESENCE_MOVE_CADENCE_MS) {
+      flushMovePresence();
+      return;
+    }
+
+    if (movePresenceTimerRef.current) {
+      return;
+    }
+
+    movePresenceTimerRef.current = setTimeout(() => {
+      movePresenceTimerRef.current = null;
+      flushMovePresence();
+    }, PRESENCE_MOVE_CADENCE_MS - elapsed);
+  }, [flushMovePresence]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof Worker === 'undefined') {
@@ -530,9 +630,11 @@ export function FlowWorkspace({
     const stillExists = nodes.some((node) => node.id === selectedNodeId);
     if (!stillExists) {
       setSelectedNodeId(null);
-      updatePresence({ currentNodeId: undefined });
+      scheduleNonUrgentWork(() => {
+        profileHandler('presence.update.selection', () => updatePresence({ currentNodeId: undefined }));
+      });
     }
-  }, [nodes, selectedNodeId, updatePresence]);
+  }, [nodes, profileHandler, selectedNodeId, updatePresence]);
 
 
   useEffect(() => {
@@ -670,7 +772,7 @@ export function FlowWorkspace({
   }, [doc, setNodes, setEdges]);
 
   const handleNodesChange = useCallback(
-    (changes: NodeChange[]) => {
+    (changes: NodeChange[]) => profileHandler('nodes.change', () => {
       if (isReadOnly) return;
 
       onNodesChange(changes);
@@ -728,8 +830,8 @@ export function FlowWorkspace({
       }
 
       persistNodePositions(positionUpdates);
-    },
-    [isReadOnly, doc, onNodesChange, persistNodePositions]
+    }),
+    [isReadOnly, doc, onNodesChange, persistNodePositions, profileHandler]
   );
 
   const handleNodeDragStop = useCallback(
@@ -1163,19 +1265,32 @@ export function FlowWorkspace({
     setRenameText('');
   }, []);
 
+  const handleMove = useCallback(
+    (_event: React.MouseEvent | React.TouchEvent | null, viewport: { x: number; y: number; zoom: number }) => {
+      profileHandler('viewport.move', () => {
+        scheduleMovePresenceFlush(Math.round(viewport.x), Math.round(viewport.y));
+      });
+    },
+    [profileHandler, scheduleMovePresenceFlush]
+  );
+
   const handleSelectionChange = useCallback(
-    (selection: OnSelectionChangeParams) => {
+    (selection: OnSelectionChangeParams) => profileHandler('selection.change', () => {
       const nextSelected = selection.nodes?.[0]?.id ?? null;
       setSelectedNodeId((prev) => {
         if (prev === nextSelected) {
           return prev;
         }
-        updatePresence({ currentNodeId: nextSelected ?? undefined });
-        onSelectNode?.(nextSelected);
+
+        scheduleNonUrgentWork(() => {
+          profileHandler('presence.update.selection', () => updatePresence({ currentNodeId: nextSelected ?? undefined }));
+          onSelectNode?.(nextSelected);
+        });
+
         return nextSelected;
       });
-    },
-    [onSelectNode, updatePresence]
+    }),
+    [onSelectNode, profileHandler, updatePresence]
   );
 
 
@@ -1190,6 +1305,14 @@ export function FlowWorkspace({
     [handleChangeColor, isReadOnly]
   );
 
+  useEffect(() => () => {
+    if (movePresenceTimerRef.current) {
+      clearTimeout(movePresenceTimerRef.current);
+      movePresenceTimerRef.current = null;
+    }
+    flushMovePresence();
+  }, [flushMovePresence]);
+
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
@@ -1201,7 +1324,7 @@ export function FlowWorkspace({
     };
 
     setIsMobileViewport(mediaQuery.matches);
-    mediaQuery.addEventListener('change', handleViewportChange);
+    mediaQuery.addEventListener('change', handleViewportChange, { passive: true });
 
     return () => {
       mediaQuery.removeEventListener('change', handleViewportChange);
@@ -1311,6 +1434,8 @@ export function FlowWorkspace({
             onEdgesChange={handleEdgesChange}
             onConnect={handleConnect}
             onSelectionChange={handleSelectionChange}
+            onMove={handleMove}
+            onMoveEnd={flushMovePresence}
             onNodeClick={(_event, node) => {
               if (connectSourceNodeId && connectSourceNodeId !== node.id) {
                 createConnectionEdge(connectSourceNodeId, node.id);
@@ -1327,8 +1452,10 @@ export function FlowWorkspace({
             onPaneClick={() => {
               setSelectedNodeId((prev) => {
                 if (!prev) return prev;
-                updatePresence({ currentNodeId: undefined });
-                onSelectNode?.(null);
+                scheduleNonUrgentWork(() => {
+                  profileHandler('presence.update.selection', () => updatePresence({ currentNodeId: undefined }));
+                  onSelectNode?.(null);
+                });
                 setConnectSourceNodeId(null);
                 setUnconnectSourceNodeId(null);
                 return null;
