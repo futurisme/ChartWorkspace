@@ -49,6 +49,26 @@ function isLocalHostname(hostname: string) {
   return hostname === 'localhost' || hostname === '127.0.0.1';
 }
 
+function isPrivateHostname(hostname: string) {
+  if (isLocalHostname(hostname)) {
+    return true;
+  }
+
+  if (hostname === '::1') {
+    return true;
+  }
+
+  if (/^192\.168\./.test(hostname) || /^10\./.test(hostname)) {
+    return true;
+  }
+
+  if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname)) {
+    return true;
+  }
+
+  return false;
+}
+
 function shouldUseSameHostSignalingFallback() {
   return process.env.NEXT_PUBLIC_SIGNALING_SAME_HOST_FALLBACK === '1';
 }
@@ -117,6 +137,40 @@ function parseSignalingUrls(rawValue: string) {
     .filter((url): url is string => Boolean(url))
     .forEach((url) => dedupedUrls.add(url));
   return Array.from(dedupedUrls);
+}
+
+function getSignalingSelection(hostname: string, envSignalingUrls: string[]) {
+  const protocol = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss' : 'ws';
+  const sameHostFallback = `${protocol}://${hostname}:4444`;
+  const isLocalHost = isLocalHostname(hostname);
+
+  if (isLocalHost) {
+    return {
+      signalingUrls: Array.from(new Set([...envSignalingUrls, LOCAL_SIGNALING_URL])),
+      skippedUrls: [],
+      fallbackUrl: null as string | null,
+    };
+  }
+
+  const reachableEnvUrls = envSignalingUrls.filter((url) => {
+    try {
+      const parsed = new URL(url);
+      return !isPrivateHostname(parsed.hostname);
+    } catch {
+      return false;
+    }
+  });
+  const skippedUrls = envSignalingUrls.filter((url) => !reachableEnvUrls.includes(url));
+  const shouldAppendSameHost = shouldUseSameHostSignalingFallback() || reachableEnvUrls.length === 0;
+  const signalingUrls = shouldAppendSameHost
+    ? Array.from(new Set([...reachableEnvUrls, sameHostFallback]))
+    : reachableEnvUrls;
+
+  return {
+    signalingUrls,
+    skippedUrls,
+    fallbackUrl: shouldAppendSameHost ? sameHostFallback : null,
+  };
 }
 
 function normalizeMapRoomId(rawMapId: string): string {
@@ -191,17 +245,29 @@ export function RealtimeProvider({
   const lastPresenceFlushRef = useRef(0);
 
   if (signalingUrlsRef.current === null) {
-    const candidates = new Set<string>(parseSignalingUrls(process.env.NEXT_PUBLIC_WEBRTC_URL ?? ''));
-    const hasEnvSignaling = candidates.size > 0;
+    const envSignalingUrls = parseSignalingUrls(process.env.NEXT_PUBLIC_WEBRTC_URL ?? '');
+    const candidates = new Set<string>(envSignalingUrls);
 
     if (typeof window !== 'undefined') {
       const { hostname } = window.location;
 
-      if (isLocalHostname(hostname)) {
-        candidates.add(LOCAL_SIGNALING_URL);
-      } else if (!hasEnvSignaling || shouldUseSameHostSignalingFallback()) {
-        const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-        candidates.add(`${protocol}://${hostname}:4444`);
+      const selection = getSignalingSelection(hostname, envSignalingUrls);
+      selection.signalingUrls.forEach((url) => candidates.add(url));
+
+      if (selection.skippedUrls.length > 0) {
+        logRealtime('warn', 'Skipping non-routable signaling URL(s) for this client', {
+          hostname,
+          skippedUrls: selection.skippedUrls,
+          reason: 'Likely unreachable from other devices (localhost/private LAN).',
+        });
+      }
+
+      if (selection.fallbackUrl) {
+        logRealtime('info', 'Applying same-host signaling fallback', {
+          hostname,
+          fallbackUrl: selection.fallbackUrl,
+          reason: 'No reachable public signaling URL detected for this client.',
+        });
       }
     }
 
