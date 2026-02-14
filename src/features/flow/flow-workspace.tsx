@@ -269,8 +269,8 @@ function isPositionChange(change: NodeChange): change is PositionNodeChange {
   return change.type === 'position' && Boolean((change as { position?: XYPosition }).position);
 }
 
-function shouldPersistPositionChange(change: PositionNodeChange) {
-  return (change as PositionNodeChange & { dragging?: boolean }).dragging !== true;
+function shouldPersistPositionChange(_change: PositionNodeChange) {
+  return true;
 }
 
 function isNodeAddOrResetChange(change: NodeChange): change is NodeAddOrResetChange {
@@ -308,7 +308,7 @@ export function FlowWorkspace({
   snapEnabled = true,
   inviteRequestToken = 0,
 }: FlowWorkspaceProps) {
-  const { doc, isConnected, updatePresence, remoteUsers, saveErrorCount } = useRealtime();
+  const { doc, isConnected, isDatabaseConnected, updatePresence, remoteUsers, saveErrorCount } = useRealtime();
   const [nodes, setNodes, onNodesChange] = useNodesState<ConceptNodeData>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -373,6 +373,31 @@ export function FlowWorkspace({
     : null;
   const selectedNodeLabel = selectedNode ? getNodeLabel(selectedNode) : null;
   const selectedNodeColor = (selectedNode?.data as ConceptNodeData | undefined)?.color ?? COLOR_OPTIONS[0];
+
+  const remoteEditorsByNode = useMemo(() => {
+    const map = new Map<string, string[]>();
+    remoteUsers.forEach((user) => {
+      if (!user.currentNodeId) return;
+      const names = map.get(user.currentNodeId) ?? [];
+      names.push(user.displayName);
+      map.set(user.currentNodeId, names);
+    });
+    return map;
+  }, [remoteUsers]);
+
+  const nodesWithPresence = useMemo(() =>
+    nodes.map((node) => {
+      const collaboratorNames = remoteEditorsByNode.get(node.id) ?? [];
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          collaboratorNames,
+          editedByOthers: collaboratorNames.length > 0,
+        },
+      };
+    }),
+  [nodes, remoteEditorsByNode]);
 
   useEffect(() => {
     latestDeferredEdgesRef.current = deferredEdges;
@@ -1399,7 +1424,7 @@ export function FlowWorkspace({
       {!isReadOnly && selectedNodeId && (
         <div className="pointer-events-none absolute right-2 top-2 z-40 flex max-w-[min(92vw,560px)] flex-col gap-1 rounded-lg border border-cyan-400/25 bg-slate-950/92 p-2 shadow-[0_12px_26px_rgba(34,211,238,0.15)] backdrop-blur">
           <div className="pointer-events-auto flex items-center justify-between gap-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-cyan-100">
-            <span>{isConnected ? 'Online' : 'Offline'}</span>
+            <span>{isDatabaseConnected ? 'Terkoneksi ke Database' : 'Tidak terkoneksi ke Database'}</span>
             <span className="truncate text-cyan-200/85">{connectSourceNodeId ? 'Connect mode' : unconnectSourceNodeId ? 'Unconnect mode' : `Color: ${selectedNodeLabel ?? selectedNodeId}`}</span>
           </div>
           <div className="pointer-events-auto flex flex-wrap gap-1">
@@ -1435,30 +1460,6 @@ export function FlowWorkspace({
         </div>
       )}
 
-      {remoteUsers.length > 0 && (
-        <div className="pointer-events-none absolute bottom-2 left-2 z-40 flex max-w-[min(92vw,420px)] flex-col gap-1 rounded-lg border border-indigo-300/30 bg-slate-950/90 p-2 text-[10px] text-indigo-100 shadow-lg backdrop-blur">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-indigo-200">Live collaborators</div>
-          {remoteUsers.map((user) => (
-            <div key={`${user.userId}-${user.lastUpdated}`} className="flex items-center justify-between gap-2 rounded bg-indigo-500/10 px-2 py-1">
-              <div className="flex min-w-0 items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: user.color }} />
-                <span className="truncate font-medium">{user.displayName}</span>
-                {user.deviceKind && (
-                  <span className="rounded bg-indigo-200/20 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-indigo-100/90">
-                    {user.deviceKind === 'hp' ? 'HP' : 'PC'}
-                  </span>
-                )}
-              </div>
-              <div className="shrink-0 text-indigo-200/90">
-                {user.currentNodeId ? `Editing ${user.currentNodeId}` : 'Browsing'}
-                {typeof user.cameraX === 'number' && typeof user.cameraY === 'number'
-                  ? ` • Cam (${Math.round(user.cameraX)}, ${Math.round(user.cameraY)})`
-                  : ''}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
 
       <div
         ref={reactFlowWrapperRef}
@@ -1466,12 +1467,19 @@ export function FlowWorkspace({
       >
         <NodeActionContext.Provider value={nodeActionContextValue}>
           <ReactFlow
-            nodes={nodes}
+            nodes={nodesWithPresence}
             edges={routedEdges}
             onInit={(instance) => {
               reactFlowInstanceRef.current = instance;
             }}
             onNodesChange={handleNodesChange}
+            onNodeDrag={(_event, node) => {
+              profileHandler('presence.update.drag', () => updatePresence({
+                currentNodeId: node.id,
+                cursorX: Math.round(node.position.x),
+                cursorY: Math.round(node.position.y),
+              }));
+            }}
             onNodeDragStop={handleNodeDragStop}
             onEdgesChange={handleEdgesChange}
             onConnect={handleConnect}

@@ -3,6 +3,8 @@
 export interface ConceptNodeData {
   label: string;
   color?: string;
+  collaboratorNames?: string[];
+  editedByOthers?: boolean;
 }
 
 export type ConceptNode = Node<ConceptNodeData>;

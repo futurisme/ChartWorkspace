@@ -6,10 +6,12 @@ import type { UserPresence } from '@/lib/presence';
 
 interface PresenceBarProps {
   compact?: boolean;
+  className?: string;
+  showBorder?: boolean;
 }
 
-export function PresenceBar({ compact = false }: PresenceBarProps) {
-  const { localPresence, remoteUsers, isConnected } = useRealtime();
+export function PresenceBar({ compact = false, className = "", showBorder = true }: PresenceBarProps) {
+  const { localPresence, remoteUsers, isConnected, isDatabaseConnected } = useRealtime();
 
   const allUsers = useMemo(() => {
     const users = [...remoteUsers];
@@ -21,23 +23,23 @@ export function PresenceBar({ compact = false }: PresenceBarProps) {
 
   if (!localPresence) {
     return (
-      <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-3 py-1.5 sm:px-4">
+      <div className={`flex items-center justify-between bg-slate-50 px-3 py-1.5 sm:px-4 ${showBorder ? "border-b border-slate-200" : ""} ${className}`.trim()}>
         <span className="text-xs text-gray-500 sm:text-sm">Loading...</span>
       </div>
     );
   }
 
   return (
-    <div className="border-b border-slate-200 bg-white px-3 py-1.5 sm:px-4">
+    <div className={`bg-white px-3 py-1.5 sm:px-4 ${showBorder ? "border-b border-slate-200" : ""} ${className}`.trim()}>
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex items-center gap-2">
             <div className={`h-2 w-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
             <span className="text-xs font-medium text-gray-900 sm:text-sm">
-              {isConnected ? 'Connected' : 'Offline'}
+              {isDatabaseConnected ? 'Terkoneksi ke Database' : 'Tidak terkoneksi ke Database'}
             </span>
           </div>
-          <span className="text-xs text-gray-600 sm:text-sm">{allUsers.length} online</span>
+          <span className="text-xs text-gray-600 sm:text-sm">{allUsers.length} online • {isConnected ? "Realtime aktif" : "Realtime offline"}</span>
         </div>
 
         <div className="flex items-center gap-1.5">

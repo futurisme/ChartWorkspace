@@ -21,12 +21,18 @@ function FlowNodeCardComponent({ data, selected }: NodeProps<ConceptNodeData>) {
   const { isReadOnly } = useContext(NodeActionContext);
   const baseColor = data.color ?? '#3b82f6';
   const lightBackground = isLightColor(baseColor);
+  const collaboratorNames = data.collaboratorNames ?? [];
+  const editedByOthers = Boolean(data.editedByOthers && collaboratorNames.length > 0);
 
   return (
     <div className="relative flow-node-drag-hitbox">
       <div
         className={`relative z-10 max-w-xs cursor-grab touch-none select-none rounded-lg border-2 px-3 py-2 shadow-lg active:cursor-grabbing ${
-          selected ? 'ring-2 ring-lime-400/80 shadow-[0_0_14px_rgba(132,204,22,0.55)]' : ''
+          selected
+            ? 'ring-2 ring-lime-400/80 shadow-[0_0_14px_rgba(132,204,22,0.55)]'
+            : editedByOthers
+              ? 'ring-2 ring-amber-300/80 shadow-[0_0_12px_rgba(252,211,77,0.45)]'
+              : ''
         }`}
         style={{
           borderColor: selected ? '#84cc16' : baseColor,
@@ -34,6 +40,11 @@ function FlowNodeCardComponent({ data, selected }: NodeProps<ConceptNodeData>) {
           color: lightBackground ? '#0f172a' : '#f8fafc',
         }}
       >
+        {editedByOthers && !selected && (
+          <div className="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-amber-400/90 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-900">
+            {`Sedang diedit: ${collaboratorNames.join(', ')}`}
+          </div>
+        )}
         {selected && !isReadOnly && (
           <div className="absolute -top-5 left-1/2 -translate-x-1/2 text-[10px] font-semibold uppercase tracking-wide text-lime-500">
             Editing This

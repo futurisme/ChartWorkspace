@@ -46,13 +46,72 @@ function EditorHeaderSkeleton() {
   );
 }
 
+function EditorShell({ mapId, title, userId, displayName, showMobileToolsPanel, onSelectNode }: {
+  mapId: string;
+  title: string;
+  userId: string;
+  displayName: string;
+  showMobileToolsPanel: boolean;
+  onSelectNode: (nodeId: string | null) => void;
+}) {
+  return (
+    <RealtimeProvider mapId={mapId} userId={userId} displayName={displayName} mode="edit">
+      <header className="editor-shell-header border-b border-cyan-500/25 bg-slate-950/90 px-2.5 py-1.5 shadow-[0_6px_20px_rgba(6,182,212,0.12)] backdrop-blur sm:px-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <h1 className="truncate text-sm font-semibold tracking-wide text-cyan-100 sm:text-base">{title}</h1>
+            <p className="hidden text-[10px] uppercase tracking-[0.12em] text-cyan-300/70 sm:block">Collaborative concept workspace</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="rounded-md border border-cyan-300/30 bg-cyan-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-cyan-100 sm:text-[11px]">
+              Edit #{mapId}
+            </div>
+            <PresenceBar compact showBorder={false} className="rounded-md border border-cyan-300/20 bg-slate-900/70" />
+          </div>
+        </div>
+      </header>
+
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <div className="flex h-full min-h-0 flex-col overflow-hidden">
+          <FlowWorkspace
+            isReadOnly={false}
+            showDesktopControlsPanel
+            showDesktopStatusPanel
+            showMobileToolsPanel={showMobileToolsPanel}
+            onSelectNode={onSelectNode}
+            snapEnabled
+            inviteRequestToken={0}
+          />
+        </div>
+      </div>
+    </RealtimeProvider>
+  );
+}
+
 function EditorContent() {
   const params = useParams();
   const mapId = params.mapId as string;
   const [title, setTitle] = useState('Untitled Map');
   const [loading, setLoading] = useState(true);
-  const [displayName] = useState(() => (Math.random() > 0.5 ? 'Alice' : 'Bob'));
+  const [displayName, setDisplayName] = useState('');
+  const [showNameModal, setShowNameModal] = useState(false);
+  const [draftDisplayName, setDraftDisplayName] = useState('');
   const [showMobileToolsPanel, setShowMobileToolsPanel] = useState(false);
+
+  useEffect(() => {
+    const savedName = localStorage.getItem('collabDisplayName');
+    if (savedName && savedName.trim()) {
+      setDisplayName(savedName.trim());
+      setDraftDisplayName(savedName.trim());
+      setShowNameModal(false);
+      return;
+    }
+
+    const generated = `User-${Math.floor(Math.random() * 9000) + 1000}`;
+    setDisplayName(generated);
+    setDraftDisplayName(generated);
+    setShowNameModal(true);
+  }, []);
 
   useEffect(() => {
     const loadMap = async () => {
@@ -97,44 +156,59 @@ function EditorContent() {
     return nextUserId;
   }, []);
 
+  const handleSubmitName = useCallback(() => {
+    const normalized = draftDisplayName.trim() || `User-${Math.floor(Math.random() * 9000) + 1000}`;
+    setDisplayName(normalized);
+    localStorage.setItem('collabDisplayName', normalized);
+    setShowNameModal(false);
+  }, [draftDisplayName]);
+
   return (
     <div className="flex h-[100dvh] flex-col overflow-hidden">
-      {loading ? (
-        <EditorHeaderSkeleton />
+      {loading || !displayName ? (
+        <>
+          <EditorHeaderSkeleton />
+          <EditorWorkspaceSkeleton />
+        </>
       ) : (
-        <header className="editor-shell-header border-b border-cyan-500/25 bg-slate-950/90 px-2.5 py-1.5 shadow-[0_6px_20px_rgba(6,182,212,0.12)] backdrop-blur sm:px-3">
-          <div className="flex items-center justify-between gap-2">
-            <div className="min-w-0">
-              <h1 className="truncate text-sm font-semibold tracking-wide text-cyan-100 sm:text-base">{title}</h1>
-              <p className="hidden text-[10px] uppercase tracking-[0.12em] text-cyan-300/70 sm:block">Collaborative concept workspace</p>
-            </div>
-            <div className="rounded-md border border-cyan-300/30 bg-cyan-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-cyan-100 sm:text-[11px]">
-              Edit #{mapId}
-            </div>
-          </div>
-        </header>
+        <EditorShell
+          mapId={mapId}
+          title={title}
+          userId={userId}
+          displayName={displayName}
+          showMobileToolsPanel={showMobileToolsPanel}
+          onSelectNode={handleNodeSelection}
+        />
       )}
 
-      <div className="min-h-0 flex-1 overflow-hidden">
-        {loading ? (
-          <EditorWorkspaceSkeleton />
-        ) : (
-          <RealtimeProvider mapId={mapId} userId={userId} displayName={displayName} mode="edit">
-            <div className="flex h-full min-h-0 flex-col overflow-hidden">
-              <PresenceBar compact />
-              <FlowWorkspace
-                isReadOnly={false}
-                showDesktopControlsPanel
-                showDesktopStatusPanel
-                showMobileToolsPanel={showMobileToolsPanel}
-                onSelectNode={handleNodeSelection}
-                snapEnabled
-                inviteRequestToken={0}
-              />
-            </div>
-          </RealtimeProvider>
-        )}
-      </div>
+      {showNameModal && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-xl border border-cyan-300/30 bg-slate-950 p-5 text-cyan-100 shadow-2xl">
+            <h2 className="text-lg font-semibold">Masukkan nama kolaborator</h2>
+            <p className="mt-1 text-sm text-cyan-200/80">Nama ini akan ditampilkan ke user lain saat live collaboration.</p>
+            <input
+              type="text"
+              value={draftDisplayName}
+              onChange={(event) => setDraftDisplayName(event.target.value)}
+              className="mt-4 w-full rounded-md border border-cyan-300/40 bg-slate-900 px-3 py-2 text-sm text-cyan-50 outline-none focus:border-cyan-200"
+              placeholder="Contoh: Budi"
+              autoFocus
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  handleSubmitName();
+                }
+              }}
+            />
+            <button
+              type="button"
+              onClick={handleSubmitName}
+              className="mt-4 w-full rounded-md bg-cyan-500 px-3 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-400"
+            >
+              Lanjut ke Workspace
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

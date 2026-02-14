@@ -219,6 +219,7 @@ export interface RealtimeContextType {
   saveSnapshot: () => Promise<void>;
   updatePresence: (updates: Partial<UserPresence>) => void;
   saveErrorCount: number;
+  isDatabaseConnected: boolean;
 }
 
 const RealtimeContext = createContext<RealtimeContextType | undefined>(undefined);
@@ -256,6 +257,7 @@ export function RealtimeProvider({
   const [hasRealtimePeers, setHasRealtimePeers] = useState(false);
   const [currentVersion, setCurrentVersion] = useState(1);
   const [saveErrorCount, setSaveErrorCount] = useState(0);
+  const [isDatabaseConnected, setIsDatabaseConnected] = useState(true);
 
   const remoteUserCount = remoteUsers.length;
   const collaborationConnected = isConnected && (hasRealtimePeers || remoteUserCount > 0);
@@ -334,6 +336,7 @@ export function RealtimeProvider({
         if (!response.ok) {
           throw new Error(`Failed to load map (${response.status})`);
         }
+        setIsDatabaseConnected(true);
 
         const { snapshot, version } = await response.json();
         mapEtagRef.current = response.headers.get('etag');
@@ -466,6 +469,7 @@ export function RealtimeProvider({
         if (error instanceof DOMException && error.name === 'AbortError') {
           return;
         }
+        setIsDatabaseConnected(false);
         setHasRealtimePeers(false);
         logRealtime('error', 'Failed to initialize realtime provider', {
           mapId,
@@ -625,11 +629,13 @@ export function RealtimeProvider({
       const result = await response.json();
       setCurrentVersion(result.version);
       setSaveErrorCount(0); // Reset on success
+      setIsDatabaseConnected(true);
       if (updateCounterRef.current === updateMark) {
         dirtyRef.current = false;
       }
     } catch (error) {
       setSaveErrorCount(prev => Math.min(prev + 1, 3));
+      setIsDatabaseConnected(false);
       console.error('Snapshot save error (will retry):', error);
     } finally {
       saveInFlightRef.current = false;
@@ -657,7 +663,7 @@ export function RealtimeProvider({
       // Set new debounced save
       saveTimeoutRef.current = setTimeout(() => {
         saveSnapshot();
-      }, 10000); // 10 seconds debounce
+      }, 1200); // quick debounce for near-immediate autosave
     };
 
     doc.on('update', handleChange);
@@ -857,6 +863,7 @@ export function RealtimeProvider({
         saveSnapshot,
         updatePresence,
         saveErrorCount,
+        isDatabaseConnected,
       }}
     >
       {children}
