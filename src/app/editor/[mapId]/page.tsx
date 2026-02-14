@@ -52,11 +52,7 @@ function EditorContent() {
   const [title, setTitle] = useState('Untitled Map');
   const [loading, setLoading] = useState(true);
   const [displayName] = useState(() => (Math.random() > 0.5 ? 'Alice' : 'Bob'));
-  const [showDesktopControlsPanel, setShowDesktopControlsPanel] = useState(true);
-  const [showDesktopStatusPanel, setShowDesktopStatusPanel] = useState(true);
   const [showMobileToolsPanel, setShowMobileToolsPanel] = useState(false);
-  const [snapEnabled, setSnapEnabled] = useState(true);
-  const [inviteRequestToken, setInviteRequestToken] = useState(0);
 
   useEffect(() => {
     const loadMap = async () => {
@@ -112,45 +108,8 @@ function EditorContent() {
               <h1 className="truncate text-sm font-semibold tracking-wide text-cyan-100 sm:text-base">{title}</h1>
               <p className="hidden text-[10px] uppercase tracking-[0.12em] text-cyan-300/70 sm:block">Collaborative concept workspace</p>
             </div>
-            <div className="flex items-center gap-1.5 sm:gap-2">
-              <button
-                type="button"
-                onClick={() => setShowMobileToolsPanel((prev) => !prev)}
-                className="rounded-md border border-cyan-400/40 bg-cyan-500/10 px-2 py-1 text-[10px] font-semibold text-cyan-100 transition hover:bg-cyan-500/20 lg:hidden"
-              >
-                {showMobileToolsPanel ? 'Hide Tools' : 'Show Tools'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowDesktopControlsPanel((prev) => !prev)}
-                className="hidden rounded-md border border-cyan-400/30 bg-slate-900/70 px-2 py-1 text-[11px] font-semibold text-cyan-100 transition hover:bg-slate-900 lg:inline-flex"
-              >
-                {showDesktopControlsPanel ? 'Hide Controls' : 'Show Controls'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowDesktopStatusPanel((prev) => !prev)}
-                className="hidden rounded-md border border-cyan-400/30 bg-slate-900/70 px-2 py-1 text-[11px] font-semibold text-cyan-100 transition hover:bg-slate-900 lg:inline-flex"
-              >
-                {showDesktopStatusPanel ? 'Hide Status' : 'Show Status'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setSnapEnabled((prev) => !prev)}
-                className="rounded-md border border-cyan-400/30 bg-slate-900/70 px-2 py-1 text-[10px] font-semibold text-cyan-100 transition hover:bg-slate-900 sm:text-[11px]"
-              >
-                Snap {snapEnabled ? 'ON' : 'OFF'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setInviteRequestToken((prev) => prev + 1)}
-                className="rounded-md border border-cyan-400/30 bg-slate-900/70 px-2 py-1 text-[10px] font-semibold text-cyan-100 transition hover:bg-slate-900 sm:text-[11px]"
-              >
-                Invite
-              </button>
-              <div className="rounded-md border border-cyan-300/30 bg-cyan-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-cyan-100 sm:text-[11px]">
-                Edit #{mapId}
-              </div>
+            <div className="rounded-md border border-cyan-300/30 bg-cyan-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-cyan-100 sm:text-[11px]">
+              Edit #{mapId}
             </div>
           </div>
         </header>
@@ -165,12 +124,12 @@ function EditorContent() {
               <PresenceBar compact />
               <FlowWorkspace
                 isReadOnly={false}
-                showDesktopControlsPanel={showDesktopControlsPanel}
-                showDesktopStatusPanel={showDesktopStatusPanel}
+                showDesktopControlsPanel
+                showDesktopStatusPanel
                 showMobileToolsPanel={showMobileToolsPanel}
                 onSelectNode={handleNodeSelection}
-                snapEnabled={snapEnabled}
-                inviteRequestToken={inviteRequestToken}
+                snapEnabled
+                inviteRequestToken={0}
               />
             </div>
           </RealtimeProvider>
