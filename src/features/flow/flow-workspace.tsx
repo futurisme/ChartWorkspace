@@ -15,8 +15,8 @@ import {
   type OnSelectionChangeParams,
   ReactFlow,
   type ReactFlowInstance,
-  type XYPosition,
   type Viewport,
+  type XYPosition,
   addEdge,
   useEdgesState,
   useNodesState,
@@ -1098,7 +1098,7 @@ export function FlowWorkspace({
 
   const handleMove = useCallback((_event: MouseEvent | TouchEvent | null, viewport: Viewport) => {
     const zoom = viewport.zoom > 0 ? viewport.zoom : 1;
-    if (Math.abs(zoom - lastZoomRef.current) < 0.01) {
+    if (Math.abs(zoom - lastZoomRef.current) < 0.02) {
       return;
     }
     lastZoomRef.current = zoom;
@@ -1112,7 +1112,6 @@ export function FlowWorkspace({
       zoomRafRef.current = null;
     });
   }, []);
-
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -1283,7 +1282,7 @@ export function FlowWorkspace({
             zoomOnPinch
             zoomOnScroll={!isMobileViewport}
             preventScrolling={isMobileViewport}
-            minZoom={isMobileViewport ? 0.35 : 0.2}
+            minZoom={isMobileViewport ? 0.4 : 0.2}
             nodeDragThreshold={isMobileViewport ? 1 : 3}
             onlyRenderVisibleElements
             defaultEdgeOptions={{
@@ -1401,5 +1400,3 @@ export function FlowWorkspace({
     </div>
   );
 }
-
-

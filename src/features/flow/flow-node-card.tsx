@@ -25,14 +25,14 @@ function FlowNodeCardComponent({ data, selected }: NodeProps<ConceptNodeData>) {
   return (
     <div className="relative">
       <div
-        className={`relative max-w-xs cursor-grab touch-none select-none rounded-lg border-2 px-3 py-2 shadow-lg active:cursor-grabbing before:absolute before:content-[''] before:rounded-[inherit] before:-inset-[var(--node-hit-inset)] ${
+        className={`relative max-w-xs cursor-grab touch-none select-none rounded-lg border-2 px-3 py-2 shadow-lg active:cursor-grabbing before:pointer-events-none before:absolute before:content-[''] before:rounded-[inherit] before:-inset-[var(--node-hit-inset)] ${
           selected ? 'ring-2 ring-lime-400/80 shadow-[0_0_14px_rgba(132,204,22,0.55)]' : ''
         }`}
         style={{
           borderColor: selected ? '#84cc16' : baseColor,
           backgroundColor: baseColor,
           color: lightBackground ? '#0f172a' : '#f8fafc',
-          ['--node-hit-inset' as string]: 'clamp(10px, calc(14px / var(--flow-zoom, 1)), 28px)',
+          ['--node-hit-inset' as string]: 'clamp(6px, calc(10px / var(--flow-zoom, 1)), 16px)',
         }}
       >
         {selected && !isReadOnly && (
