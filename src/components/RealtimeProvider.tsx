@@ -227,6 +227,7 @@ export function RealtimeProvider({
   const [localPresence, setLocalPresence] = useState<UserPresence | null>(null);
   const [remoteUsers, setRemoteUsers] = useState<UserPresence[]>([]);
   const [isConnected, setIsConnected] = useState(false);
+  const [hasRealtimePeers, setHasRealtimePeers] = useState(false);
   const [currentVersion, setCurrentVersion] = useState(1);
   const [saveErrorCount, setSaveErrorCount] = useState(0);
 
@@ -284,6 +285,7 @@ export function RealtimeProvider({
 
     const initializeRealtime = async () => {
       try {
+        setHasRealtimePeers(false);
         // In edit mode, ensure the map exists so direct /editor/:id links do not fail on first open.
         const mapEndpoint = mode === 'edit'
           ? `/api/maps/${mapId}?ensure=1`
@@ -375,6 +377,29 @@ export function RealtimeProvider({
 
           newAwareness.on('change', handleAwarenessChange);
 
+          const handlePeers = (event: { webrtcPeers?: string[] | Set<string>; bcPeers?: string[] | Set<string> }) => {
+            if (!isMounted) {
+              return;
+            }
+
+            const webrtcPeerCount = Array.isArray(event.webrtcPeers)
+              ? event.webrtcPeers.length
+              : event.webrtcPeers instanceof Set
+                ? event.webrtcPeers.size
+                : 0;
+
+            setHasRealtimePeers(webrtcPeerCount > 0);
+            logRealtime('info', 'WebRTC peer topology changed', {
+              roomId: `chartmaker-${normalizedRoomMapId}`,
+              webrtcPeers: webrtcPeerCount,
+              bcPeers: Array.isArray(event.bcPeers)
+                ? event.bcPeers.length
+                : event.bcPeers instanceof Set
+                  ? event.bcPeers.size
+                  : 0,
+            });
+          };
+
           // Connection status
           const handleStatus = (event: { status?: string; connected?: boolean }) => {
             if (isMounted) {
@@ -388,10 +413,12 @@ export function RealtimeProvider({
           };
 
           newProvider.on('status', handleStatus);
+          newProvider.on('peers', handlePeers);
 
           detachRealtimeHandlers = () => {
             newAwareness.off('change', handleAwarenessChange);
             newProvider.off('status', handleStatus);
+            newProvider.off('peers', handlePeers);
           };
           return;
         }
@@ -407,10 +434,12 @@ export function RealtimeProvider({
         setAwareness(null);
         setRemoteUsers([]);
         setIsConnected(false);
+        setHasRealtimePeers(false);
       } catch (error) {
         if (error instanceof DOMException && error.name === 'AbortError') {
           return;
         }
+        setHasRealtimePeers(false);
         logRealtime('error', 'Failed to initialize realtime provider', {
           mapId,
           normalizedRoomMapId,
@@ -433,6 +462,7 @@ export function RealtimeProvider({
         activeProvider.destroy();
         activeProvider = null;
       }
+      setHasRealtimePeers(false);
       if (activeDoc) {
         activeDoc.destroy();
         activeDoc = null;
@@ -656,7 +686,7 @@ export function RealtimeProvider({
     };
 
     const syncFromServer = async () => {
-      if (isConnected) {
+      if (isConnected && hasRealtimePeers) {
         pollingDelayMs = basePollingDelayMs;
         queueNextPoll(pollingDelayMs);
         return;
@@ -705,6 +735,7 @@ export function RealtimeProvider({
           mapId,
           pollingDelayMs,
           mode,
+          hasRealtimePeers,
         });
         lastAppliedFallbackSnapshotRef.current = snapshot;
         pollingDelayMs = basePollingDelayMs;
@@ -714,6 +745,7 @@ export function RealtimeProvider({
           mapId,
           pollingDelayMs,
           mode,
+          hasRealtimePeers,
           error: error instanceof Error ? error.message : String(error),
         });
         pollingDelayMs = Math.min(pollingDelayMs * 1.5, 12000);
@@ -729,7 +761,7 @@ export function RealtimeProvider({
         pollTimer = null;
       }
     };
-  }, [doc, isConnected, mapId, mode, profileHandler]);
+  }, [doc, hasRealtimePeers, isConnected, mapId, mode, profileHandler]);
 
   const updatePresence = useCallback(
     (updates: Partial<UserPresence>) => {
