@@ -16,19 +16,86 @@ const heroStages = [
 
 export default function LandingPage() {
   const [stageIndex, setStageIndex] = useState(heroStages.length - 1);
+  const [motionMode, setMotionMode] = useState<'full' | 'lite' | 'off'>('full');
 
   useEffect(() => {
-    const timer = window.setInterval(() => {
-      setStageIndex((prev) => (prev + 1) % heroStages.length);
-    }, 120);
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
 
-    return () => window.clearInterval(timer);
+    const evaluateMotionMode = () => {
+      const connection = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection;
+      const hasReducedMotion = mediaQuery.matches;
+      const lowCoreDevice = (navigator.hardwareConcurrency ?? 4) <= 4;
+      const saveDataEnabled = Boolean(connection?.saveData);
+
+      if (hasReducedMotion || saveDataEnabled) {
+        setMotionMode('off');
+        return;
+      }
+
+      if (lowCoreDevice) {
+        setMotionMode('lite');
+        return;
+      }
+
+      setMotionMode('full');
+    };
+
+    evaluateMotionMode();
+    mediaQuery.addEventListener('change', evaluateMotionMode);
+
+    return () => mediaQuery.removeEventListener('change', evaluateMotionMode);
   }, []);
+
+  useEffect(() => {
+    if (motionMode === 'off') {
+      setStageIndex(heroStages.length - 1);
+      return;
+    }
+
+    let timer: number | null = null;
+
+    const tick = () => {
+      setStageIndex((prev) => (prev + 1) % heroStages.length);
+    };
+
+    const startTicker = () => {
+      if (document.hidden || timer !== null) {
+        return;
+      }
+
+      const delay = motionMode === 'lite' ? 1500 : 900;
+      timer = window.setInterval(tick, delay);
+    };
+
+    const stopTicker = () => {
+      if (timer !== null) {
+        window.clearInterval(timer);
+        timer = null;
+      }
+    };
+
+    const handleVisibility = () => {
+      if (document.hidden) {
+        stopTicker();
+        return;
+      }
+
+      startTicker();
+    };
+
+    handleVisibility();
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      stopTicker();
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [motionMode]);
 
   const currentStage = useMemo(() => heroStages[stageIndex], [stageIndex]);
 
   return (
-    <main className={styles.main}>
+    <main className={styles.main} data-motion-mode={motionMode}>
       <div className={styles.futuristicImage} aria-hidden="true" />
       <div className={styles.grid} aria-hidden="true" />
       <div className={`${styles.glow} ${styles.glowTop}`} aria-hidden="true" />

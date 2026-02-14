@@ -115,11 +115,11 @@
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  animation: titleShift 0.55s linear infinite;
 }
 
 .dynamicWord {
-  animation: titleShift 0.55s linear infinite, wordPulse 0.2s linear infinite;
+  animation: wordFloat 4.8s ease-in-out infinite;
+  will-change: transform, opacity;
 }
 
 .titlePrimary {
@@ -150,7 +150,6 @@
   border: 1px solid rgba(34, 211, 238, 0.85);
   background: linear-gradient(140deg, rgba(6, 78, 129, 0.95), rgba(91, 33, 182, 0.82), rgba(236, 72, 153, 0.9));
   background-size: 240% 240%;
-  animation: buttonFlux 0.38s linear infinite;
   padding: 0.88rem 2.2rem;
   font-size: 0.96rem;
   font-weight: 700;
@@ -260,6 +259,15 @@
     font-size: 0.9rem;
     letter-spacing: 0.24em;
   }
+
+  .dynamicWord,
+  .quote,
+  .button,
+  .grid,
+  .glow,
+  .futuristicImage {
+    animation: none;
+  }
 }
 
 @keyframes pulseGlow {
@@ -280,15 +288,6 @@
   }
   to {
     transform: translateY(36px);
-  }
-}
-
-@keyframes titleShift {
-  0% {
-    background-position: 0% 50%;
-  }
-  100% {
-    background-position: 100% 50%;
   }
 }
 
@@ -314,23 +313,37 @@
   }
 }
 
-@keyframes wordPulse {
+@keyframes wordFloat {
   0%,
   100% {
-    filter: brightness(1);
+    transform: translateY(0);
+    opacity: 1;
   }
   50% {
-    filter: brightness(1.22);
+    transform: translateY(-2px);
+    opacity: 0.96;
   }
 }
 
-@keyframes buttonFlux {
-  0% {
-    background-position: 0% 50%;
-  }
-  100% {
-    background-position: 100% 50%;
-  }
+
+.main[data-motion-mode='lite'] .dynamicWord,
+.main[data-motion-mode='lite'] .grid,
+.main[data-motion-mode='lite'] .glow,
+.main[data-motion-mode='lite'] .futuristicImage,
+.main[data-motion-mode='lite'] .quote {
+  animation-duration: 8s;
+}
+
+.main[data-motion-mode='off'] .grid,
+.main[data-motion-mode='off'] .glow,
+.main[data-motion-mode='off'] .futuristicImage,
+.main[data-motion-mode='off'] .titlePrimary,
+.main[data-motion-mode='off'] .titleSecondary,
+.main[data-motion-mode='off'] .dynamicWord,
+.main[data-motion-mode='off'] .quote,
+.main[data-motion-mode='off'] .button {
+  animation: none;
+  transition: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
