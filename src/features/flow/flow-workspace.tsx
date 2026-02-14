@@ -35,7 +35,16 @@ import {
   UNBOUNDED_TRANSLATE_EXTENT,
 } from './flow-constants';
 import { FlowEdgeHierarchy } from './flow-edge-hierarchy';
-import { buildAdaptiveRoutedEdges } from './flow-edge-routing';
+import {
+  applyRoutedEdgeGeometry,
+  buildAdaptiveRoutedEdges,
+  buildRoutingCacheKey,
+  toCompactRouteEdges,
+  toCompactRouteNodes,
+  type CompactRouteEdge,
+  type CompactRouteNode,
+  type RoutedEdgeGeometry,
+} from './flow-edge-routing';
 import { FlowNodeCard, NodeActionContext } from './flow-node-card';
 import {
   findOpenPosition,
@@ -75,6 +84,12 @@ const FlowToolbarDesktop = dynamic(
 interface PositionUpdate {
   id: string;
   position: XYPosition;
+}
+
+interface WorkerRouteResult {
+  type: 'route-result';
+  hash: string;
+  edges: RoutedEdgeGeometry[];
 }
 
 type NodeAddOrResetChange = Extract<NodeChange, { type: 'add' | 'reset'; item: Node<ConceptNodeData> }>;
@@ -286,10 +301,10 @@ export function FlowWorkspace({
   const edgeTypes = useMemo(() => ({ hierarchy: FlowEdgeHierarchy }), []);
   const deferredNodes = useDeferredValue(nodes);
   const deferredEdges = useDeferredValue(edges);
-  const routedEdges = useMemo(
-    () => buildAdaptiveRoutedEdges(deferredEdges, deferredNodes),
-    [deferredEdges, deferredNodes]
-  );
+  const [routedEdges, setRoutedEdges] = useState(() => buildAdaptiveRoutedEdges(deferredEdges, deferredNodes));
+  const routingWorkerRef = useRef<Worker | null>(null);
+  const latestRouteHashRef = useRef<string | null>(null);
+  const latestDeferredEdgesRef = useRef<Edge[]>(deferredEdges);
 
   const getParentIdFor = useCallback(
     (childId: string) => edges.find((edge) => edge.target === childId)?.source ?? null,
@@ -318,6 +333,65 @@ export function FlowWorkspace({
     : null;
   const selectedNodeLabel = selectedNode ? getNodeLabel(selectedNode) : null;
   const selectedNodeColor = (selectedNode?.data as ConceptNodeData | undefined)?.color ?? COLOR_OPTIONS[0];
+
+  useEffect(() => {
+    latestDeferredEdgesRef.current = deferredEdges;
+  }, [deferredEdges]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof Worker === 'undefined') {
+      return;
+    }
+
+    const worker = new Worker(new URL('./workers/edge-routing.worker.ts', import.meta.url), { type: 'module' });
+    routingWorkerRef.current = worker;
+
+    worker.onmessage = ({ data }: MessageEvent<WorkerRouteResult>) => {
+      if (data.type !== 'route-result' || latestRouteHashRef.current !== data.hash) {
+        return;
+      }
+
+      setRoutedEdges(applyRoutedEdgeGeometry(latestDeferredEdgesRef.current, data.edges));
+    };
+
+    return () => {
+      worker.terminate();
+      routingWorkerRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const compactNodes: CompactRouteNode[] = toCompactRouteNodes(deferredNodes);
+    const compactEdges: CompactRouteEdge[] = toCompactRouteEdges(deferredEdges);
+    const hash = buildRoutingCacheKey(compactEdges, compactNodes);
+    latestRouteHashRef.current = hash;
+
+    const worker = routingWorkerRef.current;
+    if (!worker) {
+      setRoutedEdges(buildAdaptiveRoutedEdges(deferredEdges, deferredNodes));
+      return;
+    }
+
+    let debounceTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+      const post = () => {
+        worker.postMessage({ type: 'route', hash, nodes: compactNodes, edges: compactEdges });
+      };
+
+      if (typeof window.requestIdleCallback === 'function') {
+        window.requestIdleCallback(post, { timeout: 80 });
+        return;
+      }
+
+      post();
+    }, 24);
+
+    return () => {
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+        debounceTimer = null;
+      }
+    };
+  }, [deferredEdges, deferredNodes]);
 
 
   const persistNodePositions = useCallback(
