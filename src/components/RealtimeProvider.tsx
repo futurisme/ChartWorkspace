@@ -16,11 +16,6 @@ import { applyYjsSnapshot, getCurrentSnapshot } from '@/lib/snapshot';
 import { formatMapId, parseMapId } from '@/lib/mapId';
 
 const LOCAL_SIGNALING_URL = 'ws://localhost:4444';
-const DEFAULT_PUBLIC_SIGNALING_URLS = [
-  'wss://signaling.yjs.dev',
-  'wss://y-webrtc-signaling-eu.herokuapp.com',
-  'wss://y-webrtc-signaling-us.herokuapp.com',
-];
 const REALTIME_LOG_PREFIX = '[realtime]';
 
 const FRAME_BUDGET_MS = 16.7;
@@ -117,10 +112,16 @@ function normalizeSignalingUrl(rawUrl: string): string | null {
     return null;
   }
 
-  const withScheme = /^wss?:\/\//i.test(trimmed) ? trimmed : `wss://${trimmed}`;
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `wss://${trimmed}`;
 
   try {
     const parsed = new URL(withScheme);
+    if (parsed.protocol === 'http:') {
+      parsed.protocol = 'ws:';
+    } else if (parsed.protocol === 'https:') {
+      parsed.protocol = 'wss:';
+    }
+
     if (parsed.protocol !== 'ws:' && parsed.protocol !== 'wss:') {
       return null;
     }
@@ -167,16 +168,17 @@ function parseIceServers(rawValue: string | undefined) {
   }
 }
 
-function getSignalingSelection(hostname: string, envSignalingUrls: string[]) {
+function getSignalingSelection(hostname: string, envSignalingUrls: string[], mode: 'edit' | 'view') {
   const protocol = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss' : 'ws';
   const sameHostFallback = `${protocol}://${hostname}:4444`;
   const isLocalHost = isLocalHostname(hostname);
 
   if (isLocalHost) {
     return {
-      signalingUrls: Array.from(new Set([...envSignalingUrls, LOCAL_SIGNALING_URL, ...DEFAULT_PUBLIC_SIGNALING_URLS])),
+      signalingUrls: Array.from(new Set([...envSignalingUrls, LOCAL_SIGNALING_URL])),
       skippedUrls: [],
       fallbackUrl: null as string | null,
+      warning: null as string | null,
     };
   }
 
@@ -196,12 +198,16 @@ function getSignalingSelection(hostname: string, envSignalingUrls: string[]) {
     signalingUrls.add(sameHostFallback);
   }
 
-  DEFAULT_PUBLIC_SIGNALING_URLS.forEach((url) => signalingUrls.add(url));
+  const warning =
+    mode === 'edit' && reachableEnvUrls.length === 0
+      ? 'No public signaling URL configured. Set NEXT_PUBLIC_WEBRTC_URL for cross-device collaboration.'
+      : null;
 
   return {
     signalingUrls: Array.from(signalingUrls),
     skippedUrls,
     fallbackUrl: shouldAppendSameHost ? sameHostFallback : null,
+    warning,
   };
 }
 
@@ -283,13 +289,16 @@ export function RealtimeProvider({
   }
 
   if (signalingUrlsRef.current === null) {
-    const envSignalingUrls = parseSignalingUrls(process.env.NEXT_PUBLIC_WEBRTC_URL ?? '');
+    const envSignalingUrls = parseSignalingUrls([
+      process.env.NEXT_PUBLIC_WEBRTC_URL ?? '',
+      process.env.NEXT_PUBLIC_WEBRTC_URLS ?? '',
+    ].filter(Boolean).join(','));
     const candidates = new Set<string>(envSignalingUrls);
 
     if (typeof window !== 'undefined') {
       const { hostname } = window.location;
 
-      const selection = getSignalingSelection(hostname, envSignalingUrls);
+      const selection = getSignalingSelection(hostname, envSignalingUrls, mode);
       selection.signalingUrls.forEach((url) => candidates.add(url));
 
       if (selection.skippedUrls.length > 0) {
@@ -305,6 +314,14 @@ export function RealtimeProvider({
           hostname,
           fallbackUrl: selection.fallbackUrl,
           reason: 'No reachable public signaling URL detected for this client.',
+        });
+      }
+
+      if (selection.warning) {
+        logRealtime('warn', selection.warning, {
+          hostname,
+          mode,
+          hint: 'Set NEXT_PUBLIC_WEBRTC_URL to your dedicated signaling service domain (wss://...).',
         });
       }
     }
