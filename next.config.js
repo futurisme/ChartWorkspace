@@ -1,7 +1,6 @@
-const withBundleAnalyzer =
-  process.env.ANALYZE === 'true'
-    ? require('@next/bundle-analyzer')({ enabled: true })
-    : (config) => config;
+const withBundleAnalyzer = require('@next/bundle-analyzer')({
+  enabled: process.env.ANALYZE === 'true',
+});
 
 const cspHeader = [
   "default-src 'self'",
@@ -9,14 +8,18 @@ const cspHeader = [
   "form-action 'self'",
   "frame-ancestors 'none'",
   "object-src 'none'",
-  "upgrade-insecure-requests",
+  "img-src 'self' data: blob:",
+  "font-src 'self' data:",
+  "style-src 'self' 'unsafe-inline'",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+  "connect-src 'self' https: wss:",
 ].join('; ');
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
-  // Keep gzip enabled as fallback; prefer Brotli at the CDN/reverse-proxy layer.
+  // Keep gzip enabled in-app as fallback; serve Brotli at CDN/reverse-proxy when available.
   compress: true,
   experimental: {
     optimizePackageImports: ['reactflow'],
