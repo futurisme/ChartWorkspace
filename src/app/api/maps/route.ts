@@ -4,6 +4,7 @@ import { createDocWithSnapshot, getCurrentSnapshot } from '@/lib/snapshot';
 import { formatMapId } from '@/lib/mapId';
 
 const LIST_CACHE_CONTROL = 'public, s-maxage=30, stale-while-revalidate=120';
+const NO_STORE = 'no-store';
 
 function createErrorResponse(error: string, status: number, details?: string) {
   return NextResponse.json(
@@ -13,7 +14,7 @@ function createErrorResponse(error: string, status: number, details?: string) {
     {
       status,
       headers: {
-        'Cache-Control': 'no-store',
+        'Cache-Control': NO_STORE,
       },
     }
   );
@@ -44,16 +45,38 @@ export async function GET(request: NextRequest) {
       },
     });
 
+    
+    const formattedMaps = maps.map((map) => ({
+      id: formatMapId(map.id),
+      title: map.title,
+      updatedAt: map.updatedAt,
+    }));
+    const newestUpdatedAt = maps[0]?.updatedAt;
+    const lastModified = newestUpdatedAt?.toUTCString();
+    const etagSeed = `${query ?? ''}:${maps.length}:${newestUpdatedAt?.getTime() ?? 0}`;
+    const etag = `W/\"maps-${Buffer.from(etagSeed).toString('base64url')}\"`;
+    const ifNoneMatch = request.headers.get('if-none-match');
+    const ifModifiedSince = request.headers.get('if-modified-since');
+    const modifiedSince = ifModifiedSince ? new Date(ifModifiedSince) : null;
+    const hasValidModifiedSince = modifiedSince && !Number.isNaN(modifiedSince.getTime());
+
+    if (ifNoneMatch === etag || (lastModified && hasValidModifiedSince && newestUpdatedAt.getTime() <= modifiedSince.getTime())) {
+      return new NextResponse(null, {
+        status: 304,
+        headers: {
+          ETag: etag,
+          ...(lastModified ? { 'Last-Modified': lastModified } : {}),
+          'Cache-Control': LIST_CACHE_CONTROL,
+        },
+      });
+    }
+
     return NextResponse.json(
-      {
-        maps: maps.map((map) => ({
-          id: formatMapId(map.id),
-          title: map.title,
-          updatedAt: map.updatedAt,
-        })),
-      },
+      { maps: formattedMaps },
       {
         headers: {
+          ETag: etag,
+          ...(lastModified ? { 'Last-Modified': lastModified } : {}),
           'Cache-Control': LIST_CACHE_CONTROL,
         },
       }
@@ -81,7 +104,7 @@ export async function POST(request: NextRequest) {
         {
           status: 400,
           headers: {
-            'Cache-Control': 'no-store',
+            'Cache-Control': NO_STORE,
           },
         }
       );
@@ -107,7 +130,7 @@ export async function POST(request: NextRequest) {
       {
         status: 201,
         headers: {
-          'Cache-Control': 'no-store',
+          'Cache-Control': NO_STORE,
         },
       }
     );

@@ -4,6 +4,7 @@ import { formatMapId, parseMapId } from '@/lib/mapId';
 import { createDocWithSnapshot, getCurrentSnapshot } from '@/lib/snapshot';
 
 const MAP_CACHE_CONTROL = 'public, s-maxage=15, stale-while-revalidate=60';
+const NO_STORE = 'no-store';
 
 function createErrorResponse(error: string, status: number, details?: string) {
   return NextResponse.json(
@@ -13,7 +14,7 @@ function createErrorResponse(error: string, status: number, details?: string) {
     {
       status,
       headers: {
-        'Cache-Control': 'no-store',
+        'Cache-Control': NO_STORE,
       },
     }
   );
@@ -38,7 +39,7 @@ export async function GET(
         {
           status: 400,
           headers: {
-            'Cache-Control': 'no-store',
+            'Cache-Control': NO_STORE,
           },
         }
       );
@@ -51,7 +52,7 @@ export async function GET(
         {
           status: 400,
           headers: {
-            'Cache-Control': 'no-store',
+            'Cache-Control': NO_STORE,
           },
         }
       );
@@ -82,26 +83,32 @@ export async function GET(
         {
           status: 404,
           headers: {
-            'Cache-Control': 'no-store',
+            'Cache-Control': NO_STORE,
           },
         }
       );
     }
 
+    const cacheControl = ensureMap ? NO_STORE : MAP_CACHE_CONTROL;
     const lastModified = map.updatedAt.toUTCString();
     const etag = `W/\"map-${map.id}-v${map.version}\"`;
-    const ifNoneMatch = request.headers.get('if-none-match');
-    const ifModifiedSince = request.headers.get('if-modified-since');
 
-    if (ifNoneMatch === etag || (ifModifiedSince && new Date(ifModifiedSince) >= map.updatedAt)) {
-      return new NextResponse(null, {
-        status: 304,
-        headers: {
-          ETag: etag,
-          'Last-Modified': lastModified,
-          'Cache-Control': MAP_CACHE_CONTROL,
-        },
-      });
+    if (!ensureMap) {
+      const ifNoneMatch = request.headers.get('if-none-match');
+      const ifModifiedSince = request.headers.get('if-modified-since');
+      const modifiedSince = ifModifiedSince ? new Date(ifModifiedSince) : null;
+      const hasValidModifiedSince = modifiedSince && !Number.isNaN(modifiedSince.getTime());
+
+      if (ifNoneMatch === etag || (hasValidModifiedSince && map.updatedAt.getTime() <= modifiedSince.getTime())) {
+        return new NextResponse(null, {
+          status: 304,
+          headers: {
+            ETag: etag,
+            'Last-Modified': lastModified,
+            'Cache-Control': cacheControl,
+          },
+        });
+      }
     }
 
     return NextResponse.json(
@@ -115,7 +122,7 @@ export async function GET(
         headers: {
           ETag: etag,
           'Last-Modified': lastModified,
-          'Cache-Control': MAP_CACHE_CONTROL,
+          'Cache-Control': cacheControl,
         },
       }
     );
