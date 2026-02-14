@@ -23,9 +23,9 @@ function FlowNodeCardComponent({ data, selected }: NodeProps<ConceptNodeData>) {
   const lightBackground = isLightColor(baseColor);
 
   return (
-    <div className="relative">
+    <div className="relative flow-node-drag-hitbox">
       <div
-        className={`relative max-w-xs cursor-grab touch-none select-none rounded-lg border-2 px-3 py-2 shadow-lg active:cursor-grabbing ${
+        className={`relative z-10 max-w-xs cursor-grab touch-none select-none rounded-lg border-2 px-3 py-2 shadow-lg active:cursor-grabbing ${
           selected ? 'ring-2 ring-lime-400/80 shadow-[0_0_14px_rgba(132,204,22,0.55)]' : ''
         }`}
         style={{

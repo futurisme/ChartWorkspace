@@ -95,6 +95,7 @@ interface WorkerRouteResult {
 
 const FRAME_BUDGET_MS = 16.7;
 const PRESENCE_MOVE_CADENCE_MS = 120;
+const NODE_DRAG_HANDLE_SELECTOR = '.flow-node-drag-hitbox';
 
 type SchedulerWithPostTask = {
   postTask?: (callback: () => void, options?: { priority?: 'background' | 'user-visible' | 'user-blocking'; delay?: number }) => Promise<void>;
@@ -173,6 +174,7 @@ function buildNodeFromMap(nodeId: string, nodeData: YRecordMap): Node<ConceptNod
   return {
     id: persisted.id,
     type: 'conceptNode',
+    dragHandle: NODE_DRAG_HANDLE_SELECTOR,
     data: {
       label: persisted.label,
       color: persisted.color,
@@ -947,6 +949,7 @@ export function FlowWorkspace({
     const newNode: ConceptNode = {
       id: nodeId,
       type: 'conceptNode',
+      dragHandle: NODE_DRAG_HANDLE_SELECTOR,
       data: {
         label: `Concept ${nodeCountRef.current + 1}`,
       },
@@ -997,6 +1000,7 @@ export function FlowWorkspace({
     const childNode: ConceptNode = {
       id: childId,
       type: 'conceptNode',
+      dragHandle: NODE_DRAG_HANDLE_SELECTOR,
       data: { label: `Concept ${nodeCountRef.current + 1}` },
       position: childPos,
     };
@@ -1068,6 +1072,7 @@ export function FlowWorkspace({
     const siblingNode: ConceptNode = {
       id: siblingId,
       type: 'conceptNode',
+      dragHandle: NODE_DRAG_HANDLE_SELECTOR,
       data: { label: `Concept ${nodeCountRef.current + 1}` },
       position: siblingPos,
     };
@@ -1148,6 +1153,7 @@ export function FlowWorkspace({
     const parentNode: ConceptNode = {
       id: parentId,
       type: 'conceptNode',
+      dragHandle: NODE_DRAG_HANDLE_SELECTOR,
       data: { label: `Concept ${nodeCountRef.current + 1}` },
       position: parentPos,
     };

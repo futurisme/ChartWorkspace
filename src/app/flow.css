@@ -29,4 +29,14 @@
     touch-action: none;
     will-change: transform;
   }
+
+  .react-flow__node-conceptNode .flow-node-drag-hitbox {
+    position: relative;
+  }
+
+  .react-flow__node-conceptNode .flow-node-drag-hitbox::before {
+    content: '';
+    position: absolute;
+    inset: -10px;
+  }
 }
