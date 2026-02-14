@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
 import {
   Background,
   BackgroundVariant,
@@ -41,7 +42,6 @@ import {
   snapToGridPosition,
   getNodeSize,
 } from './flow-node-placement';
-import { FlowToolbarDesktop } from './flow-toolbar-desktop';
 import { FlowToolbarMobile } from './flow-toolbar-mobile';
 import type {
   ConceptNode,
@@ -63,6 +63,14 @@ const GRADIENT_COLOR_OPTIONS = [
   '#84cc16',
   '#14b8a6',
 ];
+
+const FlowToolbarDesktop = dynamic(
+  () => import('./flow-toolbar-desktop').then((module) => module.FlowToolbarDesktop),
+  {
+    ssr: false,
+    loading: () => null,
+  }
+);
 
 interface PositionUpdate {
   id: string;

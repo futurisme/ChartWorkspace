@@ -1,10 +1,50 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { useParams } from 'next/navigation';
-import { RealtimeProvider } from '@/components/RealtimeProvider';
-import { FlowWorkspace } from '@/features/flow/flow-workspace';
 import { PresenceBar } from '@/components/PresenceBar';
+
+const RealtimeProvider = dynamic(
+  () => import('@/components/RealtimeProvider').then((module) => module.RealtimeProvider),
+  {
+    ssr: false,
+    loading: () => <div className="h-full w-full bg-slate-50" />,
+  }
+);
+
+const FlowWorkspace = dynamic(
+  () => import('@/features/flow/flow-workspace').then((module) => module.FlowWorkspace),
+  {
+    ssr: false,
+    loading: () => <EditorWorkspaceSkeleton />,
+  }
+);
+
+function EditorWorkspaceSkeleton() {
+  return (
+    <div className="h-full w-full bg-slate-50 p-3 sm:p-4">
+      <div className="grid h-full grid-cols-1 gap-3 lg:grid-cols-[1fr_220px]">
+        <div className="rounded-xl border border-slate-200 bg-white" />
+        <div className="hidden rounded-xl border border-slate-200 bg-white lg:block" />
+      </div>
+    </div>
+  );
+}
+
+function EditorHeaderSkeleton() {
+  return (
+    <header className="border-b border-cyan-500/25 bg-slate-950/90 px-2.5 py-1.5 shadow-[0_6px_20px_rgba(6,182,212,0.12)] backdrop-blur sm:px-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0 space-y-1">
+          <div className="h-4 w-44 rounded bg-cyan-200/30" />
+          <div className="hidden h-3 w-56 rounded bg-cyan-200/20 sm:block" />
+        </div>
+        <div className="h-6 w-20 rounded bg-cyan-200/20" />
+      </div>
+    </header>
+  );
+}
 
 function EditorContent() {
   const params = useParams();
@@ -25,10 +65,8 @@ function EditorContent() {
         if (response.ok) {
           const data = await response.json();
           setTitle(data.title);
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('lastMapId', mapId);
-            localStorage.setItem('lastMapTitle', data.title || 'Untitled Map');
-          }
+          localStorage.setItem('lastMapId', mapId);
+          localStorage.setItem('lastMapTitle', data.title || 'Untitled Map');
         }
       } catch (error) {
         console.error('Failed to load map:', error);
@@ -52,33 +90,22 @@ function EditorContent() {
     setShowMobileToolsPanel(Boolean(nodeId));
   }, []);
 
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-100">
-        <div className="text-center">
-          <div className="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
-          <p className="text-gray-600">Loading map...</p>
-        </div>
-      </div>
-    );
-  }
+  const userId = useMemo(() => {
+    if (typeof window === 'undefined') {
+      return `user-${Date.now()}`;
+    }
 
-  const userId = typeof window !== 'undefined'
-    ? localStorage.getItem('userId') || `user-${Date.now()}`
-    : `user-${Date.now()}`;
-
-  if (typeof window !== 'undefined') {
-    localStorage.setItem('userId', userId);
-  }
+    const existing = localStorage.getItem('userId');
+    const nextUserId = existing || `user-${Date.now()}`;
+    localStorage.setItem('userId', nextUserId);
+    return nextUserId;
+  }, []);
 
   return (
-    <RealtimeProvider
-      mapId={mapId}
-      userId={userId}
-      displayName={displayName}
-      mode="edit"
-    >
-      <div className="flex h-[100dvh] flex-col overflow-hidden">
+    <div className="flex h-[100dvh] flex-col overflow-hidden">
+      {loading ? (
+        <EditorHeaderSkeleton />
+      ) : (
         <header className="border-b border-cyan-500/25 bg-slate-950/90 px-2.5 py-1.5 shadow-[0_6px_20px_rgba(6,182,212,0.12)] backdrop-blur sm:px-3">
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
@@ -127,22 +154,29 @@ function EditorContent() {
             </div>
           </div>
         </header>
+      )}
 
-        <PresenceBar compact />
-
-        <div className="min-h-0 flex-1 overflow-hidden">
-          <FlowWorkspace
-            isReadOnly={false}
-            showDesktopControlsPanel={showDesktopControlsPanel}
-            showDesktopStatusPanel={showDesktopStatusPanel}
-            showMobileToolsPanel={showMobileToolsPanel}
-            onSelectNode={handleNodeSelection}
-            snapEnabled={snapEnabled}
-            inviteRequestToken={inviteRequestToken}
-          />
-        </div>
+      <div className="min-h-0 flex-1 overflow-hidden">
+        {loading ? (
+          <EditorWorkspaceSkeleton />
+        ) : (
+          <RealtimeProvider mapId={mapId} userId={userId} displayName={displayName} mode="edit">
+            <div className="flex h-full min-h-0 flex-col overflow-hidden">
+              <PresenceBar compact />
+              <FlowWorkspace
+                isReadOnly={false}
+                showDesktopControlsPanel={showDesktopControlsPanel}
+                showDesktopStatusPanel={showDesktopStatusPanel}
+                showMobileToolsPanel={showMobileToolsPanel}
+                onSelectNode={handleNodeSelection}
+                snapEnabled={snapEnabled}
+                inviteRequestToken={inviteRequestToken}
+              />
+            </div>
+          </RealtimeProvider>
+        )}
       </div>
-    </RealtimeProvider>
+    </div>
   );
 }
 
