@@ -35,7 +35,7 @@ function EditorWorkspaceSkeleton() {
 function EditorHeaderSkeleton() {
   return (
     <header className="editor-shell-header border-b border-cyan-500/25 bg-slate-950/95 px-2 py-1 shadow-[0_4px_14px_rgba(6,182,212,0.12)] backdrop-blur sm:px-2.5">
-      <div className="flex items-center justify-between gap-1.5">
+      <div className="flex items-start justify-between gap-1.5 sm:items-center">
         <div className="min-w-0 space-y-1">
           <div className="h-4 w-44 rounded bg-cyan-200/30" />
           <div className="hidden h-3 w-56 rounded bg-cyan-200/20 sm:block" />
@@ -57,16 +57,16 @@ function EditorShell({ mapId, title, userId, displayName, showMobileToolsPanel, 
   return (
     <RealtimeProvider mapId={mapId} userId={userId} displayName={displayName} mode="edit">
       <header className="editor-shell-header border-b border-cyan-500/25 bg-slate-950/95 px-2 py-1 shadow-[0_4px_14px_rgba(6,182,212,0.12)] backdrop-blur sm:px-2.5">
-        <div className="flex items-center justify-between gap-1.5">
-          <div className="min-w-0 leading-tight">
-            <h1 className="truncate text-[13px] font-semibold tracking-wide text-cyan-100 sm:text-sm">{title}</h1>
+        <div className="flex items-start justify-between gap-1.5 sm:items-center">
+          <div className="min-w-0 flex-1 leading-tight">
+            <h1 className="text-[12px] font-semibold tracking-wide text-cyan-100 break-words sm:truncate sm:text-sm">{title}</h1>
             <p className="hidden text-[9px] uppercase tracking-[0.1em] text-cyan-300/65 sm:block">Collaborative concept workspace</p>
           </div>
-          <div className="flex min-w-0 items-center gap-1">
+          <div className="ml-1 flex shrink-0 flex-col items-end gap-1 sm:ml-0 sm:flex-row sm:items-center">
             <div className="shrink-0 rounded border border-cyan-300/30 bg-cyan-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-cyan-100 sm:text-[10px]">
               Edit #{mapId}
             </div>
-            <PresenceBar compact showBorder={false} className="min-w-0 rounded border border-cyan-300/20 bg-slate-900/75" />
+            <PresenceBar compact showBorder={false} className="rounded border border-cyan-300/20 bg-slate-900/75" />
           </div>
         </div>
       </header>

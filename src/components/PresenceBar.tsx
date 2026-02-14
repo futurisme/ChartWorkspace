@@ -30,20 +30,18 @@ export function PresenceBar({ compact = false, className = "", showBorder = true
     );
   }
 
-  const dbLabel = compact
-    ? `DB: ${isDatabaseConnected ? 'Terkoneksi' : 'Tidak terkoneksi'}`
-    : isDatabaseConnected
-      ? 'Terkoneksi ke Database'
-      : 'Tidak terkoneksi ke Database';
+  const dbLabel = isDatabaseConnected
+    ? 'Terkoneksi ke Database'
+    : 'Tidak terkoneksi ke Database';
 
   return (
     <div className={`bg-white px-2 py-1 sm:px-2.5 ${showBorder ? 'border-b border-slate-200' : ''} ${className}`.trim()}>
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className={`truncate text-[10px] font-semibold sm:text-[11px] ${isDatabaseConnected ? 'text-emerald-400' : 'text-red-400'}`}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex min-w-0 flex-col items-start gap-0.5 sm:flex-row sm:items-center sm:gap-2">
+          <span className={`text-[10px] font-semibold leading-tight sm:text-[11px] ${isDatabaseConnected ? 'text-emerald-400' : 'text-red-400'}`}>
             {dbLabel}
           </span>
-          <span className="shrink-0 text-[10px] text-gray-600 sm:text-[11px]">
+          <span className="text-[10px] text-gray-600 sm:text-[11px]">
             Collaboration: {isConnected ? 'Yes' : 'No'}
           </span>
         </div>

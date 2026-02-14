@@ -4,7 +4,7 @@ export const EDGE_STYLE: CSSProperties = { stroke: '#0f172a', strokeWidth: 2 };
 
 export const DEFAULT_NODE_SIZE = { width: 176, height: 56 };
 
-export const GRID_SIZE = 64;
+export const GRID_SIZE = 32;
 export const ROUTE_GRID_SIZE = 8;
 export const ROUTE_ALIGN_TOLERANCE = 10;
 export const ROUTE_ROW_TOLERANCE = 18;
