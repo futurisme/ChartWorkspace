@@ -25,7 +25,7 @@ function FlowNodeCardComponent({ data, selected }: NodeProps<ConceptNodeData>) {
   const editedByOthers = Boolean(data.editedByOthers && collaboratorNames.length > 0);
 
   return (
-    <div className="relative flow-node-drag-hitbox">
+    <div className="relative flow-node-drag-hitbox nopan">
       <div className="absolute inset-0 z-30 rounded-lg" aria-hidden="true" />
 
       <div
