@@ -1361,7 +1361,6 @@ export function FlowWorkspace({
     flushMovePresence();
   }, [flushMovePresence]);
 
-
   const hasActiveCollaborators = remoteUsers.length > 0;
   const refreshAlertStorageKey = `flow.refresh-alert-ack.${mapId}`;
   const shouldShowRefreshAlert = refreshAlertNonce > acknowledgedRefreshAlertNonce;
@@ -1442,7 +1441,6 @@ export function FlowWorkspace({
       }, 1500);
     }
   }, [isRefreshingPage, refreshAlertNonce, refreshAlertStorageKey, saveSnapshot]);
-
 
   useEffect(() => {
     if (typeof window === 'undefined' || refreshAlertNonce <= 0) {
