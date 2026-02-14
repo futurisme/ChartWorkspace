@@ -24,7 +24,7 @@ export function PresenceBar({ compact = false, className = "", showBorder = true
 
   if (!localPresence) {
     return (
-      <div className={`flex items-center justify-between bg-slate-50 px-2 py-1 sm:px-2.5 ${showBorder ? 'border-b border-slate-200' : ''} ${className}`.trim()}>
+      <div className={`flex items-center justify-between bg-slate-50 px-2 py-0.5 sm:px-2 ${showBorder ? 'border-b border-slate-200' : ''} ${className}`.trim()}>
         <span className="text-[11px] text-gray-500">Loading...</span>
       </div>
     );
@@ -35,18 +35,18 @@ export function PresenceBar({ compact = false, className = "", showBorder = true
     : 'Tidak terkoneksi ke Database';
 
   return (
-    <div className={`bg-white px-2 py-1 sm:px-2.5 ${showBorder ? 'border-b border-slate-200' : ''} ${className}`.trim()}>
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex min-w-0 flex-col items-start gap-0.5 sm:flex-row sm:items-center sm:gap-2">
-          <span className={`text-[10px] font-semibold leading-tight sm:text-[11px] ${isDatabaseConnected ? 'text-emerald-400' : 'text-red-400'}`}>
+    <div className={`bg-white px-2 py-0.5 sm:px-2 ${showBorder ? 'border-b border-slate-200' : ''} ${className}`.trim()}>
+      <div className="flex items-start justify-between gap-1.5">
+        <div className="flex min-w-0 flex-col items-start gap-0 sm:flex-row sm:items-center sm:gap-1.5">
+          <span className={`text-[9px] font-semibold leading-tight sm:text-[10px] ${isDatabaseConnected ? 'text-emerald-400' : 'text-red-400'}`}>
             {dbLabel}
           </span>
-          <span className="text-[10px] text-gray-600 sm:text-[11px]">
+          <span className="text-[9px] text-gray-600 sm:text-[10px]">
             Collaboration: {isConnected ? 'Yes' : 'No'}
           </span>
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-0.5">
           {allUsers.slice(0, compact ? 4 : allUsers.length).map((user, idx) => (
             <UserAvatar
               key={`${user.userId}-${idx}`}
@@ -113,7 +113,7 @@ function UserBadge({ user, isLocal }: UserBadgeProps) {
 
   return (
     <div
-      className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium text-white"
+      className="flex items-center gap-0.5.5 rounded-lg px-2.5 py-1 text-xs font-medium text-white"
       style={{ backgroundColor: `${user.color}90` }}
     >
       <div className="h-2 w-2 rounded-full" style={{ backgroundColor: user.color }} />
