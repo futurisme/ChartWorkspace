@@ -73,6 +73,11 @@ function shouldUseSameHostSignalingFallback() {
   return process.env.NEXT_PUBLIC_SIGNALING_SAME_HOST_FALLBACK === '1';
 }
 
+function shouldAutoAppendSameHostFallback(hostname: string) {
+  return isLocalHostname(hostname) || shouldUseSameHostSignalingFallback();
+}
+
+
 function isRealtimeDebugEnabled() {
   return process.env.NEXT_PUBLIC_DEBUG_REALTIME === '1';
 }
@@ -194,7 +199,8 @@ function getSignalingSelection(hostname: string, envSignalingUrls: string[], mod
     }
   });
   const skippedUrls = envSignalingUrls.filter((url) => !reachableEnvUrls.includes(url));
-  const shouldAppendSameHost = shouldUseSameHostSignalingFallback() || reachableEnvUrls.length === 0;
+  const allowSameHostFallback = shouldAutoAppendSameHostFallback(hostname);
+  const shouldAppendSameHost = allowSameHostFallback && reachableEnvUrls.length === 0;
 
   const signalingUrls = new Set<string>(reachableEnvUrls);
   if (shouldAppendSameHost) {
@@ -203,7 +209,9 @@ function getSignalingSelection(hostname: string, envSignalingUrls: string[], mod
 
   const warning =
     mode === 'edit' && reachableEnvUrls.length === 0
-      ? 'No public signaling URL configured. Set NEXT_PUBLIC_WEBRTC_URL for cross-device collaboration.'
+      ? allowSameHostFallback
+        ? 'No public signaling URL configured. Using same-host fallback only (cross-device may fail).'
+        : 'No public signaling URL configured. Cross-device collaboration requires NEXT_PUBLIC_WEBRTC_URL.'
       : null;
 
   return {
@@ -535,6 +543,7 @@ export function RealtimeProvider({
         activeProvider = null;
       }
       setHasRealtimePeers(false);
+      setIsConnected(false);
       if (activeDoc) {
         activeDoc.destroy();
         activeDoc = null;

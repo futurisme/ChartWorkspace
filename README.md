@@ -273,3 +273,10 @@ curl -s -o /dev/null -w 'root ttfb=%{time_starttransfer} total=%{time_total}\n' 
 - Lighthouse CI runs in `.github/workflows/lighthouse-ci.yml` for both mobile and desktop with performance score assertions and Lighthouse budget blocks for JS bytes + TBT thresholds.
 - Weekly regression checks run in `.github/workflows/perf-regression-alert.yml` and fail when week-over-week degradation exceeds threshold.
 - See `docs/performance-dashboard.md` for dashboard panel setup.
+
+
+### 12) Troubleshooting Railway / Postgres / Realtime
+- Log PostgreSQL `could not receive data from client: Connection reset by peer` **umumnya bukan root-cause** realtime gagal; itu biasanya koneksi client terputus (restart/deploy/browser close).
+- Root cause realtime lintas device hampir selalu di signaling endpoint (env `NEXT_PUBLIC_WEBRTC_URL`) atau bind service signaling (`HOST=0.0.0.0`).
+- Jika UI menunjukkan connected signaling tapi kolaborasi tidak muncul, cek apakah service signaling benar-benar reachable via `wss://` dari kedua device (PC dan HP), bukan hanya internal network.
+- Untuk fallback same-host di production, aktifkan sadar dengan `NEXT_PUBLIC_SIGNALING_SAME_HOST_FALLBACK=1` (default sebaiknya off) dan atur `NEXT_PUBLIC_SIGNALING_PORT` jika non-standar.
