@@ -13,6 +13,7 @@ import * as Y from 'yjs';
 import { WebrtcProvider } from 'y-webrtc';
 import { UserPresence, setupAwareness, getRemoteUsers, generateUserColor } from '@/lib/presence';
 import { applyYjsSnapshot, getCurrentSnapshot } from '@/lib/snapshot';
+import { formatMapId, parseMapId } from '@/lib/mapId';
 
 const LOCAL_SIGNALING_URL = 'ws://localhost:4444';
 
@@ -94,6 +95,15 @@ function parseSignalingUrls(rawValue: string) {
   return Array.from(dedupedUrls);
 }
 
+function normalizeMapRoomId(rawMapId: string): string {
+  const parsed = parseMapId(rawMapId);
+  if (parsed !== null) {
+    return formatMapId(parsed);
+  }
+
+  return rawMapId.trim();
+}
+
 export interface RealtimeContextType {
   doc: Y.Doc | null;
   provider: WebrtcProvider | null;
@@ -132,6 +142,7 @@ export function RealtimeProvider({
   mode = 'edit',
   children,
 }: RealtimeProviderProps) {
+  const normalizedRoomMapId = normalizeMapRoomId(mapId);
   const [doc, setDoc] = useState<Y.Doc | null>(null);
   const [provider, setProvider] = useState<WebrtcProvider | null>(null);
   const [awareness, setAwareness] = useState<any | null>(null);
@@ -237,7 +248,7 @@ export function RealtimeProvider({
         const signalingUrls = signalingUrlsRef.current ?? [];
         if (signalingUrls.length > 0) {
           const newProvider = new WebrtcProvider(
-            `chartmaker-${mapId}`,
+            `chartmaker-${normalizedRoomMapId}`,
             newDoc,
             { signaling: signalingUrls }
           );
@@ -318,7 +329,7 @@ export function RealtimeProvider({
         activeDoc = null;
       }
     };
-  }, [mapId, userId, displayName, mode]);
+  }, [mapId, normalizedRoomMapId, userId, displayName, mode]);
 
 
   const trackTelemetry = useCallback((handler: string, durationMs: number) => {
