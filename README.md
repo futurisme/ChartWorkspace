@@ -134,6 +134,13 @@ NEXT_PUBLIC_WEBRTC_URL="wss://your-signaling-service.up.railway.app"
 NEXT_PUBLIC_API_URL="http://localhost:3000"
 ```
 
+
+
+Production notes (Railway):
+- Service signaling harus bind `HOST=0.0.0.0`.
+- Gunakan domain signaling dedicated sebagai `NEXT_PUBLIC_WEBRTC_URL`.
+- Opsional multi endpoint: `NEXT_PUBLIC_WEBRTC_URLS` (comma-separated).
+- Jika same-host fallback dipakai di production, set `NEXT_PUBLIC_SIGNALING_PORT` bila bukan port default 443/80.
 ### 8) Menjalankan Lokal
 ```bash
 npm install

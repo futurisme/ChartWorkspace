@@ -4,7 +4,8 @@
   "private": true,
   "description": "Production signaling server for ChartMaker (y-webrtc).",
   "scripts": {
-    "start": "y-webrtc-signaling"
+    "start": "node ./server.mjs",
+    "dev": "node --watch ./server.mjs"
   },
   "engines": {
     "node": ">=18"

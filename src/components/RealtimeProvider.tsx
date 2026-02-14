@@ -170,7 +170,10 @@ function parseIceServers(rawValue: string | undefined) {
 
 function getSignalingSelection(hostname: string, envSignalingUrls: string[], mode: 'edit' | 'view') {
   const protocol = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss' : 'ws';
-  const sameHostFallback = `${protocol}://${hostname}:4444`;
+  const explicitSameHostPort = process.env.NEXT_PUBLIC_SIGNALING_PORT?.trim();
+  const sameHostFallback = explicitSameHostPort
+    ? `${protocol}://${hostname}:${explicitSameHostPort}`
+    : `${protocol}://${hostname}`;
   const isLocalHost = isLocalHostname(hostname);
 
   if (isLocalHost) {
@@ -324,7 +327,7 @@ export function RealtimeProvider({
         logRealtime('warn', selection.warning, {
           hostname,
           mode,
-          hint: 'Set NEXT_PUBLIC_WEBRTC_URL to your dedicated signaling service domain (wss://...).',
+          hint: 'Set NEXT_PUBLIC_WEBRTC_URL (or NEXT_PUBLIC_WEBRTC_URLS) to your dedicated signaling service domain (wss://...).',
         });
       }
     }
@@ -496,7 +499,7 @@ export function RealtimeProvider({
           mapId,
           normalizedRoomMapId,
           mode,
-          hint: 'Set NEXT_PUBLIC_WEBRTC_URL or provide same-host signaling on port 4444.',
+          hint: 'Set NEXT_PUBLIC_WEBRTC_URL to your signaling domain (wss://...) or configure NEXT_PUBLIC_SIGNALING_PORT.',
         });
 
         setProvider(null);
