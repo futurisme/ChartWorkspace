@@ -308,7 +308,7 @@ export function FlowWorkspace({
   snapEnabled = true,
   inviteRequestToken = 0,
 }: FlowWorkspaceProps) {
-  const { doc, isConnected, isDatabaseConnected, updatePresence, remoteUsers, saveErrorCount } = useRealtime();
+  const { doc, isConnected, isDatabaseConnected, updatePresence, remoteUsers, saveErrorCount, saveSnapshot } = useRealtime();
   const [nodes, setNodes, onNodesChange] = useNodesState<ConceptNodeData>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -320,6 +320,7 @@ export function FlowWorkspace({
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [connectSourceNodeId, setConnectSourceNodeId] = useState<string | null>(null);
   const [unconnectSourceNodeId, setUnconnectSourceNodeId] = useState<string | null>(null);
+  const [isRefreshingPage, setIsRefreshingPage] = useState(false);
 
   const nodeCountRef = useRef(0);
   const undoManagerRef = useRef<Y.UndoManager | null>(null);
@@ -1355,6 +1356,27 @@ export function FlowWorkspace({
     flushMovePresence();
   }, [flushMovePresence]);
 
+
+  const hasActiveCollaborators = remoteUsers.length > 0;
+
+  const handleRefreshPage = useCallback(async () => {
+    if (isRefreshingPage) {
+      return;
+    }
+
+    setIsRefreshingPage(true);
+    try {
+      await saveSnapshot();
+      window.setTimeout(() => {
+        window.location.reload();
+      }, 120);
+    } finally {
+      window.setTimeout(() => {
+        setIsRefreshingPage(false);
+      }, 1500);
+    }
+  }, [isRefreshingPage, saveSnapshot]);
+
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
@@ -1419,6 +1441,24 @@ export function FlowWorkspace({
             onUnconnectStart={handleStartUnconnect}
           />
         </>
+      )}
+
+      {!isReadOnly && hasActiveCollaborators && (
+        <div className="pointer-events-none absolute left-1/2 top-2 z-50 w-[min(96vw,620px)] -translate-x-1/2">
+          <div className="pointer-events-auto flex items-center justify-between gap-3 rounded-lg border border-amber-400/60 bg-amber-50/95 px-3 py-2 text-xs text-amber-950 shadow-lg backdrop-blur">
+            <p className="font-semibold">
+              Sesi kolaborasi aktif. Mohon refresh halaman sekarang agar sinkronisasi terbaru tetap aman.
+            </p>
+            <button
+              type="button"
+              onClick={handleRefreshPage}
+              disabled={isRefreshingPage}
+              className="shrink-0 rounded-md border border-amber-800/40 bg-amber-500 px-2.5 py-1 font-semibold text-amber-950 transition-colors hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {isRefreshingPage ? 'Saving…' : 'Refresh page'}
+            </button>
+          </div>
+        </div>
       )}
 
       {!isReadOnly && selectedNodeId && (
