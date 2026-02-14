@@ -1,6 +1,9 @@
-const SW_VERSION = 'v1';
-const STATIC_CACHE = `static-${SW_VERSION}`;
-const MAP_METADATA_CACHE = `map-metadata-${SW_VERSION}`;
+const SW_VERSION = 'v2';
+const CACHE_PREFIX = 'chartworkspace';
+const STATIC_CACHE = `${CACHE_PREFIX}-static-${SW_VERSION}`;
+const MAP_METADATA_CACHE = `${CACHE_PREFIX}-map-metadata-${SW_VERSION}`;
+const MANAGED_CACHES = [STATIC_CACHE, MAP_METADATA_CACHE];
+
 const ALLOWED_STATIC_PATHS = [
   '/_next/static/',
   '/fonts/',
@@ -10,6 +13,15 @@ const ALLOWED_STATIC_PATHS = [
   '/apple-touch-icon',
   '/manifest',
 ];
+
+const isCacheableResponse = (response) => {
+  if (!response || !response.ok || response.type !== 'basic') {
+    return false;
+  }
+
+  const cacheControl = response.headers.get('Cache-Control')?.toLowerCase() ?? '';
+  return !cacheControl.includes('no-store') && !cacheControl.includes('private');
+};
 
 const isStaticAssetRequest = (requestUrl) => {
   const { pathname } = requestUrl;
@@ -44,7 +56,7 @@ self.addEventListener('activate', (event) => {
       const cacheNames = await caches.keys();
       await Promise.all(
         cacheNames
-          .filter((cacheName) => ![STATIC_CACHE, MAP_METADATA_CACHE].includes(cacheName))
+          .filter((cacheName) => cacheName.startsWith(`${CACHE_PREFIX}-`) && !MANAGED_CACHES.includes(cacheName))
           .map((cacheName) => caches.delete(cacheName))
       );
       await self.clients.claim();
@@ -57,6 +69,7 @@ self.addEventListener('fetch', (event) => {
 
   if (request.method === 'POST' || request.method === 'PUT' || request.method === 'PATCH') {
     if (isSaveOrUpdateRequest(request)) {
+      // Network-first: never serve writes from cache and never cache write responses.
       event.respondWith(fetch(request));
     }
     return;
@@ -83,8 +96,8 @@ self.addEventListener('fetch', (event) => {
         }
 
         const networkResponse = await fetch(request);
-        if (networkResponse.ok) {
-          cache.put(request, networkResponse.clone());
+        if (isCacheableResponse(networkResponse)) {
+          await cache.put(request, networkResponse.clone());
         }
 
         return networkResponse;
@@ -100,9 +113,9 @@ self.addEventListener('fetch', (event) => {
         const cachedResponse = await cache.match(request);
 
         const networkPromise = fetch(request)
-          .then((response) => {
-            if (response.ok) {
-              cache.put(request, response.clone());
+          .then(async (response) => {
+            if (isCacheableResponse(response)) {
+              await cache.put(request, response.clone());
             }
             return response;
           })
