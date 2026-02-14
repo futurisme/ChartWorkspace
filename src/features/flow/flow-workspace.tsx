@@ -15,7 +15,6 @@ import {
   type OnSelectionChangeParams,
   ReactFlow,
   type ReactFlowInstance,
-  type Viewport,
   type XYPosition,
   addEdge,
   useEdgesState,
@@ -274,8 +273,6 @@ export function FlowWorkspace({
   const reactFlowWrapperRef = useRef<HTMLDivElement | null>(null);
   const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
   const persistedPositionsRef = useRef<Map<string, XYPosition>>(new Map());
-  const zoomRafRef = useRef<number | null>(null);
-  const lastZoomRef = useRef(1);
 
   const nodeTypes = useMemo(() => ({ conceptNode: FlowNodeCard }), []);
   const edgeTypes = useMemo(() => ({ hierarchy: FlowEdgeHierarchy }), []);
@@ -1096,23 +1093,6 @@ export function FlowWorkspace({
     [handleChangeColor, isReadOnly]
   );
 
-  const handleMove = useCallback((_event: MouseEvent | TouchEvent | null, viewport: Viewport) => {
-    const zoom = viewport.zoom > 0 ? viewport.zoom : 1;
-    if (Math.abs(zoom - lastZoomRef.current) < 0.02) {
-      return;
-    }
-    lastZoomRef.current = zoom;
-
-    if (zoomRafRef.current != null) {
-      cancelAnimationFrame(zoomRafRef.current);
-    }
-
-    zoomRafRef.current = requestAnimationFrame(() => {
-      reactFlowWrapperRef.current?.style.setProperty('--flow-zoom', String(zoom));
-      zoomRafRef.current = null;
-    });
-  }, []);
-
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
@@ -1128,15 +1108,6 @@ export function FlowWorkspace({
 
     return () => {
       mediaQuery.removeEventListener('change', handleViewportChange);
-    };
-  }, []);
-
-  useEffect(() => {
-    reactFlowWrapperRef.current?.style.setProperty('--flow-zoom', '1');
-    return () => {
-      if (zoomRafRef.current != null) {
-        cancelAnimationFrame(zoomRafRef.current);
-      }
     };
   }, []);
 
@@ -1243,7 +1214,6 @@ export function FlowWorkspace({
             onEdgesChange={handleEdgesChange}
             onConnect={handleConnect}
             onSelectionChange={handleSelectionChange}
-            onMove={handleMove}
             onNodeClick={(_event, node) => {
               if (connectSourceNodeId && connectSourceNodeId !== node.id) {
                 createConnectionEdge(connectSourceNodeId, node.id);
@@ -1282,7 +1252,7 @@ export function FlowWorkspace({
             zoomOnPinch
             zoomOnScroll={!isMobileViewport}
             preventScrolling={isMobileViewport}
-            minZoom={isMobileViewport ? 0.4 : 0.2}
+            minZoom={isMobileViewport ? 0.35 : 0.2}
             nodeDragThreshold={isMobileViewport ? 1 : 3}
             onlyRenderVisibleElements
             defaultEdgeOptions={{
