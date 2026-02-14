@@ -16,6 +16,7 @@ import { applyYjsSnapshot, getCurrentSnapshot } from '@/lib/snapshot';
 import { formatMapId, parseMapId } from '@/lib/mapId';
 
 const LOCAL_SIGNALING_URL = 'ws://localhost:4444';
+const REALTIME_LOG_PREFIX = '[realtime]';
 
 const FRAME_BUDGET_MS = 16.7;
 const PRESENCE_UPDATE_CADENCE_MS = 120;
@@ -50,6 +51,29 @@ function isLocalHostname(hostname: string) {
 
 function shouldUseSameHostSignalingFallback() {
   return process.env.NEXT_PUBLIC_SIGNALING_SAME_HOST_FALLBACK === '1';
+}
+
+function isRealtimeDebugEnabled() {
+  return process.env.NEXT_PUBLIC_DEBUG_REALTIME === '1';
+}
+
+function logRealtime(level: 'info' | 'warn' | 'error', message: string, details?: Record<string, unknown>) {
+  if (level === 'info' && !isRealtimeDebugEnabled()) {
+    return;
+  }
+
+  const payload = details ? { ...details } : undefined;
+  if (level === 'info') {
+    console.info(`${REALTIME_LOG_PREFIX} ${message}`, payload ?? '');
+    return;
+  }
+
+  if (level === 'warn') {
+    console.warn(`${REALTIME_LOG_PREFIX} ${message}`, payload ?? '');
+    return;
+  }
+
+  console.error(`${REALTIME_LOG_PREFIX} ${message}`, payload ?? '');
 }
 
 function detectDeviceKind(): 'pc' | 'hp' {
@@ -168,13 +192,14 @@ export function RealtimeProvider({
 
   if (signalingUrlsRef.current === null) {
     const candidates = new Set<string>(parseSignalingUrls(process.env.NEXT_PUBLIC_WEBRTC_URL ?? ''));
+    const hasEnvSignaling = candidates.size > 0;
 
     if (typeof window !== 'undefined') {
       const { hostname } = window.location;
 
       if (isLocalHostname(hostname)) {
         candidates.add(LOCAL_SIGNALING_URL);
-      } else if (shouldUseSameHostSignalingFallback()) {
+      } else if (!hasEnvSignaling || shouldUseSameHostSignalingFallback()) {
         const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
         candidates.add(`${protocol}://${hostname}:4444`);
       }
@@ -247,6 +272,12 @@ export function RealtimeProvider({
         // Setup WebRTC provider
         const signalingUrls = signalingUrlsRef.current ?? [];
         if (signalingUrls.length > 0) {
+          logRealtime('info', 'Initializing WebRTC provider', {
+            roomId: `chartmaker-${normalizedRoomMapId}`,
+            signalingUrls,
+            mode,
+          });
+
           const newProvider = new WebrtcProvider(
             `chartmaker-${normalizedRoomMapId}`,
             newDoc,
@@ -269,6 +300,7 @@ export function RealtimeProvider({
                 newAwareness,
                 newAwareness.clientID
               );
+              logRealtime('info', 'Awareness changed', { remoteUsers: remote.length, mode });
               scheduleNonUrgentWork(() => {
                 setRemoteUsers(remote);
               });
@@ -280,6 +312,11 @@ export function RealtimeProvider({
           // Connection status
           const handleStatus = (event: { status?: string; connected?: boolean }) => {
             if (isMounted) {
+              logRealtime(event.connected ?? event.status === 'connected' ? 'info' : 'warn', 'WebRTC status changed', {
+                status: event.status,
+                connected: event.connected,
+                roomId: `chartmaker-${normalizedRoomMapId}`,
+              });
               setIsConnected(event.connected ?? event.status === 'connected');
             }
           };
@@ -293,11 +330,12 @@ export function RealtimeProvider({
           return;
         }
 
-        if (mode === 'edit') {
-          console.warn(
-            'Realtime signaling URL is not configured. Set NEXT_PUBLIC_WEBRTC_URL for multi-user live sync.'
-          );
-        }
+        logRealtime('error', 'No signaling URL available. Live collaborator presence will be unavailable.', {
+          mapId,
+          normalizedRoomMapId,
+          mode,
+          hint: 'Set NEXT_PUBLIC_WEBRTC_URL or provide same-host signaling on port 4444.',
+        });
 
         setProvider(null);
         setAwareness(null);
@@ -307,7 +345,12 @@ export function RealtimeProvider({
         if (error instanceof DOMException && error.name === 'AbortError') {
           return;
         }
-        console.error('Failed to initialize realtime:', error);
+        logRealtime('error', 'Failed to initialize realtime provider', {
+          mapId,
+          normalizedRoomMapId,
+          mode,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     };
 
@@ -592,11 +635,21 @@ export function RealtimeProvider({
         profileHandler('snapshot.pull.fallback', () => {
           applyYjsSnapshot(doc, snapshot);
         });
+        logRealtime('info', 'Applied fallback snapshot sync', {
+          mapId,
+          pollingDelayMs,
+          mode,
+        });
         lastAppliedFallbackSnapshotRef.current = snapshot;
         pollingDelayMs = basePollingDelayMs;
         queueNextPoll(pollingDelayMs);
       } catch (error) {
-        console.warn('Fallback sync polling failed:', error);
+        logRealtime('warn', 'Fallback sync polling failed', {
+          mapId,
+          pollingDelayMs,
+          mode,
+          error: error instanceof Error ? error.message : String(error),
+        });
         pollingDelayMs = Math.min(pollingDelayMs * 1.5, 12000);
         queueNextPoll(pollingDelayMs);
       }
@@ -610,7 +663,7 @@ export function RealtimeProvider({
         pollTimer = null;
       }
     };
-  }, [doc, isConnected, mapId, profileHandler]);
+  }, [doc, isConnected, mapId, mode, profileHandler]);
 
   const updatePresence = useCallback(
     (updates: Partial<UserPresence>) => {
