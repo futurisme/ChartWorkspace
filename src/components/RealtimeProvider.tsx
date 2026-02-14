@@ -15,7 +15,6 @@ import { UserPresence, setupAwareness, getRemoteUsers, generateUserColor } from 
 import { applyYjsSnapshot, getCurrentSnapshot } from '@/lib/snapshot';
 
 const LOCAL_SIGNALING_URL = 'ws://localhost:4444';
-const PUBLIC_SIGNALING_FALLBACK = 'wss://signaling.yjs.dev';
 
 const FRAME_BUDGET_MS = 16.7;
 const PRESENCE_UPDATE_CADENCE_MS = 120;
@@ -156,7 +155,6 @@ export function RealtimeProvider({
       }
     }
 
-    candidates.add(PUBLIC_SIGNALING_FALLBACK);
     signalingUrlsRef.current = Array.from(candidates);
   }
 
