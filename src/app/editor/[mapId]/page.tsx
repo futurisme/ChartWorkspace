@@ -23,7 +23,7 @@ const FlowWorkspace = dynamic(
 
 function EditorWorkspaceSkeleton() {
   return (
-    <div className="h-full w-full bg-slate-50 p-3 sm:p-4">
+    <div className="editor-shell-loading h-full w-full bg-slate-50 p-3 sm:p-4">
       <div className="grid h-full grid-cols-1 gap-3 lg:grid-cols-[1fr_220px]">
         <div className="rounded-xl border border-slate-200 bg-white" />
         <div className="hidden rounded-xl border border-slate-200 bg-white lg:block" />
@@ -34,7 +34,7 @@ function EditorWorkspaceSkeleton() {
 
 function EditorHeaderSkeleton() {
   return (
-    <header className="border-b border-cyan-500/25 bg-slate-950/90 px-2.5 py-1.5 shadow-[0_6px_20px_rgba(6,182,212,0.12)] backdrop-blur sm:px-3">
+    <header className="editor-shell-header border-b border-cyan-500/25 bg-slate-950/90 px-2.5 py-1.5 shadow-[0_6px_20px_rgba(6,182,212,0.12)] backdrop-blur sm:px-3">
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0 space-y-1">
           <div className="h-4 w-44 rounded bg-cyan-200/30" />
@@ -102,7 +102,7 @@ function EditorContent() {
       {loading ? (
         <EditorHeaderSkeleton />
       ) : (
-        <header className="border-b border-cyan-500/25 bg-slate-950/90 px-2.5 py-1.5 shadow-[0_6px_20px_rgba(6,182,212,0.12)] backdrop-blur sm:px-3">
+        <header className="editor-shell-header border-b border-cyan-500/25 bg-slate-950/90 px-2.5 py-1.5 shadow-[0_6px_20px_rgba(6,182,212,0.12)] backdrop-blur sm:px-3">
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
               <h1 className="truncate text-sm font-semibold tracking-wide text-cyan-100 sm:text-base">{title}</h1>

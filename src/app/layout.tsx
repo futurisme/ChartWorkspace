@@ -52,6 +52,20 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
+      <head>
+        <style>{`
+          .editor-shell-header {
+            min-height: 40px;
+            border-bottom: 1px solid rgba(34, 211, 238, 0.25);
+            background: rgba(2, 6, 23, 0.9);
+          }
+
+          .editor-shell-loading {
+            min-height: 100%;
+            background: rgb(248 250 252);
+          }
+        `}</style>
+      </head>
       <body>{children}</body>
     </html>
   );
