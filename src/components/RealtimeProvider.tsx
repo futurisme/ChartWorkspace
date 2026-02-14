@@ -47,6 +47,16 @@ function isLocalHostname(hostname: string) {
   return hostname === 'localhost' || hostname === '127.0.0.1';
 }
 
+function detectDeviceKind(): 'pc' | 'hp' {
+  if (typeof window === 'undefined') {
+    return 'pc';
+  }
+
+  const coarsePointer = window.matchMedia('(pointer: coarse)').matches;
+  const narrowViewport = window.matchMedia('(max-width: 1023px)').matches;
+  return coarsePointer || narrowViewport ? 'hp' : 'pc';
+}
+
 function normalizeSignalingUrl(rawUrl: string): string | null {
   const trimmed = rawUrl.trim();
   if (!trimmed) {
@@ -135,6 +145,7 @@ export function RealtimeProvider({
   const saveInFlightRef = useRef(false);
   const queuedSaveRef = useRef(false);
   const mapEtagRef = useRef<string | null>(null);
+  const lastAppliedFallbackSnapshotRef = useRef<string | null>(null);
   const telemetryRef = useRef<Record<string, { samples: number; totalDurationMs: number; droppedFrames: number; maxDurationMs: number }>>({});
   const pendingPresenceRef = useRef<Partial<UserPresence> | null>(null);
   const presenceFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -144,14 +155,10 @@ export function RealtimeProvider({
     const candidates = new Set<string>(parseSignalingUrls(process.env.NEXT_PUBLIC_WEBRTC_URL ?? ''));
 
     if (typeof window !== 'undefined') {
-      const { hostname, protocol } = window.location;
-      const fallback = protocol === 'https:' ? 'wss' : 'ws';
-      const fallbackHostUrl = `${fallback}://${hostname}:4444`;
+      const { hostname } = window.location;
 
       if (isLocalHostname(hostname)) {
         candidates.add(LOCAL_SIGNALING_URL);
-      } else {
-        candidates.add(fallbackHostUrl);
       }
     }
 
@@ -212,6 +219,7 @@ export function RealtimeProvider({
           displayName,
           color: generateUserColor(),
           mode,
+          deviceKind: detectDeviceKind(),
           lastUpdated: Date.now(),
         };
 
@@ -378,6 +386,7 @@ export function RealtimeProvider({
             prev.displayName === updated.displayName &&
             prev.color === updated.color &&
             prev.mode === updated.mode &&
+            prev.deviceKind === updated.deviceKind &&
             prev.currentNodeId === updated.currentNodeId &&
             prev.cursorX === updated.cursorX &&
             prev.cursorY === updated.cursorY &&
@@ -505,8 +514,22 @@ export function RealtimeProvider({
       return;
     }
 
+    let pollingDelayMs = 4000;
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const queueNextPoll = (delayMs: number) => {
+      if (pollTimer) {
+        clearTimeout(pollTimer);
+      }
+      pollTimer = setTimeout(() => {
+        void syncFromServer();
+      }, delayMs);
+    };
+
     const syncFromServer = async () => {
       if (isConnected) {
+        pollingDelayMs = 4000;
+        queueNextPoll(pollingDelayMs);
         return;
       }
 
@@ -521,32 +544,51 @@ export function RealtimeProvider({
         });
 
         if (response.status === 304) {
+          pollingDelayMs = 4000;
+          queueNextPoll(pollingDelayMs);
           return;
         }
 
         if (!response.ok) {
+          pollingDelayMs = Math.min(pollingDelayMs * 1.5, 12000);
+          queueNextPoll(pollingDelayMs);
           return;
         }
 
         const { snapshot } = await response.json();
         mapEtagRef.current = response.headers.get('etag');
         if (!snapshot || typeof snapshot !== 'string') {
+          pollingDelayMs = 4000;
+          queueNextPoll(pollingDelayMs);
+          return;
+        }
+
+        if (lastAppliedFallbackSnapshotRef.current === snapshot) {
+          pollingDelayMs = 4000;
+          queueNextPoll(pollingDelayMs);
           return;
         }
 
         profileHandler('snapshot.pull.fallback', () => {
           applyYjsSnapshot(doc, snapshot);
         });
+        lastAppliedFallbackSnapshotRef.current = snapshot;
+        pollingDelayMs = 4000;
+        queueNextPoll(pollingDelayMs);
       } catch (error) {
         console.warn('Fallback sync polling failed:', error);
+        pollingDelayMs = Math.min(pollingDelayMs * 1.5, 12000);
+        queueNextPoll(pollingDelayMs);
       }
     };
 
-    const intervalId = setInterval(syncFromServer, 4000);
     void syncFromServer();
 
     return () => {
-      clearInterval(intervalId);
+      if (pollTimer) {
+        clearTimeout(pollTimer);
+        pollTimer = null;
+      }
     };
   }, [doc, isConnected, mapId, mode, profileHandler]);
 

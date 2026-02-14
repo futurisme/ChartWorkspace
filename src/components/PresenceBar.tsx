@@ -114,6 +114,9 @@ function UserBadge({ user, isLocal }: UserBadgeProps) {
       <span className="ml-1 rounded px-1.5 py-0.5 text-xs font-semibold opacity-75">
         {user.mode === 'edit' ? 'Editing' : 'Viewing'}
       </span>
+      {user.deviceKind && (
+        <span className="text-[11px] uppercase opacity-85">{user.deviceKind === 'hp' ? 'HP' : 'PC'}</span>
+      )}
       {user.currentNodeId && <span className="text-[11px] opacity-90">Node: {user.currentNodeId}</span>}
       {hasCamera && (
         <span className="text-[11px] opacity-80">Cam: {Math.round(user.cameraX!)} , {Math.round(user.cameraY!)}</span>

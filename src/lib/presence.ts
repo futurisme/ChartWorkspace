@@ -3,6 +3,7 @@ export interface UserPresence {
   displayName: string;
   color: string;
   mode: 'edit' | 'view';
+  deviceKind?: 'pc' | 'hp';
   currentNodeId?: string;
   cursorX?: number;
   cursorY?: number;

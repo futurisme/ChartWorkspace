@@ -1443,6 +1443,11 @@ export function FlowWorkspace({
               <div className="flex min-w-0 items-center gap-1.5">
                 <span className="h-2 w-2 rounded-full" style={{ backgroundColor: user.color }} />
                 <span className="truncate font-medium">{user.displayName}</span>
+                {user.deviceKind && (
+                  <span className="rounded bg-indigo-200/20 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-indigo-100/90">
+                    {user.deviceKind === 'hp' ? 'HP' : 'PC'}
+                  </span>
+                )}
               </div>
               <div className="shrink-0 text-indigo-200/90">
                 {user.currentNodeId ? `Editing ${user.currentNodeId}` : 'Browsing'}
