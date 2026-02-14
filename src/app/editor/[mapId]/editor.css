@@ -14,36 +14,3 @@
 .editor-font {
   font-family: 'InterVar', system-ui, -apple-system, sans-serif;
 }
-
-/* React Flow specific styles (kept route-scoped) */
-.react-flow {
-  width: 100%;
-  height: 100%;
-}
-
-.react-flow__container {
-  width: 100%;
-  height: 100%;
-}
-
-.react-flow__edge-path {
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.react-flow__pane,
-.react-flow__renderer {
-  touch-action: pan-x pan-y;
-}
-
-@media (pointer: coarse) {
-  .react-flow__pane,
-  .react-flow__viewport {
-    touch-action: none;
-  }
-
-  .react-flow__node {
-    touch-action: none;
-    will-change: transform;
-  }
-}
