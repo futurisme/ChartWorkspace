@@ -32,11 +32,18 @@
 
   .react-flow__node-conceptNode .flow-node-drag-hitbox {
     position: relative;
+    touch-action: none;
+    z-index: 40;
   }
 
   .react-flow__node-conceptNode .flow-node-drag-hitbox::before {
     content: '';
     position: absolute;
-    inset: -10px;
+    inset: -12px;
+    z-index: 50;
+  }
+
+  .react-flow__node-conceptNode .flow-node-drag-hitbox > * {
+    touch-action: none;
   }
 }

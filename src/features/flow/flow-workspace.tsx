@@ -1521,13 +1521,13 @@ export function FlowWorkspace({
             attributionPosition="bottom-left"
             connectionLineType={ConnectionLineType.Straight}
             selectionOnDrag={false}
-            panOnDrag
+            panOnDrag={!isMobileViewport}
             panOnScroll={false}
             zoomOnPinch
             zoomOnScroll={!isMobileViewport}
             preventScrolling={isMobileViewport}
             minZoom={isMobileViewport ? 0.35 : 0.2}
-            nodeDragThreshold={isMobileViewport ? 1 : 3}
+            nodeDragThreshold={isMobileViewport ? 0 : 2}
             onlyRenderVisibleElements
             defaultEdgeOptions={{
               type: 'hierarchy',

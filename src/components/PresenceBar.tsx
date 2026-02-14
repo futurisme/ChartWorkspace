@@ -10,6 +10,7 @@ interface PresenceBarProps {
   showBorder?: boolean;
 }
 
+
 export function PresenceBar({ compact = false, className = "", showBorder = true }: PresenceBarProps) {
   const { localPresence, remoteUsers, isConnected, isDatabaseConnected } = useRealtime();
 
@@ -23,41 +24,47 @@ export function PresenceBar({ compact = false, className = "", showBorder = true
 
   if (!localPresence) {
     return (
-      <div className={`flex items-center justify-between bg-slate-50 px-3 py-1.5 sm:px-4 ${showBorder ? "border-b border-slate-200" : ""} ${className}`.trim()}>
-        <span className="text-xs text-gray-500 sm:text-sm">Loading...</span>
+      <div className={`flex items-center justify-between bg-slate-50 px-2 py-1 sm:px-2.5 ${showBorder ? 'border-b border-slate-200' : ''} ${className}`.trim()}>
+        <span className="text-[11px] text-gray-500">Loading...</span>
       </div>
     );
   }
 
+  const dbLabel = compact
+    ? `DB: ${isDatabaseConnected ? 'Terkoneksi' : 'Tidak terkoneksi'}`
+    : isDatabaseConnected
+      ? 'Terkoneksi ke Database'
+      : 'Tidak terkoneksi ke Database';
+
   return (
-    <div className={`bg-white px-3 py-1.5 sm:px-4 ${showBorder ? "border-b border-slate-200" : ""} ${className}`.trim()}>
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="flex items-center gap-2">
-            <div className={`h-2 w-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
-            <span className="text-xs font-medium text-gray-900 sm:text-sm">
-              {isDatabaseConnected ? 'Terkoneksi ke Database' : 'Tidak terkoneksi ke Database'}
-            </span>
-          </div>
-          <span className="text-xs text-gray-600 sm:text-sm">{allUsers.length} online • {isConnected ? "Realtime aktif" : "Realtime offline"}</span>
+    <div className={`bg-white px-2 py-1 sm:px-2.5 ${showBorder ? 'border-b border-slate-200' : ''} ${className}`.trim()}>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className={`truncate text-[10px] font-semibold sm:text-[11px] ${isDatabaseConnected ? 'text-emerald-400' : 'text-red-400'}`}>
+            {dbLabel}
+          </span>
+          <span className="shrink-0 text-[10px] text-gray-600 sm:text-[11px]">
+            Collaboration: {isConnected ? 'Yes' : 'No'}
+          </span>
         </div>
 
-        <div className="flex items-center gap-1.5">
-          {allUsers.slice(0, compact ? 5 : allUsers.length).map((user, idx) => (
+        <div className="flex items-center gap-1">
+          {allUsers.slice(0, compact ? 4 : allUsers.length).map((user, idx) => (
             <UserAvatar
               key={`${user.userId}-${idx}`}
               user={user}
               isLocal={user.userId === localPresence.userId}
+              compact={compact}
             />
           ))}
-          {compact && allUsers.length > 5 && (
-            <span className="text-xs font-medium text-slate-500">+{allUsers.length - 5}</span>
+          {compact && allUsers.length > 4 && (
+            <span className="text-[10px] font-medium text-gray-500">+{allUsers.length - 4}</span>
           )}
         </div>
       </div>
 
       {!compact && allUsers.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-2">
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
           {allUsers.map((user, idx) => (
             <UserBadge
               key={`${user.userId}-${idx}`}
@@ -70,13 +77,13 @@ export function PresenceBar({ compact = false, className = "", showBorder = true
     </div>
   );
 }
-
 interface UserAvatarProps {
   user: UserPresence;
   isLocal?: boolean;
+  compact?: boolean;
 }
 
-function UserAvatar({ user, isLocal }: UserAvatarProps) {
+function UserAvatar({ user, isLocal, compact = false }: UserAvatarProps) {
   const initials = user.displayName
     .split(' ')
     .map((n) => n[0])
@@ -86,7 +93,7 @@ function UserAvatar({ user, isLocal }: UserAvatarProps) {
 
   return (
     <div
-      className="relative flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-semibold text-white sm:h-8 sm:w-8"
+      className={`relative flex items-center justify-center rounded-full font-semibold text-white ${compact ? 'h-6 w-6 text-[10px]' : 'h-7 w-7 text-[11px] sm:h-8 sm:w-8'}`}
       style={{ backgroundColor: user.color }}
       title={`${user.displayName}${isLocal ? ' (you)' : ''}`}
     >
