@@ -16,6 +16,11 @@ import { applyYjsSnapshot, getCurrentSnapshot } from '@/lib/snapshot';
 import { formatMapId, parseMapId } from '@/lib/mapId';
 
 const LOCAL_SIGNALING_URL = 'ws://localhost:4444';
+const DEFAULT_PUBLIC_SIGNALING_URLS = [
+  'wss://signaling.yjs.dev',
+  'wss://y-webrtc-signaling-eu.herokuapp.com',
+  'wss://y-webrtc-signaling-us.herokuapp.com',
+];
 const REALTIME_LOG_PREFIX = '[realtime]';
 
 const FRAME_BUDGET_MS = 16.7;
@@ -139,6 +144,29 @@ function parseSignalingUrls(rawValue: string) {
   return Array.from(dedupedUrls);
 }
 
+function parseIceServers(rawValue: string | undefined) {
+  if (!rawValue) {
+    return [
+      { urls: ['stun:stun.l.google.com:19302', 'stun:global.stun.twilio.com:3478'] },
+    ];
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue) as Array<{ urls: string | string[]; username?: string; credential?: string }>;
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      return [
+        { urls: ['stun:stun.l.google.com:19302', 'stun:global.stun.twilio.com:3478'] },
+      ];
+    }
+    return parsed;
+  } catch {
+    logRealtime('warn', 'Invalid NEXT_PUBLIC_WEBRTC_ICE_SERVERS value. Using default STUN.', {});
+    return [
+      { urls: ['stun:stun.l.google.com:19302', 'stun:global.stun.twilio.com:3478'] },
+    ];
+  }
+}
+
 function getSignalingSelection(hostname: string, envSignalingUrls: string[]) {
   const protocol = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss' : 'ws';
   const sameHostFallback = `${protocol}://${hostname}:4444`;
@@ -146,7 +174,7 @@ function getSignalingSelection(hostname: string, envSignalingUrls: string[]) {
 
   if (isLocalHost) {
     return {
-      signalingUrls: Array.from(new Set([...envSignalingUrls, LOCAL_SIGNALING_URL])),
+      signalingUrls: Array.from(new Set([...envSignalingUrls, LOCAL_SIGNALING_URL, ...DEFAULT_PUBLIC_SIGNALING_URLS])),
       skippedUrls: [],
       fallbackUrl: null as string | null,
     };
@@ -162,12 +190,16 @@ function getSignalingSelection(hostname: string, envSignalingUrls: string[]) {
   });
   const skippedUrls = envSignalingUrls.filter((url) => !reachableEnvUrls.includes(url));
   const shouldAppendSameHost = shouldUseSameHostSignalingFallback() || reachableEnvUrls.length === 0;
-  const signalingUrls = shouldAppendSameHost
-    ? Array.from(new Set([...reachableEnvUrls, sameHostFallback]))
-    : reachableEnvUrls;
+
+  const signalingUrls = new Set<string>(reachableEnvUrls);
+  if (shouldAppendSameHost) {
+    signalingUrls.add(sameHostFallback);
+  }
+
+  DEFAULT_PUBLIC_SIGNALING_URLS.forEach((url) => signalingUrls.add(url));
 
   return {
-    signalingUrls,
+    signalingUrls: Array.from(signalingUrls),
     skippedUrls,
     fallbackUrl: shouldAppendSameHost ? sameHostFallback : null,
   };
@@ -236,6 +268,7 @@ export function RealtimeProvider({
   const updateCounterRef = useRef(0);
   const localPresenceRef = useRef<UserPresence | null>(null);
   const signalingUrlsRef = useRef<string[] | null>(null);
+  const iceServersRef = useRef<Array<{ urls: string | string[]; username?: string; credential?: string }> | null>(null);
   const saveInFlightRef = useRef(false);
   const queuedSaveRef = useRef(false);
   const mapEtagRef = useRef<string | null>(null);
@@ -244,6 +277,10 @@ export function RealtimeProvider({
   const pendingPresenceRef = useRef<Partial<UserPresence> | null>(null);
   const presenceFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastPresenceFlushRef = useRef(0);
+
+  if (iceServersRef.current === null) {
+    iceServersRef.current = parseIceServers(process.env.NEXT_PUBLIC_WEBRTC_ICE_SERVERS);
+  }
 
   if (signalingUrlsRef.current === null) {
     const envSignalingUrls = parseSignalingUrls(process.env.NEXT_PUBLIC_WEBRTC_URL ?? '');
@@ -344,12 +381,23 @@ export function RealtimeProvider({
             roomId: `chartmaker-${normalizedRoomMapId}`,
             signalingUrls,
             mode,
+            iceServers: (iceServersRef.current ?? []).length,
           });
 
           const newProvider = new WebrtcProvider(
             `chartmaker-${normalizedRoomMapId}`,
             newDoc,
-            { signaling: signalingUrls }
+            {
+              signaling: signalingUrls,
+              maxConns: 80,
+              peerOpts: {
+                config: {
+                  iceServers: iceServersRef.current ?? [
+                    { urls: ['stun:stun.l.google.com:19302', 'stun:global.stun.twilio.com:3478'] },
+                  ],
+                },
+              },
+            }
           );
           activeProvider = newProvider;
 
