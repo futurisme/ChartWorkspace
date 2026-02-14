@@ -47,6 +47,10 @@ function isLocalHostname(hostname: string) {
   return hostname === 'localhost' || hostname === '127.0.0.1';
 }
 
+function shouldUseSameHostSignalingFallback() {
+  return process.env.NEXT_PUBLIC_SIGNALING_SAME_HOST_FALLBACK === '1';
+}
+
 function detectDeviceKind(): 'pc' | 'hp' {
   if (typeof window === 'undefined') {
     return 'pc';
@@ -159,6 +163,9 @@ export function RealtimeProvider({
 
       if (isLocalHostname(hostname)) {
         candidates.add(LOCAL_SIGNALING_URL);
+      } else if (shouldUseSameHostSignalingFallback()) {
+        const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        candidates.add(`${protocol}://${hostname}:4444`);
       }
     }
 
@@ -510,11 +517,13 @@ export function RealtimeProvider({
   }, [awareness]);
 
   useEffect(() => {
-    if (!doc || mode !== 'edit') {
+    if (!doc) {
       return;
     }
 
-    let pollingDelayMs = 4000;
+    const isMobile = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
+    const basePollingDelayMs = isMobile ? 2500 : 4000;
+    let pollingDelayMs = basePollingDelayMs;
     let pollTimer: ReturnType<typeof setTimeout> | null = null;
 
     const queueNextPoll = (delayMs: number) => {
@@ -528,7 +537,7 @@ export function RealtimeProvider({
 
     const syncFromServer = async () => {
       if (isConnected) {
-        pollingDelayMs = 4000;
+        pollingDelayMs = basePollingDelayMs;
         queueNextPoll(pollingDelayMs);
         return;
       }
@@ -544,7 +553,7 @@ export function RealtimeProvider({
         });
 
         if (response.status === 304) {
-          pollingDelayMs = 4000;
+          pollingDelayMs = basePollingDelayMs;
           queueNextPoll(pollingDelayMs);
           return;
         }
@@ -558,13 +567,13 @@ export function RealtimeProvider({
         const { snapshot } = await response.json();
         mapEtagRef.current = response.headers.get('etag');
         if (!snapshot || typeof snapshot !== 'string') {
-          pollingDelayMs = 4000;
+          pollingDelayMs = basePollingDelayMs;
           queueNextPoll(pollingDelayMs);
           return;
         }
 
         if (lastAppliedFallbackSnapshotRef.current === snapshot) {
-          pollingDelayMs = 4000;
+          pollingDelayMs = basePollingDelayMs;
           queueNextPoll(pollingDelayMs);
           return;
         }
@@ -573,7 +582,7 @@ export function RealtimeProvider({
           applyYjsSnapshot(doc, snapshot);
         });
         lastAppliedFallbackSnapshotRef.current = snapshot;
-        pollingDelayMs = 4000;
+        pollingDelayMs = basePollingDelayMs;
         queueNextPoll(pollingDelayMs);
       } catch (error) {
         console.warn('Fallback sync polling failed:', error);
@@ -590,7 +599,7 @@ export function RealtimeProvider({
         pollTimer = null;
       }
     };
-  }, [doc, isConnected, mapId, mode, profileHandler]);
+  }, [doc, isConnected, mapId, profileHandler]);
 
   const updatePresence = useCallback(
     (updates: Partial<UserPresence>) => {
