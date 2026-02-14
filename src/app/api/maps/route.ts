@@ -3,10 +3,26 @@ import { prisma } from '@/lib/prisma';
 import { createDocWithSnapshot, getCurrentSnapshot } from '@/lib/snapshot';
 import { formatMapId } from '@/lib/mapId';
 
+const LIST_CACHE_CONTROL = 'public, s-maxage=30, stale-while-revalidate=120';
+
+function createErrorResponse(error: string, status: number, details?: string) {
+  return NextResponse.json(
+    process.env.NODE_ENV === 'production' || !details
+      ? { error }
+      : { error, message: details },
+    {
+      status,
+      headers: {
+        'Cache-Control': 'no-store',
+      },
+    }
+  );
+}
+
 export async function GET(request: NextRequest) {
   try {
     if (!process.env.DATABASE_URL) {
-      return NextResponse.json({ error: 'Database configuration missing' }, { status: 500 });
+      return createErrorResponse('Database configuration missing', 500);
     }
 
     const query = request.nextUrl.searchParams.get('q')?.trim();
@@ -28,16 +44,23 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    return NextResponse.json({
-      maps: maps.map((map) => ({
-        id: formatMapId(map.id),
-        title: map.title,
-        updatedAt: map.updatedAt,
-      })),
-    });
+    return NextResponse.json(
+      {
+        maps: maps.map((map) => ({
+          id: formatMapId(map.id),
+          title: map.title,
+          updatedAt: map.updatedAt,
+        })),
+      },
+      {
+        headers: {
+          'Cache-Control': LIST_CACHE_CONTROL,
+        },
+      }
+    );
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
-    return NextResponse.json({ error: 'Failed to fetch maps', message: errorMsg }, { status: 500 });
+    return createErrorResponse('Failed to fetch maps', 500, errorMsg);
   }
 }
 
@@ -46,10 +69,7 @@ export async function POST(request: NextRequest) {
     // Validate env
     if (!process.env.DATABASE_URL) {
       console.error('DATABASE_URL is not set in environment variables');
-      return NextResponse.json(
-        { error: 'Database configuration missing' },
-        { status: 500 }
-      );
+      return createErrorResponse('Database configuration missing', 500);
     }
 
     const body = await request.json();
@@ -58,7 +78,12 @@ export async function POST(request: NextRequest) {
     if (!title || typeof title !== 'string' || !title.trim()) {
       return NextResponse.json(
         { error: 'Title is required' },
-        { status: 400 }
+        {
+          status: 400,
+          headers: {
+            'Cache-Control': 'no-store',
+          },
+        }
       );
     }
 
@@ -79,7 +104,12 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(
       { id: formatMapId(map.id), title: map.title },
-      { status: 201 }
+      {
+        status: 201,
+        headers: {
+          'Cache-Control': 'no-store',
+        },
+      }
     );
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
@@ -91,13 +121,6 @@ export async function POST(request: NextRequest) {
     console.error('DATABASE_URL set:', !!process.env.DATABASE_URL);
     console.error('NODE_ENV:', process.env.NODE_ENV);
     
-    return NextResponse.json(
-      { 
-        error: 'Failed to create map',
-        message: errorMsg,
-        timestamp: new Date().toISOString()
-      },
-      { status: 500 }
-    );
+    return createErrorResponse('Failed to create map', 500, errorMsg);
   }
 }

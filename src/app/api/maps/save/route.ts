@@ -2,15 +2,26 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { formatMapId, parseMapId } from '@/lib/mapId';
 
+function createErrorResponse(error: string, status: number, details?: string) {
+  return NextResponse.json(
+    process.env.NODE_ENV === 'production' || !details
+      ? { error }
+      : { error, message: details },
+    {
+      status,
+      headers: {
+        'Cache-Control': 'no-store',
+      },
+    }
+  );
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Validate env
     if (!process.env.DATABASE_URL) {
       console.error('DATABASE_URL is not set in environment variables');
-      return NextResponse.json(
-        { error: 'Database configuration missing' },
-        { status: 500 }
-      );
+      return createErrorResponse('Database configuration missing', 500);
     }
 
     const body = await request.json();
@@ -19,7 +30,12 @@ export async function POST(request: NextRequest) {
     if (!id || typeof id !== 'string') {
       return NextResponse.json(
         { error: 'Invalid map ID' },
-        { status: 400 }
+        {
+          status: 400,
+          headers: {
+            'Cache-Control': 'no-store',
+          },
+        }
       );
     }
 
@@ -27,14 +43,24 @@ export async function POST(request: NextRequest) {
     if (!numericId) {
       return NextResponse.json(
         { error: 'Invalid map ID' },
-        { status: 400 }
+        {
+          status: 400,
+          headers: {
+            'Cache-Control': 'no-store',
+          },
+        }
       );
     }
 
     if (!snapshot || typeof snapshot !== 'string') {
       return NextResponse.json(
         { error: 'Invalid snapshot' },
-        { status: 400 }
+        {
+          status: 400,
+          headers: {
+            'Cache-Control': 'no-store',
+          },
+        }
       );
     }
 
@@ -44,7 +70,12 @@ export async function POST(request: NextRequest) {
     } catch {
       return NextResponse.json(
         { error: 'Invalid snapshot format' },
-        { status: 400 }
+        {
+          status: 400,
+          headers: {
+            'Cache-Control': 'no-store',
+          },
+        }
       );
     }
 
@@ -65,11 +96,18 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return NextResponse.json({
-      id: formatMapId(updated.id),
-      version: updated.version,
-      updatedAt: updated.updatedAt,
-    });
+    return NextResponse.json(
+      {
+        id: formatMapId(updated.id),
+        version: updated.version,
+        updatedAt: updated.updatedAt,
+      },
+      {
+        headers: {
+          'Cache-Control': 'no-store',
+        },
+      }
+    );
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     const errorStack = error instanceof Error ? error.stack : '';
@@ -79,13 +117,6 @@ export async function POST(request: NextRequest) {
     console.error('Stack:', errorStack);
     console.error('DATABASE_URL set:', !!process.env.DATABASE_URL);
     
-    return NextResponse.json(
-      { 
-        error: 'Failed to save map',
-        message: errorMsg,
-        timestamp: new Date().toISOString()
-      },
-      { status: 500 }
-    );
+    return createErrorResponse('Failed to save map', 500, errorMsg);
   }
 }

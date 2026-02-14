@@ -3,6 +3,22 @@ import { prisma } from '@/lib/prisma';
 import { formatMapId, parseMapId } from '@/lib/mapId';
 import { createDocWithSnapshot, getCurrentSnapshot } from '@/lib/snapshot';
 
+const MAP_CACHE_CONTROL = 'public, s-maxage=15, stale-while-revalidate=60';
+
+function createErrorResponse(error: string, status: number, details?: string) {
+  return NextResponse.json(
+    process.env.NODE_ENV === 'production' || !details
+      ? { error }
+      : { error, message: details },
+    {
+      status,
+      headers: {
+        'Cache-Control': 'no-store',
+      },
+    }
+  );
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -11,10 +27,7 @@ export async function GET(
     // Validate env
     if (!process.env.DATABASE_URL) {
       console.error('DATABASE_URL is not set in environment variables');
-      return NextResponse.json(
-        { error: 'Database configuration missing' },
-        { status: 500 }
-      );
+      return createErrorResponse('Database configuration missing', 500);
     }
 
     const { id } = params;
@@ -22,7 +35,12 @@ export async function GET(
     if (!id || typeof id !== 'string') {
       return NextResponse.json(
         { error: 'Invalid map ID' },
-        { status: 400 }
+        {
+          status: 400,
+          headers: {
+            'Cache-Control': 'no-store',
+          },
+        }
       );
     }
 
@@ -30,7 +48,12 @@ export async function GET(
     if (!numericId) {
       return NextResponse.json(
         { error: 'Invalid map ID' },
-        { status: 400 }
+        {
+          status: 400,
+          headers: {
+            'Cache-Control': 'no-store',
+          },
+        }
       );
     }
 
@@ -56,17 +79,46 @@ export async function GET(
     if (!map) {
       return NextResponse.json(
         { error: 'Map not found' },
-        { status: 404 }
+        {
+          status: 404,
+          headers: {
+            'Cache-Control': 'no-store',
+          },
+        }
       );
     }
 
-    return NextResponse.json({
-      id: formatMapId(map.id),
-      title: map.title,
-      snapshot: map.snapshot,
-      version: map.version,
-      updatedAt: map.updatedAt,
-    });
+    const lastModified = map.updatedAt.toUTCString();
+    const etag = `W/\"map-${map.id}-v${map.version}\"`;
+    const ifNoneMatch = request.headers.get('if-none-match');
+    const ifModifiedSince = request.headers.get('if-modified-since');
+
+    if (ifNoneMatch === etag || (ifModifiedSince && new Date(ifModifiedSince) >= map.updatedAt)) {
+      return new NextResponse(null, {
+        status: 304,
+        headers: {
+          ETag: etag,
+          'Last-Modified': lastModified,
+          'Cache-Control': MAP_CACHE_CONTROL,
+        },
+      });
+    }
+
+    return NextResponse.json(
+      {
+        id: formatMapId(map.id),
+        title: map.title,
+        snapshot: map.snapshot,
+        version: map.version,
+      },
+      {
+        headers: {
+          ETag: etag,
+          'Last-Modified': lastModified,
+          'Cache-Control': MAP_CACHE_CONTROL,
+        },
+      }
+    );
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     const errorStack = error instanceof Error ? error.stack : '';
@@ -76,13 +128,6 @@ export async function GET(
     console.error('Stack:', errorStack);
     console.error('DATABASE_URL set:', !!process.env.DATABASE_URL);
     
-    return NextResponse.json(
-      { 
-        error: 'Failed to fetch map',
-        message: errorMsg,
-        timestamp: new Date().toISOString()
-      },
-      { status: 500 }
-    );
+    return createErrorResponse('Failed to fetch map', 500, errorMsg);
   }
 }
