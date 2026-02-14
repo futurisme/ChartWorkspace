@@ -41,9 +41,20 @@ export default function LandingPage() {
     };
 
     evaluateMotionMode();
-    mediaQuery.addEventListener('change', evaluateMotionMode);
 
-    return () => mediaQuery.removeEventListener('change', evaluateMotionMode);
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', evaluateMotionMode);
+    } else {
+      mediaQuery.addListener(evaluateMotionMode);
+    }
+
+    return () => {
+      if (typeof mediaQuery.removeEventListener === 'function') {
+        mediaQuery.removeEventListener('change', evaluateMotionMode);
+      } else {
+        mediaQuery.removeListener(evaluateMotionMode);
+      }
+    };
   }, []);
 
   useEffect(() => {
