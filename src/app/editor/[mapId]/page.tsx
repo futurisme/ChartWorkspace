@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useParams } from 'next/navigation';
 import { PresenceBar } from '@/components/PresenceBar';
+import { RefreshAlertSettings } from '@/components/refresh-alert-settings';
 
 const RealtimeProvider = dynamic(
   () => import('@/components/RealtimeProvider').then((module) => module.RealtimeProvider),
@@ -67,6 +68,7 @@ function EditorShell({ mapId, title, userId, displayName, showMobileToolsPanel, 
               Edit #{mapId}
             </div>
             <PresenceBar compact showBorder={false} className="rounded border border-cyan-300/20 bg-slate-900/75" />
+            <RefreshAlertSettings />
           </div>
         </div>
       </header>

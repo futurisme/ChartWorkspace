@@ -308,7 +308,7 @@ export function FlowWorkspace({
   snapEnabled = true,
   inviteRequestToken = 0,
 }: FlowWorkspaceProps) {
-  const { doc, isConnected, isDatabaseConnected, updatePresence, remoteUsers, saveErrorCount } = useRealtime();
+  const { doc, isConnected, isDatabaseConnected, updatePresence, remoteUsers, saveErrorCount, saveSnapshot, mapId } = useRealtime();
   const [nodes, setNodes, onNodesChange] = useNodesState<ConceptNodeData>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -320,6 +320,11 @@ export function FlowWorkspace({
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [connectSourceNodeId, setConnectSourceNodeId] = useState<string | null>(null);
   const [unconnectSourceNodeId, setUnconnectSourceNodeId] = useState<string | null>(null);
+  const [isRefreshingPage, setIsRefreshingPage] = useState(false);
+  const [refreshAlertNonce, setRefreshAlertNonce] = useState(0);
+  const [refreshAlertReason, setRefreshAlertReason] = useState('');
+  const [refreshAlertBy, setRefreshAlertBy] = useState('');
+  const [acknowledgedRefreshAlertNonce, setAcknowledgedRefreshAlertNonce] = useState(0);
 
   const nodeCountRef = useRef(0);
   const undoManagerRef = useRef<Y.UndoManager | null>(null);
@@ -345,6 +350,7 @@ export function FlowWorkspace({
     cameraY: number;
   } | null>(null);
   const movePresenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hadActiveCollaboratorsRef = useRef(false);
 
   const getParentIdFor = useCallback(
     (childId: string) => edges.find((edge) => edge.target === childId)?.source ?? null,
@@ -1355,6 +1361,106 @@ export function FlowWorkspace({
     flushMovePresence();
   }, [flushMovePresence]);
 
+
+  const hasActiveCollaborators = remoteUsers.length > 0;
+  const refreshAlertStorageKey = `flow.refresh-alert-ack.${mapId}`;
+  const shouldShowRefreshAlert = refreshAlertNonce > acknowledgedRefreshAlertNonce;
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const stored = window.localStorage.getItem(refreshAlertStorageKey);
+    const parsed = stored ? Number(stored) : 0;
+    setAcknowledgedRefreshAlertNonce(Number.isFinite(parsed) ? parsed : 0);
+  }, [refreshAlertStorageKey]);
+
+  useEffect(() => {
+    if (!doc) {
+      setRefreshAlertNonce(0);
+      setRefreshAlertReason('');
+      setRefreshAlertBy('');
+      return;
+    }
+
+    const alertsMap = doc.getMap<unknown>('system-alerts');
+    const syncAlert = () => {
+      const nextNonce = alertsMap.get('refreshAlertNonce');
+      const nextReason = alertsMap.get('refreshAlertReason');
+      const nextBy = alertsMap.get('refreshAlertBy');
+      setRefreshAlertNonce(typeof nextNonce === 'number' ? nextNonce : 0);
+      setRefreshAlertReason(typeof nextReason === 'string' ? nextReason : '');
+      setRefreshAlertBy(typeof nextBy === 'string' ? nextBy : '');
+    };
+
+    syncAlert();
+    alertsMap.observe(syncAlert);
+
+    return () => {
+      alertsMap.unobserve(syncAlert);
+    };
+  }, [doc]);
+
+  useEffect(() => {
+    if (!doc || isReadOnly) {
+      hadActiveCollaboratorsRef.current = hasActiveCollaborators;
+      return;
+    }
+
+    if (hasActiveCollaborators && !hadActiveCollaboratorsRef.current) {
+      const alertsMap = doc.getMap<unknown>('system-alerts');
+      const nonce = Date.now();
+      doc.transact(() => {
+        alertsMap.set('refreshAlertNonce', nonce);
+        alertsMap.set('refreshAlertReason', 'Kolaborator aktif terdeteksi. Silakan refresh untuk sinkronisasi terbaru.');
+        alertsMap.set('refreshAlertBy', 'System');
+      }, 'local');
+    }
+
+    hadActiveCollaboratorsRef.current = hasActiveCollaborators;
+  }, [doc, hasActiveCollaborators, isReadOnly]);
+
+  const handleRefreshPage = useCallback(async () => {
+    if (isRefreshingPage) {
+      return;
+    }
+
+    setIsRefreshingPage(true);
+    try {
+      await saveSnapshot();
+      if (typeof window !== 'undefined' && refreshAlertNonce > 0) {
+        window.localStorage.setItem(refreshAlertStorageKey, String(refreshAlertNonce));
+        setAcknowledgedRefreshAlertNonce(refreshAlertNonce);
+      }
+      window.setTimeout(() => {
+        window.location.reload();
+      }, 120);
+    } finally {
+      window.setTimeout(() => {
+        setIsRefreshingPage(false);
+      }, 1500);
+    }
+  }, [isRefreshingPage, refreshAlertNonce, refreshAlertStorageKey, saveSnapshot]);
+
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || refreshAlertNonce <= 0) {
+      return;
+    }
+
+    const navigationEntries = window.performance.getEntriesByType('navigation');
+    const currentNavigation = navigationEntries[0] as PerformanceNavigationTiming | undefined;
+    const isReload = currentNavigation?.type === 'reload';
+
+    if (!isReload) {
+      return;
+    }
+
+    window.localStorage.setItem(refreshAlertStorageKey, String(refreshAlertNonce));
+    setAcknowledgedRefreshAlertNonce(refreshAlertNonce);
+  }, [refreshAlertNonce, refreshAlertStorageKey]);
+
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
@@ -1419,6 +1525,32 @@ export function FlowWorkspace({
             onUnconnectStart={handleStartUnconnect}
           />
         </>
+      )}
+
+      {!isReadOnly && shouldShowRefreshAlert && (
+        <div className="pointer-events-none absolute left-1/2 top-2 z-50 w-[min(96vw,620px)] -translate-x-1/2">
+          <div className="pointer-events-auto flex items-center justify-between gap-3 rounded-lg border border-amber-400/60 bg-amber-50/95 px-3 py-2 text-xs text-amber-950 shadow-lg backdrop-blur">
+            <div>
+              <p className="font-semibold">
+                Peringatan kolaborasi aktif: mohon refresh halaman sekarang agar sinkronisasi terbaru tetap aman untuk semua pengguna.
+              </p>
+              {refreshAlertReason && (
+                <p className="mt-1 text-[11px] font-medium text-amber-900/90">
+                  Alasan: {refreshAlertReason}
+                  {refreshAlertBy ? ` (${refreshAlertBy})` : ''}
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={handleRefreshPage}
+              disabled={isRefreshingPage}
+              className="shrink-0 rounded-md border border-amber-800/40 bg-amber-500 px-2.5 py-1 font-semibold text-amber-950 transition-colors hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {isRefreshingPage ? 'Saving…' : 'Refresh page'}
+            </button>
+          </div>
+        </div>
       )}
 
       {!isReadOnly && selectedNodeId && (

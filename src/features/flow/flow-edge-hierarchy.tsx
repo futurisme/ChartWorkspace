@@ -32,7 +32,10 @@ export function FlowEdgeHierarchy({
 }: EdgeProps<FlowRouteData>) {
   const points = Array.isArray(data?.points) ? data.points.filter(isValidPoint) : [];
   const path = points.length > 1 ? pointsToPath(points) : getStraightPath({ sourceX, sourceY, targetX, targetY })[0];
+  const edgeStyle = {
+    ...(style ?? {}),
+    pointerEvents: 'none' as const,
+  };
 
-  return <BaseEdge id={id} path={path} markerEnd={markerEnd} style={style} />;
+  return <BaseEdge id={id} path={path} markerEnd={markerEnd} style={edgeStyle} interactionWidth={0} />;
 }
-
