@@ -10,7 +10,7 @@ import React, {
   useRef,
 } from 'react';
 import * as Y from 'yjs';
-import { WebrtcProvider } from 'y-webrtc';
+import { WebsocketProvider } from 'y-websocket';
 import { UserPresence, setupAwareness, getRemoteUsers, generateUserColor } from '@/lib/presence';
 import { applyYjsSnapshot, getCurrentSnapshot } from '@/lib/snapshot';
 import { formatMapId, parseMapId } from '@/lib/mapId';
@@ -150,29 +150,6 @@ function parseSignalingUrls(rawValue: string) {
   return Array.from(dedupedUrls);
 }
 
-function parseIceServers(rawValue: string | undefined) {
-  if (!rawValue) {
-    return [
-      { urls: ['stun:stun.l.google.com:19302', 'stun:global.stun.twilio.com:3478'] },
-    ];
-  }
-
-  try {
-    const parsed = JSON.parse(rawValue) as Array<{ urls: string | string[]; username?: string; credential?: string }>;
-    if (!Array.isArray(parsed) || parsed.length === 0) {
-      return [
-        { urls: ['stun:stun.l.google.com:19302', 'stun:global.stun.twilio.com:3478'] },
-      ];
-    }
-    return parsed;
-  } catch {
-    logRealtime('warn', 'Invalid NEXT_PUBLIC_WEBRTC_ICE_SERVERS value. Using default STUN.', {});
-    return [
-      { urls: ['stun:stun.l.google.com:19302', 'stun:global.stun.twilio.com:3478'] },
-    ];
-  }
-}
-
 function getSignalingSelection(hostname: string, envSignalingUrls: string[], mode: 'edit' | 'view') {
   const protocol = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss' : 'ws';
   const explicitSameHostPort = process.env.NEXT_PUBLIC_SIGNALING_PORT?.trim();
@@ -233,7 +210,7 @@ function normalizeMapRoomId(rawMapId: string): string {
 
 export interface RealtimeContextType {
   doc: Y.Doc | null;
-  provider: WebrtcProvider | null;
+  provider: WebsocketProvider | null;
   awareness: any | null;
   localPresence: UserPresence | null;
   remoteUsers: UserPresence[];
@@ -271,7 +248,7 @@ export function RealtimeProvider({
 }: RealtimeProviderProps) {
   const normalizedRoomMapId = normalizeMapRoomId(mapId);
   const [doc, setDoc] = useState<Y.Doc | null>(null);
-  const [provider, setProvider] = useState<WebrtcProvider | null>(null);
+  const [provider, setProvider] = useState<WebsocketProvider | null>(null);
   const [awareness, setAwareness] = useState<any | null>(null);
   const [localPresence, setLocalPresence] = useState<UserPresence | null>(null);
   const [remoteUsers, setRemoteUsers] = useState<UserPresence[]>([]);
@@ -288,7 +265,6 @@ export function RealtimeProvider({
   const updateCounterRef = useRef(0);
   const localPresenceRef = useRef<UserPresence | null>(null);
   const signalingUrlsRef = useRef<string[] | null>(null);
-  const iceServersRef = useRef<Array<{ urls: string | string[]; username?: string; credential?: string }> | null>(null);
   const saveInFlightRef = useRef(false);
   const queuedSaveRef = useRef(false);
   const mapEtagRef = useRef<string | null>(null);
@@ -297,10 +273,6 @@ export function RealtimeProvider({
   const pendingPresenceRef = useRef<Partial<UserPresence> | null>(null);
   const presenceFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastPresenceFlushRef = useRef(0);
-
-  if (iceServersRef.current === null) {
-    iceServersRef.current = parseIceServers(process.env.NEXT_PUBLIC_WEBRTC_ICE_SERVERS);
-  }
 
   if (signalingUrlsRef.current === null) {
     const envSignalingUrls = parseSignalingUrls([
@@ -347,7 +319,7 @@ export function RealtimeProvider({
   useEffect(() => {
     let isMounted = true;
     let activeDoc: Y.Doc | null = null;
-    let activeProvider: WebrtcProvider | null = null;
+    let activeProvider: WebsocketProvider | null = null;
     let detachRealtimeHandlers: (() => void) | null = null;
     const initAbortController = new AbortController();
 
@@ -405,29 +377,27 @@ export function RealtimeProvider({
         setLocalPresence(presence);
         localPresenceRef.current = presence;
 
-        // Setup WebRTC provider
+        // Setup WebSocket provider
         const signalingUrls = signalingUrlsRef.current ?? [];
         if (signalingUrls.length > 0) {
-          logRealtime('info', 'Initializing WebRTC provider', {
+          const websocketUrl = signalingUrls[0];
+          logRealtime('info', 'Initializing WebSocket provider', {
             roomId: `chartmaker-${normalizedRoomMapId}`,
+            websocketUrl,
             signalingUrls,
             mode,
-            iceServers: (iceServersRef.current ?? []).length,
           });
 
-          const newProvider = new WebrtcProvider(
+          const newProvider = new WebsocketProvider(
+            websocketUrl,
             `chartmaker-${normalizedRoomMapId}`,
             newDoc,
             {
-              signaling: signalingUrls,
-              maxConns: 80,
-              peerOpts: {
-                config: {
-                  iceServers: iceServersRef.current ?? [
-                    { urls: ['stun:stun.l.google.com:19302', 'stun:global.stun.twilio.com:3478'] },
-                  ],
-                },
+              connect: true,
+              params: {
+                mode,
               },
+              disableBc: false,
             }
           );
           activeProvider = newProvider;
@@ -450,6 +420,7 @@ export function RealtimeProvider({
               logRealtime('info', 'Awareness changed', { remoteUsers: remote.length, mode });
               scheduleNonUrgentWork(() => {
                 setRemoteUsers(remote);
+                setHasRealtimePeers(remote.length > 0);
               });
             }
           };
@@ -457,48 +428,24 @@ export function RealtimeProvider({
           newAwareness.on('change', handleAwarenessChange);
           handleAwarenessChange();
 
-          const handlePeers = (event: { webrtcPeers?: string[] | Set<string>; bcPeers?: string[] | Set<string> }) => {
-            if (!isMounted) {
-              return;
-            }
-
-            const webrtcPeerCount = Array.isArray(event.webrtcPeers)
-              ? event.webrtcPeers.length
-              : event.webrtcPeers instanceof Set
-                ? event.webrtcPeers.size
-                : 0;
-
-            setHasRealtimePeers(webrtcPeerCount > 0);
-            logRealtime('info', 'WebRTC peer topology changed', {
-              roomId: `chartmaker-${normalizedRoomMapId}`,
-              webrtcPeers: webrtcPeerCount,
-              bcPeers: Array.isArray(event.bcPeers)
-                ? event.bcPeers.length
-                : event.bcPeers instanceof Set
-                  ? event.bcPeers.size
-                  : 0,
-            });
-          };
-
           // Connection status
           const handleStatus = (event: { status?: string; connected?: boolean }) => {
             if (isMounted) {
-              logRealtime(event.connected ?? event.status === 'connected' ? 'info' : 'warn', 'WebRTC status changed', {
+              const connected = event.status === 'connected' || event.connected === true;
+              logRealtime(connected ? 'info' : 'warn', 'WebSocket status changed', {
                 status: event.status,
-                connected: event.connected,
+                connected,
                 roomId: `chartmaker-${normalizedRoomMapId}`,
               });
-              setIsConnected(event.connected ?? event.status === 'connected');
+              setIsConnected(connected);
             }
           };
 
           newProvider.on('status', handleStatus);
-          newProvider.on('peers', handlePeers);
 
           detachRealtimeHandlers = () => {
             newAwareness.off('change', handleAwarenessChange);
             newProvider.off('status', handleStatus);
-            newProvider.off('peers', handlePeers);
           };
           return;
         }
@@ -764,7 +711,7 @@ export function RealtimeProvider({
       return;
     }
 
-    // Always-on fallback polling: keep eventual consistency even when WebRTC looks connected.
+    // Always-on fallback polling: keep eventual consistency even when transport looks connected.
     const isMobile = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
     const basePollingDelayMs = isMobile ? 2500 : 4000;
     const connectedPollingDelayMs = isMobile ? 8000 : 12000;

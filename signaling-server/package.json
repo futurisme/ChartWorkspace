@@ -4,13 +4,13 @@
   "private": true,
   "description": "Production signaling server for ChartMaker (y-webrtc).",
   "scripts": {
-    "start": "node ./server.mjs",
-    "dev": "node --watch ./server.mjs"
+    "start": "HOST=0.0.0.0 y-websocket-server",
+    "dev": "HOST=0.0.0.0 y-websocket-server"
   },
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
-    "y-webrtc": "^10.3.0"
+    "@y/websocket-server": "^0.1.1"
   }
 }

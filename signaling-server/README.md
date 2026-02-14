@@ -1,6 +1,6 @@
 # ChartMaker Signaling Server
 
-Folder ini adalah service signaling WebRTC untuk ChartMaker.  
+Folder ini adalah service websocket sync Yjs untuk ChartMaker.  
 Service ini dipakai sebagai service kedua di Railway dari repo yang sama.
 
 ## Local Run
@@ -17,27 +17,27 @@ Default bind memakai `HOST` (default `0.0.0.0`) dan `PORT` (default `4444`).
 1. Pastikan repo ini sudah terhubung ke Railway.
 2. Buat service web (Next.js) dari root repo `/`.
 3. Buat service kedua untuk signaling dari repo yang sama.
-4. Pada service signaling:
+4. Pada service websocket:
    - Set `Root Directory` ke `signaling-server`
    - Build command: `npm install`
-   - Start command: `npm run start`
-5. Generate public domain untuk service signaling.
-6. Cek domain signaling membuka response JSON health check:
-   - `https://<your-signaling-service>.up.railway.app` (harus mengembalikan `{"ok":true,...}`)
+   - Start command: `npm run start` (menjalankan `y-websocket-server`)
+5. Generate public domain untuk service websocket.
+6. Cek domain signaling membuka response server websocket (HTTP 200 pada root):
+   - `https://<your-signaling-service>.up.railway.app` (harus mengembalikan status 200 / response body server)
 7. Pada service web, set env:
    - `NEXT_PUBLIC_WEBRTC_URL=wss://<your-signaling-service>.up.railway.app`
 8. Redeploy service web agar env publik terikut di build.
 
 ## Notes
 
-- Signaling server hanya untuk handshake peer WebRTC, bukan penyimpanan dokumen.
+- Yjs websocket server menangani sinkronisasi dokumen + awareness realtime lintas device (bukan penyimpanan permanen).
 - Jangan arahkan `NEXT_PUBLIC_WEBRTC_URL` ke domain app Next.js.
 - Hindari host default publik yang tidak stabil untuk production.
 
 
 ## Important Railway runtime env
 
-Set di service signaling:
+Set di service websocket:
 
 ```env
 HOST=0.0.0.0

@@ -130,7 +130,7 @@ Perbaikan saat ini:
 ### 7) Environment Variables
 ```env
 DATABASE_URL="postgresql://user:password@host:5432/chartmaker"
-NEXT_PUBLIC_WEBRTC_URL="wss://your-signaling-service.up.railway.app"
+NEXT_PUBLIC_WEBRTC_URL="wss://your-websocket-service.up.railway.app"
 NEXT_PUBLIC_API_URL="http://localhost:3000"
 ```
 
@@ -176,7 +176,7 @@ Gunakan repo yang sama, pisah service:
 
 Set env di web app:
 ```env
-NEXT_PUBLIC_WEBRTC_URL="wss://<service-signaling>.up.railway.app"
+NEXT_PUBLIC_WEBRTC_URL="wss://<service-websocket>.up.railway.app"
 ```
 
 ---
