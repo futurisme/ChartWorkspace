@@ -269,6 +269,9 @@ export function RealtimeProvider({
   const [currentVersion, setCurrentVersion] = useState(1);
   const [saveErrorCount, setSaveErrorCount] = useState(0);
 
+  const remoteUserCount = remoteUsers.length;
+  const collaborationConnected = isConnected && (hasRealtimePeers || remoteUserCount > 0);
+
   const saveTimeoutRef = useRef<NodeJS.Timeout>();
   const dirtyRef = useRef(false);
   const updateCounterRef = useRef(0);
@@ -441,6 +444,7 @@ export function RealtimeProvider({
           };
 
           newAwareness.on('change', handleAwarenessChange);
+          handleAwarenessChange();
 
           const handlePeers = (event: { webrtcPeers?: string[] | Set<string>; bcPeers?: string[] | Set<string> }) => {
             if (!isMounted) {
@@ -534,6 +538,18 @@ export function RealtimeProvider({
       }
     };
   }, [mapId, normalizedRoomMapId, userId, displayName, mode]);
+
+
+  useEffect(() => {
+    logRealtime('info', 'Realtime connectivity snapshot', {
+      mapId,
+      mode,
+      signalingConnected: isConnected,
+      hasRealtimePeers,
+      remoteUsers: remoteUserCount,
+      collaborationConnected,
+    });
+  }, [collaborationConnected, hasRealtimePeers, isConnected, mapId, mode, remoteUserCount]);
 
 
   const trackTelemetry = useCallback((handler: string, durationMs: number) => {
@@ -751,7 +767,7 @@ export function RealtimeProvider({
     };
 
     const syncFromServer = async () => {
-      if (isConnected && hasRealtimePeers) {
+      if (collaborationConnected) {
         pollingDelayMs = basePollingDelayMs;
         queueNextPoll(pollingDelayMs);
         return;
@@ -826,7 +842,7 @@ export function RealtimeProvider({
         pollTimer = null;
       }
     };
-  }, [doc, hasRealtimePeers, isConnected, mapId, mode, profileHandler]);
+  }, [collaborationConnected, doc, hasRealtimePeers, isConnected, mapId, mode, profileHandler]);
 
   const updatePresence = useCallback(
     (updates: Partial<UserPresence>) => {
@@ -877,7 +893,7 @@ export function RealtimeProvider({
         awareness,
         localPresence,
         remoteUsers,
-        isConnected,
+        isConnected: collaborationConnected,
         mapId,
         saveSnapshot,
         updatePresence,
