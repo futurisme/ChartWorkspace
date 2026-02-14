@@ -15,7 +15,7 @@ import { UserPresence, setupAwareness, getRemoteUsers, generateUserColor } from 
 import { applyYjsSnapshot, getCurrentSnapshot } from '@/lib/snapshot';
 
 const LOCAL_SIGNALING_URL = 'ws://localhost:4444';
-const BLOCKED_SIGNALING_HOSTS = new Set(['signaling.yjs.dev', 'www.signaling.yjs.dev', 'yjs.dev']);
+const PUBLIC_SIGNALING_FALLBACK = 'wss://signaling.yjs.dev';
 
 const FRAME_BUDGET_MS = 16.7;
 const PRESENCE_UPDATE_CADENCE_MS = 120;
@@ -59,11 +59,6 @@ function normalizeSignalingUrl(rawUrl: string): string | null {
   try {
     const parsed = new URL(withScheme);
     if (parsed.protocol !== 'ws:' && parsed.protocol !== 'wss:') {
-      return null;
-    }
-
-    const hostname = parsed.hostname.toLowerCase();
-    if (BLOCKED_SIGNALING_HOSTS.has(hostname) || hostname.endsWith('.yjs.dev')) {
       return null;
     }
 
@@ -140,25 +135,29 @@ export function RealtimeProvider({
   const signalingUrlsRef = useRef<string[] | null>(null);
   const saveInFlightRef = useRef(false);
   const queuedSaveRef = useRef(false);
+  const mapEtagRef = useRef<string | null>(null);
   const telemetryRef = useRef<Record<string, { samples: number; totalDurationMs: number; droppedFrames: number; maxDurationMs: number }>>({});
   const pendingPresenceRef = useRef<Partial<UserPresence> | null>(null);
   const presenceFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastPresenceFlushRef = useRef(0);
 
   if (signalingUrlsRef.current === null) {
-    const parsedEnvUrls = parseSignalingUrls(process.env.NEXT_PUBLIC_WEBRTC_URL ?? '');
-    if (parsedEnvUrls.length > 0) {
-      signalingUrlsRef.current = parsedEnvUrls;
-    } else if (typeof window !== 'undefined') {
+    const candidates = new Set<string>(parseSignalingUrls(process.env.NEXT_PUBLIC_WEBRTC_URL ?? ''));
+
+    if (typeof window !== 'undefined') {
       const { hostname, protocol } = window.location;
       const fallback = protocol === 'https:' ? 'wss' : 'ws';
       const fallbackHostUrl = `${fallback}://${hostname}:4444`;
-      signalingUrlsRef.current = isLocalHostname(hostname)
-        ? [LOCAL_SIGNALING_URL]
-        : [fallbackHostUrl];
-    } else {
-      signalingUrlsRef.current = [];
+
+      if (isLocalHostname(hostname)) {
+        candidates.add(LOCAL_SIGNALING_URL);
+      } else {
+        candidates.add(fallbackHostUrl);
+      }
     }
+
+    candidates.add(PUBLIC_SIGNALING_FALLBACK);
+    signalingUrlsRef.current = Array.from(candidates);
   }
 
   // Initialize document and provider
@@ -181,6 +180,7 @@ export function RealtimeProvider({
         }
 
         const { snapshot, version } = await response.json();
+        mapEtagRef.current = response.headers.get('etag');
 
         // Create Yjs doc
         const newDoc = new Y.Doc();
@@ -382,7 +382,9 @@ export function RealtimeProvider({
             prev.mode === updated.mode &&
             prev.currentNodeId === updated.currentNodeId &&
             prev.cursorX === updated.cursorX &&
-            prev.cursorY === updated.cursorY;
+            prev.cursorY === updated.cursorY &&
+            prev.cameraX === updated.cameraX &&
+            prev.cameraY === updated.cameraY;
           return same ? prev : updated;
         });
       });
@@ -499,6 +501,56 @@ export function RealtimeProvider({
       clearInterval(intervalId);
     };
   }, [awareness]);
+
+  useEffect(() => {
+    if (!doc || mode !== 'edit') {
+      return;
+    }
+
+    const syncFromServer = async () => {
+      if (isConnected) {
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/maps/${mapId}`, {
+          cache: 'no-store',
+          headers: mapEtagRef.current
+            ? {
+                'if-none-match': mapEtagRef.current,
+              }
+            : undefined,
+        });
+
+        if (response.status === 304) {
+          return;
+        }
+
+        if (!response.ok) {
+          return;
+        }
+
+        const { snapshot } = await response.json();
+        mapEtagRef.current = response.headers.get('etag');
+        if (!snapshot || typeof snapshot !== 'string') {
+          return;
+        }
+
+        profileHandler('snapshot.pull.fallback', () => {
+          applyYjsSnapshot(doc, snapshot);
+        });
+      } catch (error) {
+        console.warn('Fallback sync polling failed:', error);
+      }
+    };
+
+    const intervalId = setInterval(syncFromServer, 4000);
+    void syncFromServer();
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [doc, isConnected, mapId, mode, profileHandler]);
 
   const updatePresence = useCallback(
     (updates: Partial<UserPresence>) => {

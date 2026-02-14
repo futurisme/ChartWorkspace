@@ -102,6 +102,8 @@ interface UserBadgeProps {
 }
 
 function UserBadge({ user, isLocal }: UserBadgeProps) {
+  const hasCamera = typeof user.cameraX === 'number' && typeof user.cameraY === 'number';
+
   return (
     <div
       className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium text-white"
@@ -112,6 +114,10 @@ function UserBadge({ user, isLocal }: UserBadgeProps) {
       <span className="ml-1 rounded px-1.5 py-0.5 text-xs font-semibold opacity-75">
         {user.mode === 'edit' ? 'Editing' : 'Viewing'}
       </span>
+      {user.currentNodeId && <span className="text-[11px] opacity-90">Node: {user.currentNodeId}</span>}
+      {hasCamera && (
+        <span className="text-[11px] opacity-80">Cam: {Math.round(user.cameraX!)} , {Math.round(user.cameraY!)}</span>
+      )}
       {isLocal && <span className="ml-0.5 text-xs">(you)</span>}
     </div>
   );

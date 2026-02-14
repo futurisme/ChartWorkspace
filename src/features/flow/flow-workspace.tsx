@@ -338,7 +338,12 @@ export function FlowWorkspace({
   const latestDeferredEdgesRef = useRef<Edge[]>(deferredEdges);
   const telemetryRef = useRef<Record<string, { samples: number; totalDurationMs: number; droppedFrames: number; maxDurationMs: number }>>({});
   const lastMovePresenceUpdateRef = useRef(0);
-  const pendingMovePresenceRef = useRef<{ cursorX: number; cursorY: number } | null>(null);
+  const pendingMovePresenceRef = useRef<{
+    cursorX: number;
+    cursorY: number;
+    cameraX: number;
+    cameraY: number;
+  } | null>(null);
   const movePresenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const getParentIdFor = useCallback(
@@ -422,8 +427,13 @@ export function FlowWorkspace({
     profileHandler('presence.update.move', () => updatePresence(pending));
   }, [profileHandler, updatePresence]);
 
-  const scheduleMovePresenceFlush = useCallback((cursorX: number, cursorY: number) => {
-    pendingMovePresenceRef.current = { cursorX, cursorY };
+  const scheduleMovePresenceFlush = useCallback((cameraX: number, cameraY: number) => {
+    pendingMovePresenceRef.current = {
+      cursorX: cameraX,
+      cursorY: cameraY,
+      cameraX,
+      cameraY,
+    };
 
     const now = Date.now();
     const elapsed = now - lastMovePresenceUpdateRef.current;
@@ -1422,6 +1432,26 @@ export function FlowWorkspace({
               ))}
             </div>
           </details>
+        </div>
+      )}
+
+      {remoteUsers.length > 0 && (
+        <div className="pointer-events-none absolute bottom-2 left-2 z-40 flex max-w-[min(92vw,420px)] flex-col gap-1 rounded-lg border border-indigo-300/30 bg-slate-950/90 p-2 text-[10px] text-indigo-100 shadow-lg backdrop-blur">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-indigo-200">Live collaborators</div>
+          {remoteUsers.map((user) => (
+            <div key={`${user.userId}-${user.lastUpdated}`} className="flex items-center justify-between gap-2 rounded bg-indigo-500/10 px-2 py-1">
+              <div className="flex min-w-0 items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: user.color }} />
+                <span className="truncate font-medium">{user.displayName}</span>
+              </div>
+              <div className="shrink-0 text-indigo-200/90">
+                {user.currentNodeId ? `Editing ${user.currentNodeId}` : 'Browsing'}
+                {typeof user.cameraX === 'number' && typeof user.cameraY === 'number'
+                  ? ` • Cam (${Math.round(user.cameraX)}, ${Math.round(user.cameraY)})`
+                  : ''}
+              </div>
+            </div>
+          ))}
         </div>
       )}
 

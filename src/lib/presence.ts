@@ -6,6 +6,8 @@ export interface UserPresence {
   currentNodeId?: string;
   cursorX?: number;
   cursorY?: number;
+  cameraX?: number;
+  cameraY?: number;
   lastUpdated: number;
 }
 
