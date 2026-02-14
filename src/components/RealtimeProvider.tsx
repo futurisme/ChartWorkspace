@@ -764,8 +764,10 @@ export function RealtimeProvider({
       return;
     }
 
+    // Always-on fallback polling: keep eventual consistency even when WebRTC looks connected.
     const isMobile = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
     const basePollingDelayMs = isMobile ? 2500 : 4000;
+    const connectedPollingDelayMs = isMobile ? 8000 : 12000;
     let pollingDelayMs = basePollingDelayMs;
     let pollTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -779,11 +781,7 @@ export function RealtimeProvider({
     };
 
     const syncFromServer = async () => {
-      if (collaborationConnected) {
-        pollingDelayMs = basePollingDelayMs;
-        queueNextPoll(pollingDelayMs);
-        return;
-      }
+      const targetDelayMs = collaborationConnected ? connectedPollingDelayMs : basePollingDelayMs;
 
       try {
         const response = await fetch(`/api/maps/${mapId}`, {
@@ -796,7 +794,7 @@ export function RealtimeProvider({
         });
 
         if (response.status === 304) {
-          pollingDelayMs = basePollingDelayMs;
+          pollingDelayMs = targetDelayMs;
           queueNextPoll(pollingDelayMs);
           return;
         }
@@ -810,13 +808,13 @@ export function RealtimeProvider({
         const { snapshot } = await response.json();
         mapEtagRef.current = response.headers.get('etag');
         if (!snapshot || typeof snapshot !== 'string') {
-          pollingDelayMs = basePollingDelayMs;
+          pollingDelayMs = targetDelayMs;
           queueNextPoll(pollingDelayMs);
           return;
         }
 
         if (lastAppliedFallbackSnapshotRef.current === snapshot) {
-          pollingDelayMs = basePollingDelayMs;
+          pollingDelayMs = targetDelayMs;
           queueNextPoll(pollingDelayMs);
           return;
         }
@@ -829,9 +827,10 @@ export function RealtimeProvider({
           pollingDelayMs,
           mode,
           hasRealtimePeers,
+          collaborationConnected,
         });
         lastAppliedFallbackSnapshotRef.current = snapshot;
-        pollingDelayMs = basePollingDelayMs;
+        pollingDelayMs = targetDelayMs;
         queueNextPoll(pollingDelayMs);
       } catch (error) {
         logRealtime('warn', 'Fallback sync polling failed', {
@@ -839,6 +838,7 @@ export function RealtimeProvider({
           pollingDelayMs,
           mode,
           hasRealtimePeers,
+          collaborationConnected,
           error: error instanceof Error ? error.message : String(error),
         });
         pollingDelayMs = Math.min(pollingDelayMs * 1.5, 12000);
