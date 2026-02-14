@@ -13,6 +13,7 @@ import {
   type EdgeChange,
   type Node,
   type NodeChange,
+  type OnMove,
   type OnSelectionChangeParams,
   ReactFlow,
   type ReactFlowInstance,
@@ -1265,8 +1266,8 @@ export function FlowWorkspace({
     setRenameText('');
   }, []);
 
-  const handleMove = useCallback(
-    (_event: React.MouseEvent | React.TouchEvent | null, viewport: { x: number; y: number; zoom: number }) => {
+  const handleMove = useCallback<OnMove>(
+    (_event, viewport) => {
       profileHandler('viewport.move', () => {
         scheduleMovePresenceFlush(Math.round(viewport.x), Math.round(viewport.y));
       });
