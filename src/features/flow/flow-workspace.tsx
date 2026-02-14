@@ -303,6 +303,7 @@ export function FlowWorkspace({
   const deferredEdges = useDeferredValue(edges);
   const [routedEdges, setRoutedEdges] = useState(() => buildAdaptiveRoutedEdges(deferredEdges, deferredNodes));
   const routingWorkerRef = useRef<Worker | null>(null);
+  const routingWorkerFailedRef = useRef(false);
   const latestRouteHashRef = useRef<string | null>(null);
   const latestDeferredEdgesRef = useRef<Edge[]>(deferredEdges);
 
@@ -343,21 +344,30 @@ export function FlowWorkspace({
       return;
     }
 
-    const worker = new Worker(new URL('./workers/edge-routing.worker.ts', import.meta.url), { type: 'module' });
-    routingWorkerRef.current = worker;
+    try {
+      const worker = new Worker(new URL('./workers/edge-routing.worker.ts', import.meta.url), { type: 'module' });
+      routingWorkerRef.current = worker;
 
-    worker.onmessage = ({ data }: MessageEvent<WorkerRouteResult>) => {
-      if (data.type !== 'route-result' || latestRouteHashRef.current !== data.hash) {
-        return;
-      }
+      worker.onmessage = ({ data }: MessageEvent<WorkerRouteResult>) => {
+        if (data.type !== 'route-result' || latestRouteHashRef.current !== data.hash) {
+          return;
+        }
 
-      setRoutedEdges(applyRoutedEdgeGeometry(latestDeferredEdgesRef.current, data.edges));
-    };
+        setRoutedEdges(applyRoutedEdgeGeometry(latestDeferredEdgesRef.current, data.edges));
+      };
 
-    return () => {
-      worker.terminate();
-      routingWorkerRef.current = null;
-    };
+      worker.onerror = () => {
+        routingWorkerFailedRef.current = true;
+        routingWorkerRef.current = null;
+      };
+
+      return () => {
+        worker.terminate();
+        routingWorkerRef.current = null;
+      };
+    } catch {
+      routingWorkerFailedRef.current = true;
+    }
   }, []);
 
   useEffect(() => {
@@ -367,18 +377,19 @@ export function FlowWorkspace({
     latestRouteHashRef.current = hash;
 
     const worker = routingWorkerRef.current;
-    if (!worker) {
+    if (!worker || routingWorkerFailedRef.current) {
       setRoutedEdges(buildAdaptiveRoutedEdges(deferredEdges, deferredNodes));
       return;
     }
 
+    let idleCallbackId: number | null = null;
     let debounceTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
       const post = () => {
         worker.postMessage({ type: 'route', hash, nodes: compactNodes, edges: compactEdges });
       };
 
       if (typeof window.requestIdleCallback === 'function') {
-        window.requestIdleCallback(post, { timeout: 80 });
+        idleCallbackId = window.requestIdleCallback(post, { timeout: 80 });
         return;
       }
 
@@ -389,6 +400,10 @@ export function FlowWorkspace({
       if (debounceTimer) {
         clearTimeout(debounceTimer);
         debounceTimer = null;
+      }
+
+      if (idleCallbackId !== null && typeof window.cancelIdleCallback === 'function') {
+        window.cancelIdleCallback(idleCallbackId);
       }
     };
   }, [deferredEdges, deferredNodes]);
