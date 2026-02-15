@@ -17,9 +17,21 @@ function isLightColor(hex: string) {
   return luminance > 0.62;
 }
 
+
+function getFirstHexFromGradient(value: string) {
+  const match = value.match(/#[0-9a-fA-F]{6}/);
+  return match ? match[0] : '#3b82f6';
+}
+
+function isGradientColor(value: string) {
+  return value.includes('gradient(');
+}
+
 function FlowNodeCardComponent({ data, selected }: NodeProps<ConceptNodeData>) {
   const { isReadOnly } = useContext(NodeActionContext);
-  const baseColor = data.color ?? '#3b82f6';
+  const colorValue = data.color ?? '#3b82f6';
+  const gradientEnabled = isGradientColor(colorValue);
+  const baseColor = gradientEnabled ? getFirstHexFromGradient(colorValue) : colorValue;
   const lightBackground = isLightColor(baseColor);
   const collaboratorNames = data.collaboratorNames ?? [];
   const editedByOthers = Boolean(data.editedByOthers && collaboratorNames.length > 0);
@@ -39,6 +51,7 @@ function FlowNodeCardComponent({ data, selected }: NodeProps<ConceptNodeData>) {
         style={{
           borderColor: selected ? '#84cc16' : baseColor,
           backgroundColor: baseColor,
+          backgroundImage: gradientEnabled ? colorValue : undefined,
           color: lightBackground ? '#0f172a' : '#f8fafc',
         }}
       >

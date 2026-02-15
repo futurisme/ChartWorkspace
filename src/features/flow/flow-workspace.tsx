@@ -66,12 +66,12 @@ type YNodeStore = Y.Map<YRecordMap>;
 type YEdgeStore = Y.Map<YRecordMap>;
 
 const GRADIENT_COLOR_OPTIONS = [
-  '#06b6d4',
-  '#8b5cf6',
-  '#ec4899',
-  '#f97316',
-  '#84cc16',
-  '#14b8a6',
+  'linear-gradient(135deg, #06b6d4 0%, #8b5cf6 100%)',
+  'linear-gradient(135deg, #ec4899 0%, #f97316 100%)',
+  'linear-gradient(135deg, #84cc16 0%, #14b8a6 100%)',
+  'linear-gradient(135deg, #3b82f6 0%, #22c55e 100%)',
+  'linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)',
+  'linear-gradient(135deg, #6366f1 0%, #ec4899 100%)',
 ];
 
 const FlowToolbarDesktop = dynamic(
@@ -1516,35 +1516,34 @@ export function FlowWorkspace({
       )}
 
       {!isReadOnly && selectedNodeId && (
-        <div className="pointer-events-none absolute right-2 top-2 z-40 flex max-w-[min(92vw,560px)] flex-col gap-1 rounded-lg border border-cyan-400/25 bg-slate-950/92 p-2 shadow-[0_12px_26px_rgba(34,211,238,0.15)] backdrop-blur">
-          <div className="pointer-events-auto flex items-center justify-between gap-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-cyan-100">
+        <div className="pointer-events-none absolute right-2 top-2 z-40 flex w-[min(90vw,360px)] flex-col gap-1 rounded-lg border border-cyan-400/25 bg-slate-950/92 p-1.5 shadow-[0_12px_26px_rgba(34,211,238,0.15)] backdrop-blur">
+          <div className="pointer-events-auto flex items-center justify-between gap-1.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-cyan-100">
             <span>{isDatabaseConnected ? 'Terkoneksi ke Database' : 'Tidak terkoneksi ke Database'}</span>
             <span className="truncate text-cyan-200/85">{connectSourceNodeId ? 'Connect mode' : unconnectSourceNodeId ? 'Unconnect mode' : `Color: ${selectedNodeLabel ?? selectedNodeId}`}</span>
           </div>
-          <div className="pointer-events-auto flex flex-wrap gap-1">
+          <div className="pointer-events-auto grid grid-cols-9 gap-1">
             {COLOR_OPTIONS.map((color) => (
               <button
                 key={color}
                 type="button"
                 onClick={() => handleChangeColor(selectedNodeId, color)}
-                className={`h-6 w-6 rounded-md border-2 ${selectedNodeColor === color ? 'border-white' : 'border-slate-800'}`}
+                className={`h-5 w-5 rounded-sm border ${selectedNodeColor === color ? 'border-white' : 'border-slate-800'}`}
                 style={{ backgroundColor: color }}
                 aria-label={`Set primary color ${color}`}
               />
             ))}
           </div>
-          <details className="pointer-events-auto rounded border border-cyan-500/25 bg-slate-900/80 p-1 text-[10px] text-cyan-100">
-            <summary className="cursor-pointer select-none font-semibold uppercase tracking-[0.08em]">More gradients / accent colors</summary>
-            <div className="mt-1 flex flex-wrap gap-1">
+          <details className="pointer-events-auto rounded border border-cyan-500/25 bg-slate-900/80 p-1 text-[9px] text-cyan-100">
+            <summary className="cursor-pointer select-none font-semibold uppercase tracking-[0.08em]">Gradients</summary>
+            <div className="mt-1 grid grid-cols-6 gap-1">
               {GRADIENT_COLOR_OPTIONS.map((color) => (
                 <button
                   key={`gradient-${color}`}
                   type="button"
                   onClick={() => handleChangeColor(selectedNodeId, color)}
-                  className={`h-6 w-6 rounded-md border-2 ${selectedNodeColor === color ? 'border-white' : 'border-slate-800'}`}
+                  className={`h-5 w-5 rounded-sm border ${selectedNodeColor === color ? 'border-white' : 'border-slate-800'}`}
                   style={{
-                    backgroundImage: `linear-gradient(135deg, ${color}, #ffffff22)`,
-                    backgroundColor: color,
+                    backgroundImage: color,
                   }}
                   aria-label={`Set gradient color ${color}`}
                 />
