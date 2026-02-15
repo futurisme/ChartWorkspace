@@ -61,14 +61,7 @@ interface BusEdgeMeta {
 }
 
 const FAR_HORIZONTAL_ROUTE_DISTANCE = DEFAULT_NODE_SIZE.width * 3;
-const MIN_NODE_WIDTH = DEFAULT_NODE_SIZE.width * 0.75;
-const MAX_NODE_WIDTH = DEFAULT_NODE_SIZE.width * 2.4;
-const MIN_NODE_HEIGHT = DEFAULT_NODE_SIZE.height * 0.8;
-const MAX_NODE_HEIGHT = DEFAULT_NODE_SIZE.height * 2;
-
-function clampSize(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
-}
+const ANCHOR_INSET_RATIO = 0.22;
 
 function getNodeSize(node: CompactRouteNode) {
   const rawWidth = typeof node.width === 'number' && Number.isFinite(node.width)
@@ -79,8 +72,8 @@ function getNodeSize(node: CompactRouteNode) {
     : DEFAULT_NODE_SIZE.height;
 
   return {
-    width: clampSize(rawWidth, MIN_NODE_WIDTH, MAX_NODE_WIDTH),
-    height: clampSize(rawHeight, MIN_NODE_HEIGHT, MAX_NODE_HEIGHT),
+    width: rawWidth > 0 ? rawWidth : DEFAULT_NODE_SIZE.width,
+    height: rawHeight > 0 ? rawHeight : DEFAULT_NODE_SIZE.height,
   };
 }
 
@@ -155,16 +148,16 @@ function getVerticalAnchors(source: CompactRouteNode, target: CompactRouteNode, 
 
   if (sign >= 0) {
     return {
-      sourceAnchor: { x: sourceCenter.x, y: sourceCenter.y + sourceSize.height / 2 },
-      targetAnchor: { x: targetCenter.x, y: targetCenter.y - targetSize.height / 2 },
+      sourceAnchor: { x: sourceCenter.x, y: sourceCenter.y + sourceSize.height * ANCHOR_INSET_RATIO },
+      targetAnchor: { x: targetCenter.x, y: targetCenter.y - targetSize.height * ANCHOR_INSET_RATIO },
       sourceHandle: 's-bottom',
       targetHandle: 't-top',
     };
   }
 
   return {
-    sourceAnchor: { x: sourceCenter.x, y: sourceCenter.y - sourceSize.height / 2 },
-    targetAnchor: { x: targetCenter.x, y: targetCenter.y + targetSize.height / 2 },
+    sourceAnchor: { x: sourceCenter.x, y: sourceCenter.y - sourceSize.height * ANCHOR_INSET_RATIO },
+    targetAnchor: { x: targetCenter.x, y: targetCenter.y + targetSize.height * ANCHOR_INSET_RATIO },
     sourceHandle: 's-top',
     targetHandle: 't-bottom',
   };
@@ -178,16 +171,16 @@ function getHorizontalAnchors(source: CompactRouteNode, target: CompactRouteNode
 
   if (sign >= 0) {
     return {
-      sourceAnchor: { x: sourceCenter.x + sourceSize.width / 2, y: sourceCenter.y },
-      targetAnchor: { x: targetCenter.x - targetSize.width / 2, y: targetCenter.y },
+      sourceAnchor: { x: sourceCenter.x + sourceSize.width * ANCHOR_INSET_RATIO, y: sourceCenter.y },
+      targetAnchor: { x: targetCenter.x - targetSize.width * ANCHOR_INSET_RATIO, y: targetCenter.y },
       sourceHandle: 's-right',
       targetHandle: 't-left',
     };
   }
 
   return {
-    sourceAnchor: { x: sourceCenter.x - sourceSize.width / 2, y: sourceCenter.y },
-    targetAnchor: { x: targetCenter.x + targetSize.width / 2, y: targetCenter.y },
+    sourceAnchor: { x: sourceCenter.x - sourceSize.width * ANCHOR_INSET_RATIO, y: sourceCenter.y },
+    targetAnchor: { x: targetCenter.x + targetSize.width * ANCHOR_INSET_RATIO, y: targetCenter.y },
     sourceHandle: 's-left',
     targetHandle: 't-right',
   };
@@ -208,11 +201,11 @@ function edgeToBusRoute(
   const directionSign: 1 | -1 = directionGroup === 'down' ? 1 : -1;
   const sourceAnchor = {
     x: sourceCenter.x,
-    y: sourceCenter.y + (directionSign > 0 ? sourceSize.height / 2 : -sourceSize.height / 2),
+    y: sourceCenter.y + (directionSign > 0 ? sourceSize.height * ANCHOR_INSET_RATIO : -sourceSize.height * ANCHOR_INSET_RATIO),
   };
   const targetAnchor = {
     x: targetCenter.x,
-    y: targetCenter.y + (directionSign > 0 ? -targetSize.height / 2 : targetSize.height / 2),
+    y: targetCenter.y + (directionSign > 0 ? -targetSize.height * ANCHOR_INSET_RATIO : targetSize.height * ANCHOR_INSET_RATIO),
   };
 
   const span = Math.max(1, Math.abs(targetAnchor.y - sourceAnchor.y));
@@ -451,8 +444,6 @@ export function buildAdaptiveRoutedEdgeGeometry(
       const targetNode = nodeMap.get(edge.target);
       const sourceCenter = sourceNode ? getNodeCenter(sourceNode) : null;
       const targetCenter = targetNode ? getNodeCenter(targetNode) : null;
-      const targetSize = targetNode ? getNodeSize(targetNode) : DEFAULT_NODE_SIZE;
-
       const deltaY = Math.abs(meta.sourceAnchor.y - meta.targetAnchor.y);
       const aligned = deltaY <= ROUTE_SIDE_BY_SIDE_TOLERANCE;
       const nearAligned = deltaY <= ROUTE_SIDE_BY_SIDE_TOLERANCE * 2;
@@ -460,21 +451,21 @@ export function buildAdaptiveRoutedEdgeGeometry(
       const farHorizontal = absDx >= FAR_HORIZONTAL_ROUTE_DISTANCE;
 
       if (farHorizontal && targetCenter) {
-        const targetTopAnchor = {
+        const targetCenterAnchor = {
           x: snapToRouteGrid(targetCenter.x),
-          y: snapToRouteGrid(targetCenter.y - targetSize.height / 2),
+          y: snapToRouteGrid(targetCenter.y),
         };
 
         const points = buildPath([
           meta.sourceAnchor,
-          { x: targetTopAnchor.x, y: meta.sourceAnchor.y },
-          targetTopAnchor,
+          { x: targetCenterAnchor.x, y: meta.sourceAnchor.y },
+          targetCenterAnchor,
         ]);
 
         return {
           id: edge.id,
           sourceHandle: meta.sourceHandle,
-          targetHandle: 't-top',
+          targetHandle: meta.targetHandle,
           data: {
             kind: 'horizontal',
             points,
