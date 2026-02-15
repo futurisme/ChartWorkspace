@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useParams } from 'next/navigation';
 import { PresenceBar } from '@/components/PresenceBar';
+import { BroadcastRefreshSettings } from '@/components/BroadcastRefreshSettings';
 
 const RealtimeProvider = dynamic(
   () => import('@/components/RealtimeProvider').then((module) => module.RealtimeProvider),
@@ -58,9 +59,12 @@ function EditorShell({ mapId, title, userId, displayName, showMobileToolsPanel, 
     <RealtimeProvider mapId={mapId} userId={userId} displayName={displayName} mode="edit">
       <header className="editor-shell-header border-b border-cyan-500/25 bg-slate-950/95 px-2 py-0.5 shadow-[0_3px_10px_rgba(6,182,212,0.12)] backdrop-blur sm:px-2">
         <div className="flex items-start justify-between gap-1 sm:items-center">
-          <div className="min-w-0 flex-1 leading-tight">
-            <h1 className="text-[11px] font-semibold tracking-wide text-cyan-100 break-words sm:truncate sm:text-[13px]">{title}</h1>
-            <p className="hidden text-[8px] uppercase tracking-[0.08em] text-cyan-300/65 sm:block">Collaborative concept workspace</p>
+          <div className="flex min-w-0 flex-1 items-start gap-1.5 leading-tight">
+            <BroadcastRefreshSettings />
+            <div className="min-w-0">
+              <h1 className="text-[11px] font-semibold tracking-wide text-cyan-100 break-words sm:truncate sm:text-[13px]">{title}</h1>
+              <p className="hidden text-[8px] uppercase tracking-[0.08em] text-cyan-300/65 sm:block">Collaborative concept workspace</p>
+            </div>
           </div>
           <div className="ml-1 flex shrink-0 flex-col items-end gap-0.5 sm:ml-0 sm:flex-row sm:items-center sm:gap-1">
             <div className="shrink-0 rounded border border-cyan-300/30 bg-cyan-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-cyan-100 sm:text-[10px]">
