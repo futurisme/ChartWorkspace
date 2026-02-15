@@ -60,12 +60,27 @@ interface BusEdgeMeta {
   data: FlowRouteData;
 }
 
-const FAR_HORIZONTAL_ROUTE_DISTANCE = DEFAULT_NODE_SIZE.width * 2.4;
+const FAR_HORIZONTAL_ROUTE_DISTANCE = DEFAULT_NODE_SIZE.width * 3;
+const MIN_NODE_WIDTH = DEFAULT_NODE_SIZE.width * 0.75;
+const MAX_NODE_WIDTH = DEFAULT_NODE_SIZE.width * 2.4;
+const MIN_NODE_HEIGHT = DEFAULT_NODE_SIZE.height * 0.8;
+const MAX_NODE_HEIGHT = DEFAULT_NODE_SIZE.height * 2;
 
-function getNodeSize(_node: CompactRouteNode) {
+function clampSize(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function getNodeSize(node: CompactRouteNode) {
+  const rawWidth = typeof node.width === 'number' && Number.isFinite(node.width)
+    ? node.width
+    : DEFAULT_NODE_SIZE.width;
+  const rawHeight = typeof node.height === 'number' && Number.isFinite(node.height)
+    ? node.height
+    : DEFAULT_NODE_SIZE.height;
+
   return {
-    width: DEFAULT_NODE_SIZE.width,
-    height: DEFAULT_NODE_SIZE.height,
+    width: clampSize(rawWidth, MIN_NODE_WIDTH, MAX_NODE_WIDTH),
+    height: clampSize(rawHeight, MIN_NODE_HEIGHT, MAX_NODE_HEIGHT),
   };
 }
 
