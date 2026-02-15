@@ -21,6 +21,60 @@ const REALTIME_LOG_PREFIX = '[realtime]';
 const FRAME_BUDGET_MS = 16.7;
 const PRESENCE_UPDATE_CADENCE_MS = 120;
 
+
+
+type NetworkConnectionInfo = {
+  effectiveType?: string;
+  saveData?: boolean;
+  rtt?: number;
+};
+
+interface AdaptiveNetworkProfile {
+  isSlowNetwork: boolean;
+  isHiddenTab: boolean;
+  saveDebounceMs: number;
+  autosaveIntervalMs: number;
+  presenceHeartbeatMs: number;
+  fallbackPollBaseMs: number;
+  fallbackPollConnectedMs: number;
+  requestTimeoutMs: number;
+}
+
+function getAdaptiveNetworkProfile(): AdaptiveNetworkProfile {
+  if (typeof window === 'undefined') {
+    return {
+      isSlowNetwork: false,
+      isHiddenTab: false,
+      saveDebounceMs: 1200,
+      autosaveIntervalMs: 15000,
+      presenceHeartbeatMs: 2500,
+      fallbackPollBaseMs: 4000,
+      fallbackPollConnectedMs: 12000,
+      requestTimeoutMs: 9000,
+    };
+  }
+
+  const connection = (navigator as Navigator & { connection?: NetworkConnectionInfo }).connection;
+  const effectiveType = connection?.effectiveType ?? '';
+  const isConstrainedType = effectiveType === '2g' || effectiveType === 'slow-2g';
+  const highRtt = typeof connection?.rtt === 'number' && connection.rtt > 250;
+  const saveDataEnabled = Boolean(connection?.saveData);
+  const isSlowNetwork = isConstrainedType || highRtt || saveDataEnabled;
+  const isMobile = window.matchMedia('(pointer: coarse)').matches;
+  const isHiddenTab = document.hidden;
+
+  return {
+    isSlowNetwork,
+    isHiddenTab,
+    saveDebounceMs: isSlowNetwork ? 1800 : 1200,
+    autosaveIntervalMs: isSlowNetwork ? 22000 : 15000,
+    presenceHeartbeatMs: isSlowNetwork ? 4500 : 2500,
+    fallbackPollBaseMs: isSlowNetwork ? 5000 : (isMobile ? 2500 : 4000),
+    fallbackPollConnectedMs: isSlowNetwork ? 15000 : (isMobile ? 8000 : 12000),
+    requestTimeoutMs: isSlowNetwork ? 12000 : 9000,
+  };
+}
+
 type SchedulerWithPostTask = {
   postTask?: (callback: () => void, options?: { priority?: 'background' | 'user-visible' | 'user-blocking'; delay?: number }) => Promise<void>;
 };
@@ -612,6 +666,12 @@ export function RealtimeProvider({
       const updateMark = updateCounterRef.current;
       const snapshot = getCurrentSnapshot(doc);
 
+      const profile = getAdaptiveNetworkProfile();
+      const saveAbortController = new AbortController();
+      const saveTimeoutId = window.setTimeout(() => {
+        saveAbortController.abort();
+      }, profile.requestTimeoutMs);
+
       const response = await fetch('/api/maps/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -620,7 +680,10 @@ export function RealtimeProvider({
           snapshot,
           version: currentVersion,
         }),
+        signal: saveAbortController.signal,
+        keepalive: true,
       });
+      window.clearTimeout(saveTimeoutId);
 
       if (!response.ok) {
         throw new Error(`Save failed: ${response.status}`);
@@ -661,24 +724,38 @@ export function RealtimeProvider({
       }
 
       // Set new debounced save
+      const profile = getAdaptiveNetworkProfile();
       saveTimeoutRef.current = setTimeout(() => {
         saveSnapshot();
-      }, 1200); // quick debounce for near-immediate autosave
+      }, profile.saveDebounceMs);
     };
 
     doc.on('update', handleChange);
 
-    // Also set interval save every 15 seconds
+    const profile = getAdaptiveNetworkProfile();
     const intervalId = setInterval(() => {
-      saveSnapshot();
-    }, 15000);
+      if (!document.hidden || dirtyRef.current) {
+        saveSnapshot();
+      }
+    }, profile.autosaveIntervalMs);
 
-    // Save on page unload
     const handleBeforeUnload = () => {
-      saveSnapshot();
+      if (!dirtyRef.current || !doc) {
+        return;
+      }
+      try {
+        const payload = JSON.stringify({
+          id: mapId,
+          snapshot: getCurrentSnapshot(doc),
+          version: currentVersion,
+        });
+        navigator.sendBeacon('/api/maps/save', new Blob([payload], { type: 'application/json' }));
+      } catch {
+        saveSnapshot();
+      }
     };
 
-    window.addEventListener('beforeunload', handleBeforeUnload, { passive: true });
+    window.addEventListener('beforeunload', handleBeforeUnload);
 
     return () => {
       doc.off('update', handleChange);
@@ -688,13 +765,18 @@ export function RealtimeProvider({
       }
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
-  }, [doc, saveSnapshot]);
+  }, [currentVersion, doc, mapId, saveSnapshot]);
 
   // Auto-update presence to keep sessions fresh
   useEffect(() => {
     if (!awareness) return;
 
+    const profile = getAdaptiveNetworkProfile();
     const intervalId = setInterval(() => {
+      if (document.hidden) {
+        return;
+      }
+
       const presence = localPresenceRef.current;
       if (!presence) return;
 
@@ -705,7 +787,7 @@ export function RealtimeProvider({
 
       localPresenceRef.current = updated;
       setupAwareness(awareness, updated);
-    }, 2500);
+    }, profile.presenceHeartbeatMs);
 
     return () => {
       clearInterval(intervalId);
@@ -717,10 +799,10 @@ export function RealtimeProvider({
       return;
     }
 
-    // Always-on fallback polling: keep eventual consistency even when transport looks connected.
-    const isMobile = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
-    const basePollingDelayMs = isMobile ? 2500 : 4000;
-    const connectedPollingDelayMs = isMobile ? 8000 : 12000;
+    // Always-on fallback polling: adaptive cadence to reduce lag and avoid network overuse on weak devices.
+    const profile = getAdaptiveNetworkProfile();
+    const basePollingDelayMs = profile.fallbackPollBaseMs;
+    const connectedPollingDelayMs = profile.fallbackPollConnectedMs;
     let pollingDelayMs = basePollingDelayMs;
     let pollTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -734,17 +816,29 @@ export function RealtimeProvider({
     };
 
     const syncFromServer = async () => {
-      const targetDelayMs = collaborationConnected ? connectedPollingDelayMs : basePollingDelayMs;
+      const liveProfile = getAdaptiveNetworkProfile();
+      const targetDelayMs = liveProfile.isHiddenTab
+        ? Math.max(connectedPollingDelayMs, 18000)
+        : collaborationConnected
+          ? connectedPollingDelayMs
+          : basePollingDelayMs;
 
       try {
+        const pollAbortController = new AbortController();
+        const pollTimeoutId = window.setTimeout(() => {
+          pollAbortController.abort();
+        }, liveProfile.requestTimeoutMs);
+
         const response = await fetch(`/api/maps/${mapId}`, {
           cache: 'no-store',
+          signal: pollAbortController.signal,
           headers: mapEtagRef.current
             ? {
                 'if-none-match': mapEtagRef.current,
               }
             : undefined,
         });
+        window.clearTimeout(pollTimeoutId);
 
         if (response.status === 304) {
           pollingDelayMs = targetDelayMs;
