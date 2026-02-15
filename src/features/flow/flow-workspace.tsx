@@ -93,6 +93,12 @@ interface WorkerRouteResult {
   edges: RoutedEdgeGeometry[];
 }
 
+interface RefreshAlertBroadcast {
+  id: string;
+  reason: string;
+  mandatory: boolean;
+}
+
 const FRAME_BUDGET_MS = 16.7;
 const PRESENCE_MOVE_CADENCE_MS = 120;
 const NODE_DRAG_HANDLE_SELECTOR = '.flow-node-drag-hitbox';
@@ -321,6 +327,7 @@ export function FlowWorkspace({
   const [connectSourceNodeId, setConnectSourceNodeId] = useState<string | null>(null);
   const [unconnectSourceNodeId, setUnconnectSourceNodeId] = useState<string | null>(null);
   const [isRefreshingPage, setIsRefreshingPage] = useState(false);
+  const [refreshAlertBroadcast, setRefreshAlertBroadcast] = useState<RefreshAlertBroadcast | null>(null);
 
   const nodeCountRef = useRef(0);
   const undoManagerRef = useRef<Y.UndoManager | null>(null);
@@ -1357,11 +1364,53 @@ export function FlowWorkspace({
   }, [flushMovePresence]);
 
 
-  const hasActiveCollaborators = remoteUsers.length > 0;
+  useEffect(() => {
+    if (!doc) {
+      setRefreshAlertBroadcast(null);
+      return;
+    }
+
+    const broadcastMap = doc.getMap<unknown>('systemBroadcast');
+
+    const readRefreshAlert = () => {
+      const payload = broadcastMap.get('refreshAlert');
+      if (!payload || typeof payload !== 'object') {
+        setRefreshAlertBroadcast(null);
+        return;
+      }
+
+      const nextPayload = payload as { id?: unknown; reason?: unknown };
+      if (typeof nextPayload.id !== 'string') {
+        setRefreshAlertBroadcast(null);
+        return;
+      }
+
+      setRefreshAlertBroadcast({
+        id: nextPayload.id,
+        reason: typeof nextPayload.reason === 'string' && nextPayload.reason.trim() ? nextPayload.reason.trim() : 'Wajib refresh halaman untuk sinkronisasi versi terbaru.',
+        mandatory: true,
+      });
+    };
+
+    readRefreshAlert();
+    broadcastMap.observe(readRefreshAlert);
+
+    return () => {
+      broadcastMap.unobserve(readRefreshAlert);
+    };
+  }, [doc]);
 
   const handleRefreshPage = useCallback(async () => {
     if (isRefreshingPage) {
       return;
+    }
+
+    if (refreshAlertBroadcast && doc) {
+      const broadcastMap = doc.getMap<unknown>('systemBroadcast');
+      doc.transact(() => {
+        broadcastMap.delete('refreshAlert');
+      }, 'local');
+      setRefreshAlertBroadcast(null);
     }
 
     setIsRefreshingPage(true);
@@ -1375,7 +1424,7 @@ export function FlowWorkspace({
         setIsRefreshingPage(false);
       }, 1500);
     }
-  }, [isRefreshingPage, saveSnapshot]);
+  }, [doc, isRefreshingPage, refreshAlertBroadcast, saveSnapshot]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -1443,11 +1492,11 @@ export function FlowWorkspace({
         </>
       )}
 
-      {!isReadOnly && hasActiveCollaborators && (
-        <div className="pointer-events-none absolute left-1/2 top-2 z-50 w-[min(96vw,620px)] -translate-x-1/2">
-          <div className="pointer-events-auto flex items-center justify-between gap-3 rounded-lg border border-amber-400/60 bg-amber-50/95 px-3 py-2 text-xs text-amber-950 shadow-lg backdrop-blur">
+      {refreshAlertBroadcast && (
+        <div className="absolute inset-0 z-[160] flex items-start justify-center bg-black/15 px-3 pt-2">
+          <div className="pointer-events-auto flex w-[min(96vw,620px)] items-center justify-between gap-3 rounded-lg border border-amber-400/60 bg-amber-50/95 px-3 py-2 text-xs text-amber-950 shadow-lg backdrop-blur">
             <p className="font-semibold">
-              Sesi kolaborasi aktif. Mohon refresh halaman sekarang agar sinkronisasi terbaru tetap aman.
+              {refreshAlertBroadcast.mandatory ? `Wajib refresh: ${refreshAlertBroadcast.reason}` : refreshAlertBroadcast.reason}
             </p>
             <button
               type="button"
@@ -1455,7 +1504,7 @@ export function FlowWorkspace({
               disabled={isRefreshingPage}
               className="shrink-0 rounded-md border border-amber-800/40 bg-amber-500 px-2.5 py-1 font-semibold text-amber-950 transition-colors hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-70"
             >
-              {isRefreshingPage ? 'Saving…' : 'Refresh page'}
+              {isRefreshingPage ? 'Saving…' : 'Wajib refresh'}
             </button>
           </div>
         </div>
