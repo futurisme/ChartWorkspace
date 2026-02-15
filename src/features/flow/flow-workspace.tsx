@@ -72,6 +72,18 @@ const GRADIENT_COLOR_OPTIONS = [
   'linear-gradient(135deg, #3b82f6 0%, #22c55e 100%)',
   'linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)',
   'linear-gradient(135deg, #6366f1 0%, #ec4899 100%)',
+  'linear-gradient(135deg, #0ea5e9 0%, #10b981 100%)',
+  'linear-gradient(135deg, #fb7185 0%, #f43f5e 100%)',
+  'linear-gradient(135deg, #14b8a6 0%, #0ea5e9 100%)',
+  'linear-gradient(135deg, #a855f7 0%, #3b82f6 100%)',
+  'linear-gradient(135deg, #22c55e 0%, #84cc16 100%)',
+  'linear-gradient(135deg, #64748b 0%, #0f172a 100%)',
+  'linear-gradient(135deg, #f97316 0%, #eab308 100%)',
+  'linear-gradient(135deg, #06b6d4 0%, #22c55e 100%)',
+  'linear-gradient(135deg, #8b5cf6 0%, #ef4444 100%)',
+  'linear-gradient(135deg, #f43f5e 0%, #f59e0b 100%)',
+  'linear-gradient(135deg, #6366f1 0%, #06b6d4 100%)',
+  'linear-gradient(135deg, #10b981 0%, #3b82f6 100%)',
 ];
 
 const FlowToolbarDesktop = dynamic(
@@ -1516,36 +1528,39 @@ export function FlowWorkspace({
       )}
 
       {!isReadOnly && selectedNodeId && (
-        <div className="pointer-events-none absolute right-2 top-2 z-40 flex w-[min(90vw,360px)] flex-col gap-1 rounded-lg border border-cyan-400/25 bg-slate-950/92 p-1.5 shadow-[0_12px_26px_rgba(34,211,238,0.15)] backdrop-blur">
-          <div className="pointer-events-auto flex items-center justify-between gap-1.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-cyan-100">
-            <span>{isDatabaseConnected ? 'Terkoneksi ke Database' : 'Tidak terkoneksi ke Database'}</span>
-            <span className="truncate text-cyan-200/85">{connectSourceNodeId ? 'Connect mode' : unconnectSourceNodeId ? 'Unconnect mode' : `Color: ${selectedNodeLabel ?? selectedNodeId}`}</span>
+        <div className="pointer-events-none absolute right-1.5 top-1.5 z-40 flex w-[min(62vw,210px)] flex-col gap-1 rounded-lg border border-cyan-400/25 bg-slate-950/92 p-1 shadow-[0_10px_20px_rgba(34,211,238,0.14)] backdrop-blur sm:right-2 sm:top-2 sm:w-[min(76vw,280px)]">
+          <div className="pointer-events-auto flex items-center justify-between gap-1 text-[8px] font-semibold uppercase tracking-[0.08em] text-cyan-100">
+            <span>{isDatabaseConnected ? 'DB OK' : 'DB OFF'}</span>
+            <span className="truncate text-cyan-200/85">{connectSourceNodeId ? 'Connect' : unconnectSourceNodeId ? 'Unconnect' : `Color: ${selectedNodeLabel ?? selectedNodeId}`}</span>
           </div>
-          <div className="pointer-events-auto grid grid-cols-9 gap-1">
-            {COLOR_OPTIONS.map((color) => (
-              <button
-                key={color}
-                type="button"
-                onClick={() => handleChangeColor(selectedNodeId, color)}
-                className={`h-5 w-5 rounded-sm border ${selectedNodeColor === color ? 'border-white' : 'border-slate-800'}`}
-                style={{ backgroundColor: color }}
-                aria-label={`Set primary color ${color}`}
-              />
-            ))}
-          </div>
-          <details className="pointer-events-auto rounded border border-cyan-500/25 bg-slate-900/80 p-1 text-[9px] text-cyan-100">
-            <summary className="cursor-pointer select-none font-semibold uppercase tracking-[0.08em]">Gradients</summary>
-            <div className="mt-1 grid grid-cols-6 gap-1">
+          <div className="pointer-events-auto rounded border border-cyan-500/25 bg-slate-900/80 p-1 text-[8px] text-cyan-100">
+            <p className="mb-1 font-semibold uppercase tracking-[0.08em]">Gradients</p>
+            <div className="grid grid-cols-6 gap-1">
               {GRADIENT_COLOR_OPTIONS.map((color) => (
                 <button
                   key={`gradient-${color}`}
                   type="button"
                   onClick={() => handleChangeColor(selectedNodeId, color)}
-                  className={`h-5 w-5 rounded-sm border ${selectedNodeColor === color ? 'border-white' : 'border-slate-800'}`}
+                  className={`h-4 w-4 rounded-sm border ${selectedNodeColor === color ? 'border-white' : 'border-slate-800'}`}
                   style={{
                     backgroundImage: color,
                   }}
                   aria-label={`Set gradient color ${color}`}
+                />
+              ))}
+            </div>
+          </div>
+          <details className="pointer-events-auto rounded border border-cyan-500/25 bg-slate-900/80 p-1 text-[8px] text-cyan-100">
+            <summary className="cursor-pointer select-none font-semibold uppercase tracking-[0.08em]">Solid colors</summary>
+            <div className="mt-1 grid grid-cols-8 gap-1">
+              {COLOR_OPTIONS.map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  onClick={() => handleChangeColor(selectedNodeId, color)}
+                  className={`h-4 w-4 rounded-sm border ${selectedNodeColor === color ? 'border-white' : 'border-slate-800'}`}
+                  style={{ backgroundColor: color }}
+                  aria-label={`Set primary color ${color}`}
                 />
               ))}
             </div>
