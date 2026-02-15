@@ -1379,7 +1379,7 @@ export function FlowWorkspace({
         return;
       }
 
-      const nextPayload = payload as { id?: unknown; reason?: unknown };
+      const nextPayload = payload as { id?: unknown; reason?: unknown; message?: unknown; mandatory?: unknown };
       if (typeof nextPayload.id !== 'string') {
         setRefreshAlertBroadcast(null);
         return;
@@ -1387,8 +1387,13 @@ export function FlowWorkspace({
 
       setRefreshAlertBroadcast({
         id: nextPayload.id,
-        reason: typeof nextPayload.reason === 'string' && nextPayload.reason.trim() ? nextPayload.reason.trim() : 'Wajib refresh halaman untuk sinkronisasi versi terbaru.',
-        mandatory: true,
+        reason:
+          typeof nextPayload.reason === 'string' && nextPayload.reason.trim()
+            ? nextPayload.reason.trim()
+            : typeof nextPayload.message === 'string' && nextPayload.message.trim()
+              ? nextPayload.message.trim()
+              : 'Wajib refresh halaman untuk sinkronisasi versi terbaru.',
+        mandatory: nextPayload.mandatory !== false,
       });
     };
 

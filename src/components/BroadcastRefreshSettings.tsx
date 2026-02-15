@@ -54,7 +54,9 @@ export function BroadcastRefreshSettings() {
     const broadcastMap = doc.getMap<unknown>('systemBroadcast');
     const refreshAlert = {
       id: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+      type: 'refreshAlert',
       reason: trimmedReason || 'Wajib refresh halaman untuk memuat pembaruan internal terbaru.',
+      message: trimmedReason || 'Wajib refresh halaman untuk memuat pembaruan internal terbaru.',
       createdAt: new Date().toISOString(),
       mandatory: true,
     };
@@ -78,7 +80,7 @@ export function BroadcastRefreshSettings() {
       </button>
 
       {isMounted && isOpen && createPortal(
-        <div className="fixed inset-0 z-[180]">
+        <div className="fixed inset-0 z-[2147483000]">
           <div className="absolute inset-0 bg-black/25" aria-hidden="true" />
           <div ref={panelRef} className="absolute left-2 top-9 w-[min(92vw,300px)] rounded-lg border border-cyan-500/30 bg-slate-950/98 p-2.5 shadow-[0_18px_40px_rgba(6,182,212,0.35)] backdrop-blur">
             <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-cyan-100">Broadcast refresh wajib</p>
