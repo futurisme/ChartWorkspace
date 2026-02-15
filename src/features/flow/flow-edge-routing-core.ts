@@ -60,10 +60,12 @@ interface BusEdgeMeta {
   data: FlowRouteData;
 }
 
-function getNodeSize(node: CompactRouteNode) {
+const FAR_HORIZONTAL_ROUTE_DISTANCE = DEFAULT_NODE_SIZE.width * 2.4;
+
+function getNodeSize(_node: CompactRouteNode) {
   return {
-    width: node.width ?? DEFAULT_NODE_SIZE.width,
-    height: node.height ?? DEFAULT_NODE_SIZE.height,
+    width: DEFAULT_NODE_SIZE.width,
+    height: DEFAULT_NODE_SIZE.height,
   };
 }
 
@@ -430,9 +432,43 @@ export function buildAdaptiveRoutedEdgeGeometry(
     const laneMeta = laneMetaMap.get(edge.id) ?? { offset: 0, index: 0 };
 
     if (meta.kind === 'horizontal') {
+      const sourceNode = nodeMap.get(edge.source);
+      const targetNode = nodeMap.get(edge.target);
+      const sourceCenter = sourceNode ? getNodeCenter(sourceNode) : null;
+      const targetCenter = targetNode ? getNodeCenter(targetNode) : null;
+      const targetSize = targetNode ? getNodeSize(targetNode) : DEFAULT_NODE_SIZE;
+
       const deltaY = Math.abs(meta.sourceAnchor.y - meta.targetAnchor.y);
       const aligned = deltaY <= ROUTE_SIDE_BY_SIDE_TOLERANCE;
       const nearAligned = deltaY <= ROUTE_SIDE_BY_SIDE_TOLERANCE * 2;
+      const absDx = sourceCenter && targetCenter ? Math.abs(targetCenter.x - sourceCenter.x) : 0;
+      const farHorizontal = absDx >= FAR_HORIZONTAL_ROUTE_DISTANCE;
+
+      if (farHorizontal && targetCenter) {
+        const targetTopAnchor = {
+          x: snapToRouteGrid(targetCenter.x),
+          y: snapToRouteGrid(targetCenter.y - targetSize.height / 2),
+        };
+
+        const points = buildPath([
+          meta.sourceAnchor,
+          { x: targetTopAnchor.x, y: meta.sourceAnchor.y },
+          targetTopAnchor,
+        ]);
+
+        return {
+          id: edge.id,
+          sourceHandle: meta.sourceHandle,
+          targetHandle: 't-top',
+          data: {
+            kind: 'horizontal',
+            points,
+            laneIndex: laneMeta.index,
+            directionGroup: meta.directionGroup,
+          },
+        };
+      }
+
       const elbowX = nearAligned
         ? snapToRouteGrid((meta.sourceAnchor.x + meta.targetAnchor.x) / 2)
         : snapToRouteGrid((meta.sourceAnchor.x + meta.targetAnchor.x) / 2 + laneMeta.offset);
