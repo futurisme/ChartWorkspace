@@ -96,6 +96,7 @@ interface WorkerRouteResult {
 interface RefreshAlertBroadcast {
   id: string;
   reason: string;
+  mandatory: boolean;
 }
 
 const FRAME_BUDGET_MS = 16.7;
@@ -327,7 +328,6 @@ export function FlowWorkspace({
   const [unconnectSourceNodeId, setUnconnectSourceNodeId] = useState<string | null>(null);
   const [isRefreshingPage, setIsRefreshingPage] = useState(false);
   const [refreshAlertBroadcast, setRefreshAlertBroadcast] = useState<RefreshAlertBroadcast | null>(null);
-  const [dismissedRefreshAlertId, setDismissedRefreshAlertId] = useState<string | null>(null);
 
   const nodeCountRef = useRef(0);
   const undoManagerRef = useRef<Y.UndoManager | null>(null);
@@ -1379,20 +1379,21 @@ export function FlowWorkspace({
         return;
       }
 
-      const nextPayload = payload as { id?: unknown; reason?: unknown };
+      const nextPayload = payload as { id?: unknown; reason?: unknown; message?: unknown; mandatory?: unknown };
       if (typeof nextPayload.id !== 'string') {
-        setRefreshAlertBroadcast(null);
-        return;
-      }
-
-      if (nextPayload.id === dismissedRefreshAlertId) {
         setRefreshAlertBroadcast(null);
         return;
       }
 
       setRefreshAlertBroadcast({
         id: nextPayload.id,
-        reason: typeof nextPayload.reason === 'string' && nextPayload.reason.trim() ? nextPayload.reason.trim() : 'Sinkronisasi workspace terbaru tersedia.',
+        reason:
+          typeof nextPayload.reason === 'string' && nextPayload.reason.trim()
+            ? nextPayload.reason.trim()
+            : typeof nextPayload.message === 'string' && nextPayload.message.trim()
+              ? nextPayload.message.trim()
+              : 'Wajib refresh halaman untuk sinkronisasi versi terbaru.',
+        mandatory: nextPayload.mandatory !== false,
       });
     };
 
@@ -1402,24 +1403,18 @@ export function FlowWorkspace({
     return () => {
       broadcastMap.unobserve(readRefreshAlert);
     };
-  }, [dismissedRefreshAlertId, doc]);
-
-  const handleDismissRefreshAlert = useCallback(() => {
-    if (!refreshAlertBroadcast) {
-      return;
-    }
-
-    setDismissedRefreshAlertId(refreshAlertBroadcast.id);
-    setRefreshAlertBroadcast(null);
-  }, [refreshAlertBroadcast]);
+  }, [doc]);
 
   const handleRefreshPage = useCallback(async () => {
     if (isRefreshingPage) {
       return;
     }
 
-    if (refreshAlertBroadcast) {
-      setDismissedRefreshAlertId(refreshAlertBroadcast.id);
+    if (refreshAlertBroadcast && doc) {
+      const broadcastMap = doc.getMap<unknown>('systemBroadcast');
+      doc.transact(() => {
+        broadcastMap.delete('refreshAlert');
+      }, 'local');
       setRefreshAlertBroadcast(null);
     }
 
@@ -1434,7 +1429,7 @@ export function FlowWorkspace({
         setIsRefreshingPage(false);
       }, 1500);
     }
-  }, [isRefreshingPage, refreshAlertBroadcast, saveSnapshot]);
+  }, [doc, isRefreshingPage, refreshAlertBroadcast, saveSnapshot]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -1503,28 +1498,19 @@ export function FlowWorkspace({
       )}
 
       {refreshAlertBroadcast && (
-        <div className="pointer-events-none absolute left-1/2 top-2 z-50 w-[min(96vw,620px)] -translate-x-1/2">
-          <div className="pointer-events-auto flex items-center justify-between gap-3 rounded-lg border border-amber-400/60 bg-amber-50/95 px-3 py-2 text-xs text-amber-950 shadow-lg backdrop-blur">
+        <div className="absolute inset-0 z-[160] flex items-start justify-center bg-black/15 px-3 pt-2">
+          <div className="pointer-events-auto flex w-[min(96vw,620px)] items-center justify-between gap-3 rounded-lg border border-amber-400/60 bg-amber-50/95 px-3 py-2 text-xs text-amber-950 shadow-lg backdrop-blur">
             <p className="font-semibold">
-              {refreshAlertBroadcast.reason}
+              {refreshAlertBroadcast.mandatory ? `Wajib refresh: ${refreshAlertBroadcast.reason}` : refreshAlertBroadcast.reason}
             </p>
-            <div className="flex shrink-0 items-center gap-1.5">
-              <button
-                type="button"
-                onClick={handleDismissRefreshAlert}
-                className="rounded-md border border-amber-800/40 bg-amber-100 px-2.5 py-1 font-semibold text-amber-900 transition-colors hover:bg-amber-200"
-              >
-                Tutup
-              </button>
-              <button
-                type="button"
-                onClick={handleRefreshPage}
-                disabled={isRefreshingPage}
-                className="rounded-md border border-amber-800/40 bg-amber-500 px-2.5 py-1 font-semibold text-amber-950 transition-colors hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                {isRefreshingPage ? 'Saving…' : 'Refresh page'}
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={handleRefreshPage}
+              disabled={isRefreshingPage}
+              className="shrink-0 rounded-md border border-amber-800/40 bg-amber-500 px-2.5 py-1 font-semibold text-amber-950 transition-colors hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {isRefreshingPage ? 'Saving…' : 'Wajib refresh'}
+            </button>
           </div>
         </div>
       )}
