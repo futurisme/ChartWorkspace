@@ -99,6 +99,35 @@ function scheduleNonUrgentWork(callback: () => void) {
   window.setTimeout(callback, 0);
 }
 
+function getApproxPayloadBytes(payload: string): number {
+  if (typeof TextEncoder !== 'undefined') {
+    return new TextEncoder().encode(payload).length;
+  }
+
+  return payload.length;
+}
+
+function classifySaveError(error: unknown): { reason: string; retriable: boolean } {
+  if (error instanceof DOMException && error.name === 'AbortError') {
+    return {
+      reason: 'request-timeout',
+      retriable: true,
+    };
+  }
+
+  if (error instanceof TypeError) {
+    return {
+      reason: 'network-or-transport',
+      retriable: true,
+    };
+  }
+
+  return {
+    reason: 'unknown',
+    retriable: true,
+  };
+}
+
 function isLocalHostname(hostname: string) {
   return hostname === 'localhost' || hostname === '127.0.0.1';
 }
@@ -323,6 +352,7 @@ export function RealtimeProvider({
   const signalingUrlsRef = useRef<string[] | null>(null);
   const saveInFlightRef = useRef(false);
   const queuedSaveRef = useRef(false);
+  const lastSavePayloadBytesRef = useRef(0);
   const mapEtagRef = useRef<string | null>(null);
   const lastAppliedFallbackSnapshotRef = useRef<string | null>(null);
   const telemetryRef = useRef<Record<string, { samples: number; totalDurationMs: number; droppedFrames: number; maxDurationMs: number }>>({});
@@ -665,6 +695,13 @@ export function RealtimeProvider({
     try {
       const updateMark = updateCounterRef.current;
       const snapshot = getCurrentSnapshot(doc);
+      const saveRequestBody = JSON.stringify({
+        id: mapId,
+        snapshot,
+        version: currentVersion,
+      });
+      const approxPayloadBytes = getApproxPayloadBytes(saveRequestBody);
+      lastSavePayloadBytesRef.current = approxPayloadBytes;
 
       const profile = getAdaptiveNetworkProfile();
       const saveAbortController = new AbortController();
@@ -675,13 +712,9 @@ export function RealtimeProvider({
       const response = await fetch('/api/maps/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: mapId,
-          snapshot,
-          version: currentVersion,
-        }),
+        body: saveRequestBody,
         signal: saveAbortController.signal,
-        keepalive: true,
+        cache: 'no-store',
       });
       window.clearTimeout(saveTimeoutId);
 
@@ -696,9 +729,27 @@ export function RealtimeProvider({
       if (updateCounterRef.current === updateMark) {
         dirtyRef.current = false;
       }
+
+      if (approxPayloadBytes > 64 * 1024) {
+        logRealtime('info', 'Snapshot save succeeded with large payload', {
+          mapId,
+          mode,
+          payloadBytes: approxPayloadBytes,
+          note: 'Autosave intentionally avoids fetch keepalive to prevent browser transport rejections on larger payloads.',
+        });
+      }
     } catch (error) {
       setSaveErrorCount(prev => Math.min(prev + 1, 3));
       setIsDatabaseConnected(false);
+      const saveErrorDetails = classifySaveError(error);
+      logRealtime('error', 'Snapshot save error (will retry)', {
+        mapId,
+        mode,
+        reason: saveErrorDetails.reason,
+        retriable: saveErrorDetails.retriable,
+        payloadBytes: lastSavePayloadBytesRef.current,
+        error: error instanceof Error ? error.message : String(error),
+      });
       console.error('Snapshot save error (will retry):', error);
     } finally {
       saveInFlightRef.current = false;
@@ -709,7 +760,7 @@ export function RealtimeProvider({
         queuedSaveRef.current = false;
       }
     }
-  }, [doc, mapId, currentVersion]);
+  }, [currentVersion, doc, mapId, mode]);
 
   // Auto-save every 15 seconds
   useEffect(() => {
