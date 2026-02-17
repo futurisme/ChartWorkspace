@@ -21,6 +21,8 @@ interface FlowToolbarDesktopProps {
   onRedo: () => void;
   onConnectStart: () => void;
   onUnconnectStart: () => void;
+  onExportWorkspace: () => void;
+  onImportWorkspace: () => void;
 }
 
 function ActionButton({
@@ -90,6 +92,8 @@ export function FlowToolbarDesktop({
   onRedo,
   onConnectStart,
   onUnconnectStart,
+  onExportWorkspace,
+  onImportWorkspace,
 }: FlowToolbarDesktopProps) {
   return (
     <>
@@ -114,6 +118,8 @@ export function FlowToolbarDesktop({
               <ActionButton label="Rename" onClick={onRename} disabled={!selectedNodeId} tone="info" />
               <ActionButton label="Undo" onClick={onUndo} disabled={!canUndo} tone="warning" />
               <ActionButton label="Redo" onClick={onRedo} disabled={!canRedo} tone="warning" />
+              <ActionButton label="Export" onClick={onExportWorkspace} tone="success" />
+              <ActionButton label="Import" onClick={onImportWorkspace} tone="info" />
               <ActionButton label="Delete" onClick={onDelete} disabled={!selectedNodeId} tone="danger" />
             </div>
           </div>

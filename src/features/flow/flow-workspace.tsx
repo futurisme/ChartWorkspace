@@ -25,6 +25,7 @@ import {
 import 'reactflow/dist/style.css';
 import * as Y from 'yjs';
 import { useRealtime } from '@/components/RealtimeProvider';
+import { applyYjsSnapshot, getCurrentSnapshot } from '@/lib/snapshot';
 import {
   EDGE_STYLE,
   COLOR_OPTIONS,
@@ -111,9 +112,24 @@ interface RefreshAlertBroadcast {
   mandatory: boolean;
 }
 
+interface WorkspaceArchiveFile {
+  magic: string;
+  version: number;
+  exportedAt: string;
+  sourceMapId: string;
+  snapshot: string;
+  viewport?: {
+    x: number;
+    y: number;
+    zoom: number;
+  };
+}
+
 const FRAME_BUDGET_MS = 16.7;
 const PRESENCE_MOVE_CADENCE_MS = 120;
 const NODE_DRAG_HANDLE_SELECTOR = '.flow-node-drag-hitbox';
+const WORKSPACE_ARCHIVE_MAGIC = 'chartworkspace/archive';
+const WORKSPACE_ARCHIVE_VERSION = 1;
 
 type SchedulerWithPostTask = {
   postTask?: (callback: () => void, options?: { priority?: 'background' | 'user-visible' | 'user-blocking'; delay?: number }) => Promise<void>;
@@ -326,7 +342,7 @@ export function FlowWorkspace({
   snapEnabled = true,
   inviteRequestToken = 0,
 }: FlowWorkspaceProps) {
-  const { doc, isConnected, isDatabaseConnected, updatePresence, remoteUsers, saveErrorCount, saveSnapshot } = useRealtime();
+  const { doc, mapId, isConnected, isDatabaseConnected, updatePresence, remoteUsers, saveErrorCount, saveSnapshot } = useRealtime();
   const [nodes, setNodes, onNodesChange] = useNodesState<ConceptNodeData>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -346,6 +362,7 @@ export function FlowWorkspace({
   const reactFlowWrapperRef = useRef<HTMLDivElement | null>(null);
   const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
   const persistedPositionsRef = useRef<Map<string, XYPosition>>(new Map());
+  const importFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const nodeTypes = useMemo(() => ({ conceptNode: FlowNodeCard }), []);
   const edgeTypes = useMemo(() => ({ hierarchy: FlowEdgeHierarchy }), []);
@@ -1327,6 +1344,126 @@ export function FlowWorkspace({
     setRenameText('');
   }, []);
 
+  const handleExportWorkspace = useCallback(() => {
+    if (!doc) {
+      return;
+    }
+
+    const instance = reactFlowInstanceRef.current;
+    const viewport = instance
+      ? instance.getViewport()
+      : undefined;
+
+    const archivePayload: WorkspaceArchiveFile = {
+      magic: WORKSPACE_ARCHIVE_MAGIC,
+      version: WORKSPACE_ARCHIVE_VERSION,
+      exportedAt: new Date().toISOString(),
+      sourceMapId: mapId,
+      snapshot: getCurrentSnapshot(doc),
+      viewport: viewport
+        ? {
+            x: viewport.x,
+            y: viewport.y,
+            zoom: viewport.zoom,
+          }
+        : undefined,
+    };
+
+    const archiveString = JSON.stringify(archivePayload);
+    const archiveBlob = new Blob([archiveString], { type: 'application/x-chartworkspace+json' });
+    const downloadUrl = URL.createObjectURL(archiveBlob);
+    const anchor = document.createElement('a');
+    const timestamp = archivePayload.exportedAt
+      .replace(/[:.]/g, '-')
+      .replace('T', '_')
+      .replace('Z', '');
+
+    anchor.href = downloadUrl;
+    anchor.download = `workspace-${mapId}-${timestamp}.cws`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(downloadUrl);
+  }, [doc, mapId]);
+
+  const handleImportWorkspace = useCallback(() => {
+    if (isReadOnly) {
+      return;
+    }
+    importFileInputRef.current?.click();
+  }, [isReadOnly]);
+
+  const handleWorkspaceFilePicked = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      if (isReadOnly || !doc) {
+        return;
+      }
+
+      const file = event.target.files?.[0];
+      event.target.value = '';
+      if (!file) {
+        return;
+      }
+
+      try {
+        const raw = await file.text();
+        const parsed: unknown = JSON.parse(raw);
+
+        if (!parsed || typeof parsed !== 'object') {
+          throw new Error('Format file tidak valid.');
+        }
+
+        const archive = parsed as Partial<WorkspaceArchiveFile>;
+        if (archive.magic !== WORKSPACE_ARCHIVE_MAGIC) {
+          throw new Error('File bukan format arsip ChartWorkspace.');
+        }
+
+        if (archive.version !== WORKSPACE_ARCHIVE_VERSION) {
+          throw new Error(`Versi file tidak didukung: ${String(archive.version)}`);
+        }
+
+        if (!archive.snapshot || typeof archive.snapshot !== 'string') {
+          throw new Error('Snapshot tidak ditemukan di file arsip.');
+        }
+
+        const probeDoc = new Y.Doc();
+        probeDoc.getMap('nodes');
+        probeDoc.getMap('edges');
+        probeDoc.getMap('selected');
+        probeDoc.getText('title');
+        applyYjsSnapshot(probeDoc, archive.snapshot);
+
+        doc.transact(() => {
+          doc.getMap('nodes').clear();
+          doc.getMap('edges').clear();
+          doc.getMap('selected').clear();
+
+          const title = doc.getText('title');
+          title.delete(0, title.length);
+        }, 'local');
+
+        applyYjsSnapshot(doc, archive.snapshot);
+
+        const importedViewport = archive.viewport;
+        if (
+          importedViewport
+          && typeof importedViewport.x === 'number'
+          && typeof importedViewport.y === 'number'
+          && typeof importedViewport.zoom === 'number'
+        ) {
+          reactFlowInstanceRef.current?.setViewport(importedViewport, { duration: 0 });
+        }
+
+        await saveSnapshot();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error('Gagal memuat arsip workspace:', error);
+        window.alert(`Gagal mengimpor workspace: ${message}`);
+      }
+    },
+    [doc, isReadOnly, saveSnapshot]
+  );
+
   const handleMove = useCallback<OnMove>(
     (_event, viewport) => {
       profileHandler('viewport.move', () => {
@@ -1488,6 +1625,8 @@ export function FlowWorkspace({
             isUnconnectArmed={Boolean(unconnectSourceNodeId)}
             onConnectStart={handleStartConnect}
             onUnconnectStart={handleStartUnconnect}
+            onExportWorkspace={handleExportWorkspace}
+            onImportWorkspace={handleImportWorkspace}
           />
           <FlowToolbarMobile
             isOpen={showMobileToolsPanel}
@@ -1505,6 +1644,8 @@ export function FlowWorkspace({
             isUnconnectArmed={Boolean(unconnectSourceNodeId)}
             onConnectStart={handleStartConnect}
             onUnconnectStart={handleStartUnconnect}
+            onExportWorkspace={handleExportWorkspace}
+            onImportWorkspace={handleImportWorkspace}
           />
         </>
       )}
@@ -1568,6 +1709,14 @@ export function FlowWorkspace({
         </div>
       )}
 
+
+      <input
+        ref={importFileInputRef}
+        type="file"
+        accept=".cws,application/x-chartworkspace+json,application/json"
+        className="hidden"
+        onChange={handleWorkspaceFilePicked}
+      />
 
       <div
         ref={reactFlowWrapperRef}

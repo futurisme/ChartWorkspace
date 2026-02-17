@@ -14,6 +14,8 @@ interface FlowToolbarMobileProps {
   onDelete: () => void;
   onConnectStart: () => void;
   onUnconnectStart: () => void;
+  onExportWorkspace: () => void;
+  onImportWorkspace: () => void;
 }
 
 function ActionButton({
@@ -67,6 +69,8 @@ export function FlowToolbarMobile({
   onDelete,
   onConnectStart,
   onUnconnectStart,
+  onExportWorkspace,
+  onImportWorkspace,
 }: FlowToolbarMobileProps) {
   if (!isOpen) {
     return null;
@@ -102,6 +106,8 @@ export function FlowToolbarMobile({
         <ActionButton label="Rename" onClick={onRename} disabled={!selectedNodeId} tone="info" />
         <ActionButton label="Undo" onClick={onUndo} disabled={!canUndo} tone="warning" />
         <ActionButton label="Redo" onClick={onRedo} disabled={!canRedo} tone="warning" />
+        <ActionButton label="Export" onClick={onExportWorkspace} tone="success" />
+        <ActionButton label="Import" onClick={onImportWorkspace} tone="info" />
         <ActionButton label="Delete" onClick={onDelete} disabled={!selectedNodeId} tone="danger" />
       </div>
     </div>
