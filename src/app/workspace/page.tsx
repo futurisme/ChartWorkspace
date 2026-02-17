@@ -144,6 +144,14 @@ export default function WorkspaceHome() {
                 Last opened: {lastMapTitle || 'Untitled Map'} (#{lastMapId})
               </p>
             )}
+
+            <button
+              type="button"
+              onClick={() => router.push('/archive-lab')}
+              className="w-full rounded border border-indigo-200 py-2 font-semibold text-indigo-700 transition hover:bg-indigo-50"
+            >
+              Open Archive Lab (.cws decrypt / encrypt)
+            </button>
           </form>
 
           <div className="mt-8 border-t pt-6">
