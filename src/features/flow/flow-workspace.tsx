@@ -25,7 +25,7 @@ import {
 import 'reactflow/dist/style.css';
 import * as Y from 'yjs';
 import { useRealtime } from '@/components/RealtimeProvider';
-import { applyYjsSnapshot, getCurrentSnapshot } from '@/lib/snapshot';
+import { applyYjsSnapshot, getCurrentSnapshot } from '@/features/maps/shared/map-snapshot';
 import {
   EDGE_STYLE,
   COLOR_OPTIONS,

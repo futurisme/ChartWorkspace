@@ -2,7 +2,7 @@
 
 import React, { useMemo } from 'react';
 import { useRealtime } from './RealtimeProvider';
-import type { UserPresence } from '@/lib/presence';
+import type { UserPresence } from '@/features/collaboration/shared/presence';
 
 interface PresenceBarProps {
   compact?: boolean;

@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useRef, useState } from 'react';
 import * as Y from 'yjs';
-import { applyYjsSnapshot, getCurrentSnapshot } from '@/lib/snapshot';
+import { applyYjsSnapshot, getCurrentSnapshot } from '@/features/maps/shared/map-snapshot';
 
 type YRecordMap = Y.Map<unknown>;
 

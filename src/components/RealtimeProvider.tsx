@@ -11,9 +11,9 @@ import React, {
 } from 'react';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
-import { UserPresence, setupAwareness, getRemoteUsers, generateUserColor } from '@/lib/presence';
-import { applyYjsSnapshot, getCurrentSnapshot } from '@/lib/snapshot';
-import { formatMapId, parseMapId } from '@/lib/mapId';
+import { UserPresence, setupAwareness, getRemoteUsers, generateUserColor } from '@/features/collaboration/shared/presence';
+import { applyYjsSnapshot, getCurrentSnapshot } from '@/features/maps/shared/map-snapshot';
+import { formatMapId, parseMapId } from '@/features/maps/shared/map-id';
 
 const LOCAL_SIGNALING_URL = 'ws://localhost:4444';
 const REALTIME_LOG_PREFIX = '[realtime]';
