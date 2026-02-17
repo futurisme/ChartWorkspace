@@ -20,6 +20,7 @@ const REALTIME_LOG_PREFIX = '[realtime]';
 
 const FRAME_BUDGET_MS = 16.7;
 const PRESENCE_UPDATE_CADENCE_MS = 120;
+const REALTIME_TELEMETRY_ENABLED = process.env.NEXT_PUBLIC_DEBUG_FLOW_TELEMETRY === '1';
 
 
 
@@ -437,8 +438,8 @@ export function RealtimeProvider({
         if (snapshot) {
           try {
             applyYjsSnapshot(newDoc, snapshot);
-          } catch (error) {
-            console.warn('Could not apply snapshot:', error);
+          } catch {
+            logRealtime('warn', 'Snapshot payload invalid; using fresh document state', { mapId, mode });
           }
         }
 
@@ -600,6 +601,10 @@ export function RealtimeProvider({
 
 
   const trackTelemetry = useCallback((handler: string, durationMs: number) => {
+    if (!REALTIME_TELEMETRY_ENABLED) {
+      return;
+    }
+
     const droppedFrames = Math.max(0, Math.floor(durationMs / FRAME_BUDGET_MS) - 1);
     const current = telemetryRef.current[handler] ?? {
       samples: 0,
@@ -750,7 +755,6 @@ export function RealtimeProvider({
         payloadBytes: lastSavePayloadBytesRef.current,
         error: error instanceof Error ? error.message : String(error),
       });
-      console.error('Snapshot save error (will retry):', error);
     } finally {
       saveInFlightRef.current = false;
       if (queuedSaveRef.current && dirtyRef.current) {

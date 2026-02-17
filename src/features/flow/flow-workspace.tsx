@@ -130,6 +130,9 @@ const PRESENCE_MOVE_CADENCE_MS = 120;
 const NODE_DRAG_HANDLE_SELECTOR = '.flow-node-drag-hitbox';
 const WORKSPACE_ARCHIVE_MAGIC = 'chartworkspace/archive';
 const WORKSPACE_ARCHIVE_VERSION = 1;
+const DENSE_GRAPH_NODE_THRESHOLD = 180;
+const MINIMAP_MAX_NODE_THRESHOLD = 220;
+const FLOW_TELEMETRY_ENABLED = process.env.NEXT_PUBLIC_DEBUG_FLOW_TELEMETRY === '1';
 
 type SchedulerWithPostTask = {
   postTask?: (callback: () => void, options?: { priority?: 'background' | 'user-visible' | 'user-blocking'; delay?: number }) => Promise<void>;
@@ -382,6 +385,9 @@ export function FlowWorkspace({
     cameraY: number;
   } | null>(null);
   const movePresenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingDragPresenceRef = useRef<{ nodeId: string; cursorX: number; cursorY: number } | null>(null);
+  const dragPresenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastDragPresenceUpdateRef = useRef(0);
 
   const getParentIdFor = useCallback(
     (childId: string) => edges.find((edge) => edge.target === childId)?.source ?? null,
@@ -422,25 +428,45 @@ export function FlowWorkspace({
     return map;
   }, [remoteUsers]);
 
-  const nodesWithPresence = useMemo(() =>
-    nodes.map((node) => {
-      const collaboratorNames = remoteEditorsByNode.get(node.id) ?? [];
-      return {
-        ...node,
-        data: {
-          ...node.data,
-          collaboratorNames,
-          editedByOthers: collaboratorNames.length > 0,
-        },
-      };
-    }),
-  [nodes, remoteEditorsByNode]);
+  const nodesWithPresence = useMemo(
+    () =>
+      nodes.map((node) => {
+        const collaboratorNames = remoteEditorsByNode.get(node.id) ?? [];
+        const hasCollaborators = collaboratorNames.length > 0;
+        const previousNames = node.data.collaboratorNames ?? [];
+        const hasSameCollaborators =
+          previousNames.length === collaboratorNames.length &&
+          previousNames.every((name, index) => name === collaboratorNames[index]);
+
+        if (!hasCollaborators && !node.data.editedByOthers && previousNames.length === 0) {
+          return node;
+        }
+
+        if (hasCollaborators && node.data.editedByOthers && hasSameCollaborators) {
+          return node;
+        }
+
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            collaboratorNames,
+            editedByOthers: hasCollaborators,
+          },
+        };
+      }),
+    [nodes, remoteEditorsByNode]
+  );
 
   useEffect(() => {
     latestDeferredEdgesRef.current = deferredEdges;
   }, [deferredEdges]);
 
   const trackTelemetry = useCallback((handler: string, durationMs: number) => {
+    if (!FLOW_TELEMETRY_ENABLED) {
+      return;
+    }
+
     const droppedFrames = Math.max(0, Math.floor(durationMs / FRAME_BUDGET_MS) - 1);
     const current = telemetryRef.current[handler] ?? {
       samples: 0,
@@ -665,6 +691,45 @@ export function FlowWorkspace({
     },
     [doc, isReadOnly, setNodes]
   );
+
+
+  const flushDragPresence = useCallback(() => {
+    const pending = pendingDragPresenceRef.current;
+    if (!pending) {
+      return;
+    }
+
+    pendingDragPresenceRef.current = null;
+    profileHandler('presence.update.drag', () => {
+      updatePresence({
+        currentNodeId: pending.nodeId,
+        cursorX: pending.cursorX,
+        cursorY: pending.cursorY,
+      });
+    });
+  }, [profileHandler, updatePresence]);
+
+  const scheduleDragPresenceFlush = useCallback((nodeId: string, cursorX: number, cursorY: number) => {
+    pendingDragPresenceRef.current = { nodeId, cursorX, cursorY };
+
+    const now = Date.now();
+    const elapsed = now - lastDragPresenceUpdateRef.current;
+    if (elapsed >= PRESENCE_MOVE_CADENCE_MS) {
+      lastDragPresenceUpdateRef.current = now;
+      flushDragPresence();
+      return;
+    }
+
+    if (dragPresenceTimerRef.current) {
+      return;
+    }
+
+    dragPresenceTimerRef.current = setTimeout(() => {
+      dragPresenceTimerRef.current = null;
+      lastDragPresenceUpdateRef.current = Date.now();
+      flushDragPresence();
+    }, PRESENCE_MOVE_CADENCE_MS - elapsed);
+  }, [flushDragPresence]);
 
   useEffect(() => {
     if (!doc) return;
@@ -912,9 +977,19 @@ export function FlowWorkspace({
   const handleNodeDragStop = useCallback(
     (_event: React.MouseEvent | React.TouchEvent, node: Node) => {
       if (isReadOnly || !doc) return;
+      if (dragPresenceTimerRef.current) {
+        clearTimeout(dragPresenceTimerRef.current);
+        dragPresenceTimerRef.current = null;
+      }
+      pendingDragPresenceRef.current = {
+        nodeId: node.id,
+        cursorX: Math.round(node.position.x),
+        cursorY: Math.round(node.position.y),
+      };
+      flushDragPresence();
       persistNodePositions([{ id: node.id, position: node.position }]);
     },
-    [isReadOnly, doc, persistNodePositions]
+    [isReadOnly, doc, flushDragPresence, persistNodePositions]
   );
 
   const handleEdgesChange = useCallback(
@@ -1503,14 +1578,21 @@ export function FlowWorkspace({
     () => ({ onChangeColor: handleChangeColor, isReadOnly }),
     [handleChangeColor, isReadOnly]
   );
+  const isDenseGraph = nodes.length >= DENSE_GRAPH_NODE_THRESHOLD;
+  const shouldRenderMiniMap = !isMobileViewport && nodes.length <= MINIMAP_MAX_NODE_THRESHOLD;
 
   useEffect(() => () => {
     if (movePresenceTimerRef.current) {
       clearTimeout(movePresenceTimerRef.current);
       movePresenceTimerRef.current = null;
     }
+    if (dragPresenceTimerRef.current) {
+      clearTimeout(dragPresenceTimerRef.current);
+      dragPresenceTimerRef.current = null;
+    }
     flushMovePresence();
-  }, [flushMovePresence]);
+    flushDragPresence();
+  }, [flushDragPresence, flushMovePresence]);
 
 
   useEffect(() => {
@@ -1731,11 +1813,7 @@ export function FlowWorkspace({
             }}
             onNodesChange={handleNodesChange}
             onNodeDrag={(_event, node) => {
-              profileHandler('presence.update.drag', () => updatePresence({
-                currentNodeId: node.id,
-                cursorX: Math.round(node.position.x),
-                cursorY: Math.round(node.position.y),
-              }));
+              scheduleDragPresenceFlush(node.id, Math.round(node.position.x), Math.round(node.position.y));
             }}
             onNodeDragStop={handleNodeDragStop}
             onEdgesChange={handleEdgesChange}
@@ -1791,14 +1869,16 @@ export function FlowWorkspace({
               style: EDGE_STYLE,
             }}
           >
-            <Background gap={ROUTE_GRID_SIZE} size={0.5} color="#dbeafe" variant={BackgroundVariant.Lines} />
-            <Background gap={GRID_SIZE} size={1} color="#cbd5e1" variant={BackgroundVariant.Lines} />
+            {!isDenseGraph && <Background gap={ROUTE_GRID_SIZE} size={0.5} color="#dbeafe" variant={BackgroundVariant.Lines} />}
+            <Background gap={GRID_SIZE} size={isDenseGraph ? 0.75 : 1} color="#cbd5e1" variant={BackgroundVariant.Lines} />
             <div className="hidden lg:block">
               <Controls />
             </div>
-            <div className="hidden lg:block">
-              <MiniMap />
-            </div>
+            {shouldRenderMiniMap && (
+              <div className="hidden lg:block">
+                <MiniMap />
+              </div>
+            )}
           </ReactFlow>
         </NodeActionContext.Provider>
         {doc && nodes.length === 0 && (
