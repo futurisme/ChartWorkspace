@@ -1,49 +1,68 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
+const DEFAULT_DAYS = 7;
+const MAX_DAYS = 90;
+
+function parseRangeDays(value: string | null) {
+  const parsed = Number.parseInt(value ?? '', 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return DEFAULT_DAYS;
+  }
+
+  return Math.min(parsed, MAX_DAYS);
+}
+
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const days = Number(url.searchParams.get('days') ?? '7');
+  const days = parseRangeDays(url.searchParams.get('days'));
   const from = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-  const metrics = await prisma.perfMetric.findMany({
+  const grouped = await prisma.perfMetric.groupBy({
+    by: ['routeType', 'metricName'],
     where: { recordedAt: { gte: from } },
-    select: {
-      metricName: true,
-      routeType: true,
-      value: true,
+    _avg: { value: true },
+    _count: {
+      _all: true,
       rating: true,
-      recordedAt: true,
     },
-    orderBy: { recordedAt: 'desc' },
   });
 
-  const grouped = metrics.reduce<Record<string, { samples: number; averageValue: number; poorCount: number }>>((acc, metric) => {
-    const key = `${metric.routeType}::${metric.metricName}`;
-    const item = acc[key] ?? { samples: 0, averageValue: 0, poorCount: 0 };
-    item.samples += 1;
-    item.averageValue += metric.value;
-    if (metric.rating === 'poor') {
-      item.poorCount += 1;
-    }
-    acc[key] = item;
-    return acc;
-  }, {});
-
-  const summary = Object.entries(grouped).map(([key, value]) => {
-    const [routeType, metricName] = key.split('::');
-    return {
-      routeType,
-      metricName,
-      samples: value.samples,
-      averageValue: value.samples === 0 ? 0 : value.averageValue / value.samples,
-      poorRate: value.samples === 0 ? 0 : value.poorCount / value.samples,
-    };
+  const poorGrouped = await prisma.perfMetric.groupBy({
+    by: ['routeType', 'metricName'],
+    where: {
+      recordedAt: { gte: from },
+      rating: 'poor',
+    },
+    _count: {
+      _all: true,
+    },
   });
+
+  const poorByKey = new Map(
+    poorGrouped.map((item) => [`${item.routeType ?? 'unknown'}::${item.metricName}`, item._count._all])
+  );
+
+  const summary = grouped
+    .map((item) => {
+      const routeType = item.routeType ?? 'unknown';
+      const key = `${routeType}::${item.metricName}`;
+      const samples = item._count._all;
+      const poorCount = poorByKey.get(key) ?? 0;
+
+      return {
+        routeType,
+        metricName: item.metricName,
+        samples,
+        averageValue: item._avg.value ?? 0,
+        poorRate: samples === 0 ? 0 : poorCount / samples,
+      };
+    })
+    .sort((a, b) => b.samples - a.samples);
 
   return NextResponse.json({
     rangeDays: days,
-    totalSamples: metrics.length,
+    totalSamples: summary.reduce((acc, item) => acc + item.samples, 0),
     summary,
   });
 }

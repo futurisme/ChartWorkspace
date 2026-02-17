@@ -58,10 +58,10 @@ export default function WorkspaceHome() {
         if (trimmedQuery) {
           params.set('q', trimmedQuery);
         }
+        params.set('limit', '24');
 
-        const response = await fetch(`/api/maps${params.toString() ? `?${params.toString()}` : ''}`, {
+        const response = await fetch(`/api/maps?${params.toString()}`, {
           signal: abortController.signal,
-          cache: 'no-store',
         });
 
         if (!response.ok) {

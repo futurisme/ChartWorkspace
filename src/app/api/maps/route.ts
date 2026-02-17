@@ -5,6 +5,8 @@ import { formatMapId } from '@/lib/mapId';
 
 const LIST_CACHE_CONTROL = 'public, s-maxage=30, stale-while-revalidate=120';
 const NO_STORE = 'no-store';
+const DEFAULT_LIMIT = 24;
+const MAX_LIMIT = 50;
 
 function createErrorResponse(error: string, status: number, details?: string) {
   return NextResponse.json(
@@ -20,6 +22,19 @@ function createErrorResponse(error: string, status: number, details?: string) {
   );
 }
 
+function parseListLimit(raw: string | null) {
+  if (!raw) {
+    return DEFAULT_LIMIT;
+  }
+
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return DEFAULT_LIMIT;
+  }
+
+  return Math.min(parsed, MAX_LIMIT);
+}
+
 export async function GET(request: NextRequest) {
   try {
     if (!process.env.DATABASE_URL) {
@@ -27,6 +42,8 @@ export async function GET(request: NextRequest) {
     }
 
     const query = request.nextUrl.searchParams.get('q')?.trim();
+    const limit = parseListLimit(request.nextUrl.searchParams.get('limit'));
+
     const maps = await prisma.map.findMany({
       where: query
         ? {
@@ -37,7 +54,7 @@ export async function GET(request: NextRequest) {
           }
         : undefined,
       orderBy: { updatedAt: 'desc' },
-      take: 100,
+      take: limit,
       select: {
         id: true,
         title: true,
@@ -45,7 +62,6 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    
     const formattedMaps = maps.map((map) => ({
       id: formatMapId(map.id),
       title: map.title,
@@ -53,8 +69,8 @@ export async function GET(request: NextRequest) {
     }));
     const newestUpdatedAt = maps[0]?.updatedAt;
     const lastModified = newestUpdatedAt?.toUTCString();
-    const etagSeed = `${query ?? ''}:${maps.length}:${newestUpdatedAt?.getTime() ?? 0}`;
-    const etag = `W/\"maps-${Buffer.from(etagSeed).toString('base64url')}\"`;
+    const etagSeed = `${query ?? ''}:${limit}:${maps.length}:${newestUpdatedAt?.getTime() ?? 0}`;
+    const etag = `W/"maps-${Buffer.from(etagSeed).toString('base64url')}"`;
     const ifNoneMatch = request.headers.get('if-none-match');
     const ifModifiedSince = request.headers.get('if-modified-since');
     const modifiedSince = ifModifiedSince ? new Date(ifModifiedSince) : null;
@@ -113,7 +129,7 @@ export async function POST(request: NextRequest) {
     // Create a fresh Yjs doc with initial state
     const doc = createDocWithSnapshot();
     doc.getText('title').insert(0, title.trim());
-    
+
     const snapshot = getCurrentSnapshot(doc);
 
     // Store in database
@@ -137,13 +153,13 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     const errorStack = error instanceof Error ? error.stack : '';
-    
+
     console.error('=== API /maps POST Error ===');
     console.error('Message:', errorMsg);
     console.error('Stack:', errorStack);
     console.error('DATABASE_URL set:', !!process.env.DATABASE_URL);
     console.error('NODE_ENV:', process.env.NODE_ENV);
-    
+
     return createErrorResponse('Failed to create map', 500, errorMsg);
   }
 }
