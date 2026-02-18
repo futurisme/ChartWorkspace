@@ -4,16 +4,33 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useRealtime } from './RealtimeProvider';
 
-export function BroadcastRefreshSettings() {
+const WORKSPACE_EDIT_ACCESS_CODE = 'IzinEditKhususGG123';
+
+interface BroadcastRefreshSettingsProps {
+  canEdit: boolean;
+  onEditAccessChange: (nextCanEdit: boolean) => void;
+}
+
+export function BroadcastRefreshSettings({ canEdit, onEditAccessChange }: BroadcastRefreshSettingsProps) {
   const { doc } = useRealtime();
   const [isOpen, setIsOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   const [reason, setReason] = useState('');
+  const [accessCode, setAccessCode] = useState('');
+  const [accessMessage, setAccessMessage] = useState('Belum ada akses edit. Masukkan Acces code untuk aktifkan mode edit.');
   const panelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setIsMounted(true);
   }, []);
+
+  useEffect(() => {
+    setAccessMessage(
+      canEdit
+        ? 'Edit mode aktif untuk semua workspace pada browser ini.'
+        : 'Belum ada akses edit. Masukkan Acces code untuk aktifkan mode edit.'
+    );
+  }, [canEdit]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -46,7 +63,7 @@ export function BroadcastRefreshSettings() {
   }, [isOpen]);
 
   const handleBroadcast = useCallback(() => {
-    if (!doc) {
+    if (!doc || !canEdit) {
       return;
     }
 
@@ -67,7 +84,20 @@ export function BroadcastRefreshSettings() {
 
     setReason('');
     setIsOpen(false);
-  }, [doc, reason]);
+  }, [canEdit, doc, reason]);
+
+  const handleSaveAccessCode = useCallback(() => {
+    const trimmedCode = accessCode.trim();
+    if (trimmedCode !== WORKSPACE_EDIT_ACCESS_CODE) {
+      setAccessMessage('Acces code salah. User hanya bisa View.');
+      return;
+    }
+
+    localStorage.setItem('workspaceEditAccessCode', WORKSPACE_EDIT_ACCESS_CODE);
+    setAccessMessage('Acces code valid. Edit mode aktif untuk semua workspace.');
+    setAccessCode('');
+    onEditAccessChange(true);
+  }, [accessCode, onEditAccessChange]);
 
   return (
     <>
@@ -80,10 +110,31 @@ export function BroadcastRefreshSettings() {
       </button>
 
       {isMounted && isOpen && createPortal(
-        <div className="fixed inset-0 z-[2147483000]">
+        <div className="fixed inset-0 z-[2147483647]">
           <div className="absolute inset-0 bg-black/25" aria-hidden="true" />
           <div ref={panelRef} className="absolute left-2 top-9 w-[min(92vw,300px)] rounded-lg border border-cyan-500/30 bg-slate-950/98 p-2.5 shadow-[0_18px_40px_rgba(6,182,212,0.35)] backdrop-blur">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-cyan-100">Broadcast refresh wajib</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-cyan-100">Workspace security</p>
+            <label className="mt-1 block text-[10px] text-cyan-200/80" htmlFor="workspace-access-code">
+              Acces code
+            </label>
+            <input
+              id="workspace-access-code"
+              type="password"
+              value={accessCode}
+              onChange={(event) => setAccessCode(event.target.value)}
+              placeholder="Masukkan Acces code"
+              className="mt-1 w-full rounded border border-cyan-400/35 bg-slate-900 px-2 py-1 text-[11px] text-cyan-50 outline-none focus:border-cyan-200"
+            />
+            <button
+              type="button"
+              onClick={handleSaveAccessCode}
+              className="mt-2 w-full rounded border border-emerald-400/40 bg-emerald-500 px-2 py-1 text-[10px] font-semibold text-emerald-950 transition-colors hover:bg-emerald-400"
+            >
+              Aktifkan edit workspace
+            </button>
+            <p className={`mt-1 text-[10px] ${canEdit ? 'text-emerald-300' : 'text-amber-300'}`}>{accessMessage}</p>
+
+            <p className="mt-3 text-[10px] font-semibold uppercase tracking-[0.08em] text-cyan-100">Broadcast refresh wajib</p>
             <label className="mt-1 block text-[10px] text-cyan-200/80" htmlFor="broadcast-refresh-reason">
               Message reason
             </label>
@@ -98,10 +149,10 @@ export function BroadcastRefreshSettings() {
             <button
               type="button"
               onClick={handleBroadcast}
-              disabled={!doc}
+              disabled={!doc || !canEdit}
               className="mt-2 w-full rounded border border-amber-400/40 bg-amber-500 px-2 py-1 text-[10px] font-semibold text-amber-950 transition-colors hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Broadcast alert wajib refresh
+              {canEdit ? 'Broadcast alert wajib refresh' : 'Broadcast hanya untuk user dengan akses edit'}
             </button>
           </div>
         </div>,

@@ -47,20 +47,22 @@ function EditorHeaderSkeleton() {
   );
 }
 
-function EditorShell({ mapId, title, userId, displayName, showMobileToolsPanel, onSelectNode }: {
+function EditorShell({ mapId, title, userId, displayName, showMobileToolsPanel, canEdit, onEditAccessChange, onSelectNode }: {
   mapId: string;
   title: string;
   userId: string;
   displayName: string;
   showMobileToolsPanel: boolean;
+  canEdit: boolean;
+  onEditAccessChange: (nextCanEdit: boolean) => void;
   onSelectNode: (nodeId: string | null) => void;
 }) {
   return (
-    <RealtimeProvider mapId={mapId} userId={userId} displayName={displayName} mode="edit">
+    <RealtimeProvider mapId={mapId} userId={userId} displayName={displayName} mode={canEdit ? 'edit' : 'view'}>
       <header className="editor-shell-header border-b border-cyan-500/25 bg-slate-950/95 px-2 py-0.5 shadow-[0_3px_10px_rgba(6,182,212,0.12)] backdrop-blur sm:px-2">
         <div className="flex items-start justify-between gap-1 sm:items-center">
           <div className="flex min-w-0 flex-1 items-start gap-1.5 leading-tight">
-            <BroadcastRefreshSettings />
+            <BroadcastRefreshSettings canEdit={canEdit} onEditAccessChange={onEditAccessChange} />
             <div className="min-w-0">
               <h1 className="text-[11px] font-semibold tracking-wide text-cyan-100 break-words sm:truncate sm:text-[13px]">{title}</h1>
               <p className="hidden text-[8px] uppercase tracking-[0.08em] text-cyan-300/65 sm:block">Collaborative concept workspace</p>
@@ -68,7 +70,7 @@ function EditorShell({ mapId, title, userId, displayName, showMobileToolsPanel, 
           </div>
           <div className="ml-1 flex shrink-0 flex-col items-end gap-0.5 sm:ml-0 sm:flex-row sm:items-center sm:gap-1">
             <div className="shrink-0 rounded border border-cyan-300/30 bg-cyan-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-cyan-100 sm:text-[10px]">
-              Edit #{mapId}
+              {canEdit ? 'Edit' : 'View'} #{mapId}
             </div>
             <PresenceBar compact showBorder={false} className="rounded border border-cyan-300/20 bg-slate-900/75" />
           </div>
@@ -78,10 +80,10 @@ function EditorShell({ mapId, title, userId, displayName, showMobileToolsPanel, 
       <div className="min-h-0 flex-1 overflow-hidden">
         <div className="flex h-full min-h-0 flex-col overflow-hidden">
           <FlowWorkspace
-            isReadOnly={false}
-            showDesktopControlsPanel
+            isReadOnly={!canEdit}
+            showDesktopControlsPanel={canEdit}
             showDesktopStatusPanel
-            showMobileToolsPanel={showMobileToolsPanel}
+            showMobileToolsPanel={canEdit && showMobileToolsPanel}
             onSelectNode={onSelectNode}
             snapEnabled
             inviteRequestToken={0}
@@ -101,6 +103,7 @@ function EditorContent() {
   const [showNameModal, setShowNameModal] = useState(false);
   const [draftDisplayName, setDraftDisplayName] = useState('');
   const [showMobileToolsPanel, setShowMobileToolsPanel] = useState(false);
+  const [canEdit, setCanEdit] = useState(false);
 
   useEffect(() => {
     const savedName = localStorage.getItem('collabDisplayName');
@@ -118,6 +121,9 @@ function EditorContent() {
   }, []);
 
   useEffect(() => {
+    const savedAccessCode = localStorage.getItem('workspaceEditAccessCode');
+    setCanEdit(savedAccessCode === 'IzinEditKhususGG123');
+
     const loadMap = async () => {
       try {
         const response = await fetch(`/api/maps/${mapId}?ensure=1`);
@@ -147,6 +153,10 @@ function EditorContent() {
     }
 
     setShowMobileToolsPanel(Boolean(nodeId));
+  }, []);
+
+  const handleEditAccessChange = useCallback((nextCanEdit: boolean) => {
+    setCanEdit(nextCanEdit);
   }, []);
 
   const userId = useMemo(() => {
@@ -181,6 +191,8 @@ function EditorContent() {
           userId={userId}
           displayName={displayName}
           showMobileToolsPanel={showMobileToolsPanel}
+          canEdit={canEdit}
+          onEditAccessChange={handleEditAccessChange}
           onSelectNode={handleNodeSelection}
         />
       )}
