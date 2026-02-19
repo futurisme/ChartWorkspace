@@ -1,0 +1,11 @@
+{
+  "name": "Fadhil Akbar Cariearsa Portfolio",
+  "short_name": "Fadhil Akbar",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#060913",
+  "theme_color": "#060913",
+  "description": "Official portfolio website for Fadhil Akbar Cariearsa.",
+  "lang": "en",
+  "categories": ["portfolio", "developer", "personal"]
+}
