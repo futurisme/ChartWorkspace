@@ -132,6 +132,9 @@ const WORKSPACE_ARCHIVE_MAGIC = 'chartworkspace/archive';
 const WORKSPACE_ARCHIVE_VERSION = 1;
 const DENSE_GRAPH_NODE_THRESHOLD = 180;
 const MINIMAP_MAX_NODE_THRESHOLD = 220;
+const MOBILE_DENSE_GRAPH_NODE_THRESHOLD = 120;
+const MOBILE_DENSE_PRESENCE_CADENCE_MS = 220;
+const MOBILE_DENSE_ROUTE_DEBOUNCE_MS = 96;
 const FLOW_TELEMETRY_ENABLED = process.env.NEXT_PUBLIC_DEBUG_FLOW_TELEMETRY === '1';
 
 type SchedulerWithPostTask = {
@@ -416,6 +419,7 @@ export function FlowWorkspace({
     : null;
   const selectedNodeLabel = selectedNode ? getNodeLabel(selectedNode) : null;
   const selectedNodeColor = (selectedNode?.data as ConceptNodeData | undefined)?.color ?? COLOR_OPTIONS[0];
+  const isMobileDenseGraph = isMobileViewport && nodes.length >= MOBILE_DENSE_GRAPH_NODE_THRESHOLD;
 
   const remoteEditorsByNode = useMemo(() => {
     const map = new Map<string, string[]>();
@@ -438,11 +442,11 @@ export function FlowWorkspace({
           previousNames.length === collaboratorNames.length &&
           previousNames.every((name, index) => name === collaboratorNames[index]);
 
-        if (!hasCollaborators && !node.data.editedByOthers && previousNames.length === 0) {
+        if (!hasCollaborators && !node.data.editedByOthers && previousNames.length === 0 && node.data.performanceMode === isMobileDenseGraph) {
           return node;
         }
 
-        if (hasCollaborators && node.data.editedByOthers && hasSameCollaborators) {
+        if (hasCollaborators && node.data.editedByOthers && hasSameCollaborators && node.data.performanceMode === isMobileDenseGraph) {
           return node;
         }
 
@@ -452,10 +456,11 @@ export function FlowWorkspace({
             ...node.data,
             collaboratorNames,
             editedByOthers: hasCollaborators,
+            performanceMode: isMobileDenseGraph,
           },
         };
       }),
-    [nodes, remoteEditorsByNode]
+    [isMobileDenseGraph, nodes, remoteEditorsByNode]
   );
 
   useEffect(() => {
@@ -524,8 +529,9 @@ export function FlowWorkspace({
     };
 
     const now = Date.now();
+    const cadenceMs = isMobileDenseGraph ? MOBILE_DENSE_PRESENCE_CADENCE_MS : PRESENCE_MOVE_CADENCE_MS;
     const elapsed = now - lastMovePresenceUpdateRef.current;
-    if (elapsed >= PRESENCE_MOVE_CADENCE_MS) {
+    if (elapsed >= cadenceMs) {
       flushMovePresence();
       return;
     }
@@ -537,8 +543,8 @@ export function FlowWorkspace({
     movePresenceTimerRef.current = setTimeout(() => {
       movePresenceTimerRef.current = null;
       flushMovePresence();
-    }, PRESENCE_MOVE_CADENCE_MS - elapsed);
-  }, [flushMovePresence]);
+    }, cadenceMs - elapsed);
+  }, [flushMovePresence, isMobileDenseGraph]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof Worker === 'undefined') {
@@ -583,6 +589,7 @@ export function FlowWorkspace({
       return;
     }
 
+    const routingDebounceMs = isMobileDenseGraph ? MOBILE_DENSE_ROUTE_DEBOUNCE_MS : 24;
     let idleCallbackId: number | null = null;
     let debounceTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
       const post = () => {
@@ -595,7 +602,7 @@ export function FlowWorkspace({
       }
 
       post();
-    }, 24);
+    }, routingDebounceMs);
 
     return () => {
       if (debounceTimer) {
@@ -607,7 +614,7 @@ export function FlowWorkspace({
         window.cancelIdleCallback(idleCallbackId);
       }
     };
-  }, [deferredEdges, deferredNodes]);
+  }, [deferredEdges, deferredNodes, isMobileDenseGraph]);
 
 
   const persistNodePositions = useCallback(
@@ -1869,12 +1876,14 @@ export function FlowWorkspace({
               style: EDGE_STYLE,
             }}
           >
-            {!isDenseGraph && <Background gap={ROUTE_GRID_SIZE} size={0.5} color="#dbeafe" variant={BackgroundVariant.Lines} />}
-            <Background gap={GRID_SIZE} size={isDenseGraph ? 0.75 : 1} color="#cbd5e1" variant={BackgroundVariant.Lines} />
-            <div className="hidden lg:block">
-              <Controls />
-            </div>
-            {shouldRenderMiniMap && (
+            {!isDenseGraph && !isMobileDenseGraph && <Background gap={ROUTE_GRID_SIZE} size={0.5} color="#dbeafe" variant={BackgroundVariant.Lines} />}
+            {!isMobileDenseGraph && <Background gap={GRID_SIZE} size={isDenseGraph ? 0.75 : 1} color="#cbd5e1" variant={BackgroundVariant.Lines} />}
+            {!isReadOnly && (
+              <div className="hidden lg:block">
+                <Controls />
+              </div>
+            )}
+            {!isReadOnly && shouldRenderMiniMap && (
               <div className="hidden lg:block">
                 <MiniMap />
               </div>

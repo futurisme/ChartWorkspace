@@ -1,5 +1,59 @@
-import '../../flow.css';
-
 export default function ViewMapLayout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
+  return (
+    <>
+      <style>{`
+        .react-flow {
+          width: 100%;
+          height: 100%;
+        }
+
+        .react-flow__container {
+          width: 100%;
+          height: 100%;
+        }
+
+        .react-flow__edge-path {
+          stroke-linecap: round;
+          stroke-linejoin: round;
+        }
+
+        .react-flow__pane,
+        .react-flow__renderer {
+          touch-action: pan-x pan-y;
+        }
+
+        @media (pointer: coarse) {
+          .react-flow__pane,
+          .react-flow__viewport {
+            touch-action: none;
+            overscroll-behavior: contain;
+          }
+
+          .react-flow__node {
+            touch-action: none;
+            will-change: transform;
+          }
+
+          .react-flow__node-conceptNode .flow-node-drag-hitbox {
+            position: relative;
+            touch-action: none;
+            z-index: 40;
+          }
+
+          .react-flow__node-conceptNode .flow-node-drag-hitbox::before {
+            content: '';
+            position: absolute;
+            inset: -12px;
+            z-index: 50;
+            pointer-events: auto;
+          }
+
+          .react-flow__node-conceptNode .flow-node-drag-hitbox > * {
+            touch-action: none;
+          }
+        }
+      `}</style>
+      {children}
+    </>
+  );
 }

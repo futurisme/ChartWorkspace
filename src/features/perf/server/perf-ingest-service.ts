@@ -24,6 +24,10 @@ export class PerfServiceError extends Error {
 }
 
 export async function ingestPerfMetric(payload: PerfPayload) {
+  if (!process.env.DATABASE_URL) {
+    return;
+  }
+
   if (!payload.metricName || typeof payload.value !== 'number' || !payload.route) {
     throw new PerfServiceError('Invalid perf payload', 400);
   }

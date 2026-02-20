@@ -3,11 +3,20 @@ import { ingestPerfMetric, PerfPayload, PerfServiceError } from '@/features/perf
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as PerfPayload;
+    const rawBody = await request.text();
+    if (!rawBody.trim()) {
+      return NextResponse.json({ error: 'Empty perf payload' }, { status: 400 });
+    }
+
+    const body = JSON.parse(rawBody) as PerfPayload;
     await ingestPerfMetric(body);
 
     return NextResponse.json({ ok: true });
   } catch (error) {
+    if (error instanceof SyntaxError) {
+      return NextResponse.json({ error: 'Invalid JSON payload' }, { status: 400 });
+    }
+
     if (error instanceof PerfServiceError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }

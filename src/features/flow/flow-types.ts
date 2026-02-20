@@ -5,6 +5,7 @@ export interface ConceptNodeData {
   color?: string;
   collaboratorNames?: string[];
   editedByOthers?: boolean;
+  performanceMode?: boolean;
 }
 
 export type ConceptNode = Node<ConceptNodeData>;

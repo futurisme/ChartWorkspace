@@ -35,17 +35,22 @@ function FlowNodeCardComponent({ data, selected }: NodeProps<ConceptNodeData>) {
   const lightBackground = isLightColor(baseColor);
   const collaboratorNames = data.collaboratorNames ?? [];
   const editedByOthers = Boolean(data.editedByOthers && collaboratorNames.length > 0);
+  const performanceMode = Boolean(data.performanceMode);
 
   return (
     <div className="relative flow-node-drag-hitbox nopan">
       <div className="absolute inset-0 z-30 rounded-lg" aria-hidden="true" />
 
       <div
-        className={`relative z-20 max-w-xs cursor-grab touch-none select-none rounded-lg border-2 px-3 py-2 shadow-lg active:cursor-grabbing ${
+        className={`relative z-20 max-w-xs cursor-grab touch-none select-none rounded-lg border-2 px-3 py-2 active:cursor-grabbing ${performanceMode ? 'shadow-none' : 'shadow-lg'} ${
           selected
-            ? 'ring-2 ring-lime-400/80 shadow-[0_0_14px_rgba(132,204,22,0.55)]'
+            ? performanceMode
+              ? 'ring-2 ring-lime-400/80'
+              : 'ring-2 ring-lime-400/80 shadow-[0_0_14px_rgba(132,204,22,0.55)]'
             : editedByOthers
-              ? 'ring-2 ring-amber-300/80 shadow-[0_0_12px_rgba(252,211,77,0.45)]'
+              ? performanceMode
+                ? 'ring-2 ring-amber-300/80'
+                : 'ring-2 ring-amber-300/80 shadow-[0_0_12px_rgba(252,211,77,0.45)]'
               : ''
         }`}
         style={{
