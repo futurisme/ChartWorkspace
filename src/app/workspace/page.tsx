@@ -134,9 +134,7 @@ export default function WorkspaceHome() {
             <div className="mb-5">
               <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-cyan-300/90">ChartWorkspace</p>
               <h1 className="mt-2 text-xl font-black tracking-tight text-cyan-100 sm:text-4xl">Launch Control</h1>
-              <p className="mt-2 max-w-xl text-xs text-slate-300 sm:text-base">
-                Futuristic lightweight hub untuk membuka editor, workspace terakhir, dan Archive Lab tanpa loading berat.
-              </p>
+              <p className="mt-2 max-w-xl text-xs text-slate-300 sm:text-base">Created by Fadhil.</p>
               <div className="mt-3 flex flex-wrap gap-1.5">
                 <span className="rounded-full border border-cyan-400/30 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-semibold text-cyan-200">Fast Launch</span>
                 <span className="rounded-full border border-violet-400/30 bg-violet-500/10 px-2 py-0.5 text-[10px] font-semibold text-violet-200">Realtime Ready</span>
