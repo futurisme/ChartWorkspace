@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/prisma';
+import { activeDatabaseHost, prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { createDocWithSnapshot, getCurrentSnapshot } from '@/features/maps/shared/map-snapshot';
 import { formatMapId, parseMapId } from '@/features/maps/shared/map-id';
@@ -10,7 +10,7 @@ export const NO_STORE_CACHE_CONTROL = 'no-store';
 const DEFAULT_LIST_LIMIT = 24;
 const MAX_LIST_LIMIT = 50;
 
-let bootstrapPromise: Promise<void> | null = null;
+
 
 export class MapServiceError extends Error {
   status: number;
@@ -39,59 +39,40 @@ function isDatabaseUnavailableError(error: unknown) {
   return message.includes("can't reach database server") || message.includes('connection refused');
 }
 
-function needsSchemaBootstrap(error: unknown) {
+function isSchemaMissingError(error: unknown) {
   const code = getPrismaErrorCode(error);
   return code === 'P2021' || code === 'P2022';
 }
 
-async function bootstrapMapSchema() {
-  if (bootstrapPromise) {
-    return bootstrapPromise;
+function buildDatabaseUnavailableMessage() {
+  const host = activeDatabaseHost ?? 'unknown-host';
+  const railwayInternal = host.endsWith('.railway.internal');
+
+  if (railwayInternal && process.env.NODE_ENV === 'production') {
+    return `Database tidak bisa diakses (${host}). Host *.railway.internal bersifat private dan tidak bisa diakses dari Vercel. ` +
+      'Gunakan DATABASE_URL/DATABASE_PUBLIC_URL dengan public Railway host (proxy).';
   }
 
-  bootstrapPromise = (async () => {
-    await prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS "Map" (
-        "id" SERIAL PRIMARY KEY,
-        "title" TEXT NOT NULL,
-        "snapshot" JSONB NOT NULL,
-        "version" INTEGER NOT NULL DEFAULT 1,
-        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
-
-    await prisma.$executeRawUnsafe(`
-      CREATE INDEX IF NOT EXISTS "Map_updatedAt_idx"
-      ON "Map" ("updatedAt");
-    `);
-  })();
-
-  try {
-    await bootstrapPromise;
-  } finally {
-    bootstrapPromise = null;
-  }
+  return `Database belum bisa diakses (${host}). Pastikan service PostgreSQL aktif dan variabel DATABASE_URL benar.`;
 }
 
 async function withDatabaseRecovery<T>(operation: () => Promise<T>) {
-  if (!process.env.DATABASE_URL) {
-    throw new MapServiceError('DATABASE_URL belum diset. Konfigurasikan Postgres Railway terlebih dahulu.', 500);
+  if (!process.env.DATABASE_URL && !process.env.DATABASE_PUBLIC_URL && !process.env.DATABASE_URL_PUBLIC && !process.env.POSTGRES_PRISMA_URL && !process.env.POSTGRES_URL_NON_POOLING && !process.env.POSTGRES_URL) {
+    throw new MapServiceError('DATABASE_URL belum diset. Konfigurasikan URL database Postgres yang dapat diakses runtime.', 500);
   }
 
   try {
     return await operation();
   } catch (error) {
-    if (needsSchemaBootstrap(error)) {
-      await bootstrapMapSchema();
-      return operation();
+    if (isSchemaMissingError(error)) {
+      throw new MapServiceError(
+        'Schema database belum siap (tabel/kolom belum ada). Jalankan `npx prisma migrate deploy` pada environment production.',
+        503
+      );
     }
 
     if (isDatabaseUnavailableError(error)) {
-      throw new MapServiceError(
-        'Database belum bisa diakses (P1001). Pastikan service PostgreSQL Railway aktif, public/private networking benar, lalu deploy ulang.',
-        503
-      );
+      throw new MapServiceError(buildDatabaseUnavailableMessage(), 503);
     }
 
     throw error;

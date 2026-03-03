@@ -20,6 +20,16 @@ Perbaikan saat ini:
 - Editor + Realtime mode edit memakai endpoint `ensure=1`.
 - `POST /api/maps/save` sekarang `upsert`, jadi tidak 404 saat save map baru.
 
+
+### 2.1) Root Cause P1001 di Vercel + Railway (penting)
+Jika `DATABASE_URL` mengarah ke host `*.railway.internal`, koneksi dari Vercel akan gagal karena host itu private internal Railway.
+
+Gunakan salah satu URL publik Railway untuk runtime production:
+- `DATABASE_URL` (disarankan)
+- atau `DATABASE_PUBLIC_URL` / `DATABASE_URL_PUBLIC`
+
+Aplikasi sekarang otomatis memilih URL database yang bisa diakses publik jika variabel tersebut tersedia.
+
 ### 3) Arsitektur Saat Ini
 
 #### App Routes
