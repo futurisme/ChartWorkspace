@@ -24,10 +24,6 @@ function createErrorResponse(error: string, status: number, details?: string) {
 
 export async function GET(request: NextRequest) {
   try {
-    if (!process.env.DATABASE_URL) {
-      return createErrorResponse('Database configuration missing', 500);
-    }
-
     const query = request.nextUrl.searchParams.get('q');
     const limit = parseListLimit(request.nextUrl.searchParams.get('limit'));
     const result = await listMaps(query, limit);
@@ -72,10 +68,6 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    if (!process.env.DATABASE_URL) {
-      return createErrorResponse('Database configuration missing', 500);
-    }
-
     const body = (await request.json()) as { title?: string };
     const map = await createMap(body.title);
 

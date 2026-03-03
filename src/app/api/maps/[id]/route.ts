@@ -22,10 +22,6 @@ function createErrorResponse(error: string, status: number, details?: string) {
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    if (!process.env.DATABASE_URL) {
-      return createErrorResponse('Database configuration missing', 500);
-    }
-
     const ensureMap = request.nextUrl.searchParams.get('ensure') === '1';
     const map = await getMapById(params.id, ensureMap);
 

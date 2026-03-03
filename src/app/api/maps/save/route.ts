@@ -17,10 +17,6 @@ function createErrorResponse(error: string, status: number, details?: string) {
 
 export async function POST(request: NextRequest) {
   try {
-    if (!process.env.DATABASE_URL) {
-      return createErrorResponse('Database configuration missing', 500);
-    }
-
     const body = (await request.json()) as { id?: string; snapshot?: string };
     const result = await saveMap(body.id, body.snapshot);
 
