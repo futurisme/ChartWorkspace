@@ -125,21 +125,26 @@ export default function WorkspaceHome() {
   };
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#040816] text-slate-100">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_15%_15%,rgba(56,189,248,0.25),transparent_35%),radial-gradient(circle_at_85%_20%,rgba(14,165,233,0.18),transparent_35%),radial-gradient(circle_at_50%_100%,rgba(168,85,247,0.16),transparent_42%)]" />
+    <main className="relative min-h-screen overflow-hidden bg-[#030712] text-slate-100">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_10%,rgba(6,182,212,0.24),transparent_36%),radial-gradient(circle_at_88%_14%,rgba(99,102,241,0.22),transparent_34%),radial-gradient(circle_at_50%_100%,rgba(168,85,247,0.18),transparent_42%)]" />
 
-      <div className="relative mx-auto flex min-h-screen w-full max-w-6xl items-center px-3 py-6 sm:px-6 lg:px-10">
-        <div className="grid w-full gap-4 lg:grid-cols-[1.15fr_0.85fr]">
-          <section className="rounded-2xl border border-cyan-400/20 bg-slate-950/70 p-4 shadow-[0_20px_60px_rgba(6,182,212,0.12)] backdrop-blur sm:p-6">
+      <div className="relative mx-auto flex min-h-screen w-full max-w-6xl items-start px-2 py-4 sm:items-center sm:px-6 sm:py-6 lg:px-10">
+        <div className="grid w-full gap-3 lg:grid-cols-[1.12fr_0.88fr] lg:gap-4">
+          <section className="rounded-2xl border border-cyan-300/20 bg-slate-950/75 p-3 shadow-[0_18px_55px_rgba(6,182,212,0.12)] backdrop-blur-xl sm:p-6">
             <div className="mb-5">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-cyan-300/90">ChartWorkspace</p>
-              <h1 className="mt-2 text-2xl font-black tracking-tight text-cyan-100 sm:text-4xl">Launch Control</h1>
-              <p className="mt-2 max-w-xl text-sm text-slate-300 sm:text-base">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-cyan-300/90">ChartWorkspace</p>
+              <h1 className="mt-2 text-xl font-black tracking-tight text-cyan-100 sm:text-4xl">Launch Control</h1>
+              <p className="mt-2 max-w-xl text-xs text-slate-300 sm:text-base">
                 Futuristic lightweight hub untuk membuka editor, workspace terakhir, dan Archive Lab tanpa loading berat.
               </p>
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                <span className="rounded-full border border-cyan-400/30 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-semibold text-cyan-200">Fast Launch</span>
+                <span className="rounded-full border border-violet-400/30 bg-violet-500/10 px-2 py-0.5 text-[10px] font-semibold text-violet-200">Realtime Ready</span>
+                <span className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-200">Mobile Friendly</span>
+              </div>
             </div>
 
-            <form onSubmit={handleCreate} className="space-y-3">
+            <form onSubmit={handleCreate} className="space-y-2.5 sm:space-y-3">
               <label htmlFor="title" className="block text-xs font-semibold uppercase tracking-[0.12em] text-cyan-200/90">
                 New Map Name
               </label>
@@ -161,7 +166,7 @@ export default function WorkspaceHome() {
                 <button
                   type="submit"
                   disabled={isCreating}
-                  className="rounded-xl border border-cyan-300 bg-cyan-500 px-4 py-2 text-sm font-bold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="rounded-xl border border-cyan-200 bg-gradient-to-r from-cyan-400 to-sky-400 px-4 py-2 text-sm font-bold text-slate-950 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {isCreating ? 'Creating…' : 'Open New Editor'}
                 </button>
@@ -169,7 +174,7 @@ export default function WorkspaceHome() {
                   type="button"
                   onClick={handleLoadLast}
                   disabled={!lastMapId}
-                  className="rounded-xl border border-slate-600 bg-slate-900 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-cyan-400 hover:text-cyan-100 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="rounded-xl border border-slate-600 bg-slate-900 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-cyan-400 hover:bg-slate-800/90 hover:text-cyan-100 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Resume Last Workspace
                 </button>
@@ -190,10 +195,10 @@ export default function WorkspaceHome() {
             </form>
           </section>
 
-          <section className="rounded-2xl border border-cyan-400/20 bg-slate-950/70 p-4 shadow-[0_18px_45px_rgba(6,182,212,0.1)] backdrop-blur sm:p-5">
+          <section className="rounded-2xl border border-cyan-300/20 bg-slate-950/75 p-3 shadow-[0_18px_45px_rgba(6,182,212,0.1)] backdrop-blur-xl sm:p-5">
             <div className="mb-3 flex items-center justify-between gap-2">
-              <h2 className="text-sm font-bold uppercase tracking-[0.14em] text-cyan-200">Search Workspace</h2>
-              <span className="text-[11px] text-slate-400">Top {quickStats.resultsCount} shown</span>
+              <h2 className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-200 sm:text-sm">Search Workspace</h2>
+              <span className="text-[10px] text-slate-400 sm:text-[11px]">Top {quickStats.resultsCount} shown</span>
             </div>
 
             <input
@@ -209,7 +214,7 @@ export default function WorkspaceHome() {
             {searchError && <p className="mt-3 rounded-lg border border-red-500/30 bg-red-900/25 p-2 text-xs text-red-200">{searchError}</p>}
 
             {searchReady && !isSearching && !searchError && (
-              <ul className="mt-3 max-h-[48vh] space-y-2 overflow-auto pr-1">
+              <ul className="mt-3 max-h-[44vh] space-y-2 overflow-auto pr-1 sm:max-h-[48vh]">
                 {searchResults.map((map) => (
                   <li key={map.id}>
                     <button
