@@ -139,7 +139,12 @@ Aplikasi sekarang otomatis memilih URL database yang bisa diakses publik jika va
 
 ### 7) Environment Variables
 ```env
-DATABASE_URL="postgresql://user:password@host:5432/chartmaker"
+# Production (Vercel + Railway): pakai host PUBLIC/proxy Railway
+DATABASE_PUBLIC_URL="postgresql://postgres:***@caboose.proxy.rlwy.net:19656/railway"
+
+# Optional fallback, will be overridden by DATABASE_PUBLIC_URL when present
+DATABASE_URL="postgresql://postgres:***@postgres.railway.internal:5432/railway"
+
 NEXT_PUBLIC_WEBRTC_URL="wss://your-websocket-service.up.railway.app"
 NEXT_PUBLIC_API_URL="http://localhost:3000"
 ```
