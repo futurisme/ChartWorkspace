@@ -132,6 +132,9 @@ const WORKSPACE_ARCHIVE_MAGIC = 'chartworkspace/archive';
 const WORKSPACE_ARCHIVE_VERSION = 1;
 const DENSE_GRAPH_NODE_THRESHOLD = 180;
 const MINIMAP_MAX_NODE_THRESHOLD = 220;
+const EDGE_SIMPLIFICATION_NODE_THRESHOLD = 260;
+const EDGE_SIMPLIFICATION_EDGE_THRESHOLD = 900;
+const EDGE_SIMPLIFICATION_ZOOM_THRESHOLD = 0.78;
 const FLOW_TELEMETRY_ENABLED = process.env.NEXT_PUBLIC_DEBUG_FLOW_TELEMETRY === '1';
 
 type SchedulerWithPostTask = {
@@ -326,6 +329,23 @@ function isEdgeRemoveChange(change: EdgeChange): change is EdgeRemoveChange {
   return change.type === 'remove';
 }
 
+function buildSimplifiedEdges(edges: Edge[], selectedNodeId: string | null): Edge[] {
+  return edges.map((edge) => {
+    const connectedToSelected = selectedNodeId ? edge.source === selectedNodeId || edge.target === selectedNodeId : false;
+
+    return {
+      ...edge,
+      type: 'default',
+      label: undefined,
+      style: {
+        ...EDGE_STYLE,
+        strokeWidth: connectedToSelected ? 2 : 1,
+        strokeOpacity: connectedToSelected ? 0.95 : 0.52,
+      },
+    };
+  });
+}
+
 interface FlowWorkspaceProps {
   isReadOnly?: boolean;
   showDesktopControlsPanel?: boolean;
@@ -359,6 +379,7 @@ export function FlowWorkspace({
   const [unconnectSourceNodeId, setUnconnectSourceNodeId] = useState<string | null>(null);
   const [isRefreshingPage, setIsRefreshingPage] = useState(false);
   const [refreshAlertBroadcast, setRefreshAlertBroadcast] = useState<RefreshAlertBroadcast | null>(null);
+  const [viewportZoom, setViewportZoom] = useState(1);
 
   const nodeCountRef = useRef(0);
   const undoManagerRef = useRef<Y.UndoManager | null>(null);
@@ -371,7 +392,7 @@ export function FlowWorkspace({
   const edgeTypes = useMemo(() => ({ hierarchy: FlowEdgeHierarchy }), []);
   const deferredNodes = useDeferredValue(nodes);
   const deferredEdges = useDeferredValue(edges);
-  const [routedEdges, setRoutedEdges] = useState(() => buildAdaptiveRoutedEdges(deferredEdges, deferredNodes));
+  const [routedEdges, setRoutedEdges] = useState<Edge[]>(() => buildAdaptiveRoutedEdges(deferredEdges, deferredNodes));
   const routingWorkerRef = useRef<Worker | null>(null);
   const routingWorkerFailedRef = useRef(false);
   const latestRouteHashRef = useRef<string | null>(null);
@@ -572,6 +593,11 @@ export function FlowWorkspace({
   }, []);
 
   useEffect(() => {
+    if (shouldSimplifyEdges) {
+      setRoutedEdges(buildSimplifiedEdges(deferredEdges, selectedNodeId));
+      return;
+    }
+
     const compactNodes: CompactRouteNode[] = toCompactRouteNodes(deferredNodes);
     const compactEdges: CompactRouteEdge[] = toCompactRouteEdges(deferredEdges);
     const hash = buildRoutingCacheKey(compactEdges, compactNodes);
@@ -607,7 +633,7 @@ export function FlowWorkspace({
         window.cancelIdleCallback(idleCallbackId);
       }
     };
-  }, [deferredEdges, deferredNodes]);
+  }, [deferredEdges, deferredNodes, selectedNodeId, shouldSimplifyEdges]);
 
 
   const persistNodePositions = useCallback(
@@ -1543,6 +1569,7 @@ export function FlowWorkspace({
     (_event, viewport) => {
       profileHandler('viewport.move', () => {
         scheduleMovePresenceFlush(Math.round(viewport.x), Math.round(viewport.y));
+        setViewportZoom(viewport.zoom);
       });
     },
     [profileHandler, scheduleMovePresenceFlush]
@@ -1579,6 +1606,14 @@ export function FlowWorkspace({
     [handleChangeColor, isReadOnly]
   );
   const isDenseGraph = nodes.length >= DENSE_GRAPH_NODE_THRESHOLD;
+  const shouldSimplifyEdges =
+    nodes.length >= EDGE_SIMPLIFICATION_NODE_THRESHOLD
+    && edges.length >= EDGE_SIMPLIFICATION_EDGE_THRESHOLD
+    && viewportZoom < EDGE_SIMPLIFICATION_ZOOM_THRESHOLD;
+  const renderedEdges = useMemo(
+    () => (shouldSimplifyEdges ? buildSimplifiedEdges(routedEdges, selectedNodeId) : routedEdges),
+    [routedEdges, selectedNodeId, shouldSimplifyEdges]
+  );
   const shouldRenderMiniMap = !isMobileViewport && nodes.length <= MINIMAP_MAX_NODE_THRESHOLD;
 
   useEffect(() => () => {
@@ -1807,7 +1842,7 @@ export function FlowWorkspace({
         <NodeActionContext.Provider value={nodeActionContextValue}>
           <ReactFlow
             nodes={nodesWithPresence}
-            edges={routedEdges}
+            edges={renderedEdges}
             onInit={(instance) => {
               reactFlowInstanceRef.current = instance;
             }}
