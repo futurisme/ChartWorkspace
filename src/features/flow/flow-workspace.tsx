@@ -154,6 +154,8 @@ const EDGE_SIMPLIFICATION_NODE_THRESHOLD = 260;
 const EDGE_SIMPLIFICATION_EDGE_THRESHOLD = 900;
 const EDGE_SIMPLIFICATION_ZOOM_THRESHOLD = 0.78;
 const FLOW_TELEMETRY_ENABLED = process.env.NEXT_PUBLIC_DEBUG_FLOW_TELEMETRY === '1';
+const MOBILE_MIN_ZOOM = 0.5;
+const MOBILE_SNAP_ZOOM_THRESHOLD = 0.6;
 
 type SchedulerWithPostTask = {
   postTask?: (callback: () => void, options?: { priority?: 'background' | 'user-visible' | 'user-blocking'; delay?: number }) => Promise<void>;
@@ -460,6 +462,7 @@ export function FlowWorkspace({
     [routedEdges, selectedNodeId, shouldSimplifyEdges]
   );
   const shouldRenderMiniMap = !isMobileViewport && nodes.length <= MINIMAP_MAX_NODE_THRESHOLD;
+  const effectiveSnapToGrid = snapEnabled && (!isMobileViewport || viewportZoom >= MOBILE_SNAP_ZOOM_THRESHOLD);
   const telemetryRef = useRef<Record<string, { samples: number; totalDurationMs: number; droppedFrames: number; maxDurationMs: number }>>({});
   const lastMovePresenceUpdateRef = useRef(0);
   const pendingMovePresenceRef = useRef<{
@@ -2066,7 +2069,7 @@ export function FlowWorkspace({
             fitView
             fitViewOptions={{ padding: 0.2 }}
             translateExtent={UNBOUNDED_TRANSLATE_EXTENT}
-            snapToGrid={snapEnabled}
+            snapToGrid={effectiveSnapToGrid}
             snapGrid={[GRID_SIZE, GRID_SIZE]}
             attributionPosition="bottom-left"
             connectionLineType={ConnectionLineType.Straight}
@@ -2076,8 +2079,8 @@ export function FlowWorkspace({
             zoomOnPinch
             zoomOnScroll={!isMobileViewport}
             preventScrolling={false}
-            minZoom={isMobileViewport ? 0.35 : 0.2}
-            nodeDragThreshold={isMobileViewport ? 0 : 2}
+            minZoom={isMobileViewport ? MOBILE_MIN_ZOOM : 0.2}
+            nodeDragThreshold={isMobileViewport ? 1 : 2}
             onlyRenderVisibleElements
             defaultEdgeOptions={{
               type: 'hierarchy',

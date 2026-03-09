@@ -54,11 +54,10 @@ function FlowNodeCardComponent({ id, data, selected }: NodeProps<ConceptNodeData
 
   return (
     <div className="relative nopan inline-flex flex-col items-start">
-      <div className="relative flex w-full items-stretch gap-1">
+      <div className="relative flow-node-drag-handle flex w-full items-stretch gap-1">
         <div className="pointer-events-none absolute inset-0 z-30 rounded-lg" aria-hidden="true" />
 
-        <div className="flow-node-drag-handle">
-          <div
+        <div
             className={`relative z-20 max-w-xs cursor-grab touch-none select-none rounded-lg border-2 px-3 py-2 shadow-lg active:cursor-grabbing ${
             selected
               ? 'ring-2 ring-lime-400/80 shadow-[0_0_14px_rgba(132,204,22,0.55)]'
@@ -95,7 +94,6 @@ function FlowNodeCardComponent({ id, data, selected }: NodeProps<ConceptNodeData
           <Handle type="source" position={Position.Right} id="s-right" className="pointer-events-none opacity-0" />
 
           <div className="pointer-events-none break-words text-sm font-semibold sm:text-base">{data.label}</div>
-          </div>
         </div>
 
         {hasDescriptionPanel && (
@@ -105,7 +103,7 @@ function FlowNodeCardComponent({ id, data, selected }: NodeProps<ConceptNodeData
               event.stopPropagation();
               toggleDescriptionPanel();
             }}
-            className="inline-flex min-h-[42px] w-9 shrink-0 items-center justify-center rounded-sm border-2 border-slate-950 bg-white text-slate-900 shadow-sm transition hover:bg-slate-50"
+            className="nodrag inline-flex min-h-[42px] w-9 shrink-0 items-center justify-center rounded-sm border-2 border-slate-950 bg-white text-slate-900 shadow-sm transition hover:bg-slate-50"
             aria-label={isExpanded ? 'Collapse description' : 'Expand description'}
           >
             <span className="flex flex-col gap-1" aria-hidden="true">

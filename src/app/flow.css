@@ -36,16 +36,4 @@
     touch-action: none;
     z-index: 40;
   }
-
-  .react-flow__node-conceptNode .flow-node-drag-handle::before {
-    content: '';
-    position: absolute;
-    inset: -12px;
-    z-index: 50;
-    pointer-events: none;
-  }
-
-  .react-flow__node-conceptNode .flow-node-drag-handle > * {
-    touch-action: none;
-  }
 }
