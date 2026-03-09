@@ -2074,10 +2074,10 @@ export function FlowWorkspace({
             attributionPosition="bottom-left"
             connectionLineType={ConnectionLineType.Straight}
             selectionOnDrag={false}
-            panOnDrag={!isMobileViewport}
+            panOnDrag
             panOnScroll={false}
             zoomOnPinch
-            zoomOnScroll={!isMobileViewport}
+            zoomOnScroll
             preventScrolling={false}
             minZoom={isMobileViewport ? MOBILE_MIN_ZOOM : 0.2}
             nodeDragThreshold={isMobileViewport ? 0 : 2}
