@@ -2,7 +2,7 @@
 
 export const EDGE_STYLE: CSSProperties = { stroke: '#0f172a', strokeWidth: 2 };
 
-export const DEFAULT_NODE_SIZE = { width: 172, height: 40 };
+export const DEFAULT_NODE_SIZE = { width: 172, height: 16 };
 
 export const GRID_SIZE = 8;
 export const ROUTE_GRID_SIZE = 8;
