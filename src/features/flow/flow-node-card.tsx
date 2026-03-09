@@ -58,46 +58,48 @@ function FlowNodeCardComponent({ data, selected }: NodeProps<ConceptNodeData>) {
   };
 
   return (
-    <div className="relative flow-node-drag-hitbox nopan">
-      <div className="absolute inset-0 z-30 rounded-lg" aria-hidden="true" />
+    <div className="relative flow-node-drag-hitbox nopan inline-flex flex-col items-start">
+      <div className="relative flex w-full items-stretch gap-1">
+        <div className="absolute inset-0 z-30 rounded-lg" aria-hidden="true" />
 
-      <div
-        className={`relative z-20 max-w-xs cursor-grab touch-none select-none rounded-lg border-2 px-3 py-2 shadow-lg active:cursor-grabbing ${
-          selected
-            ? 'ring-2 ring-lime-400/80 shadow-[0_0_14px_rgba(132,204,22,0.55)]'
-            : editedByOthers
-              ? 'ring-2 ring-amber-300/80 shadow-[0_0_12px_rgba(252,211,77,0.45)]'
-              : ''
-        }`}
-        style={{
-          borderColor: selected ? '#84cc16' : baseColor,
-          backgroundColor: baseColor,
-          backgroundImage: gradientEnabled ? colorValue : undefined,
-          color: lightBackground ? '#0f172a' : '#f8fafc',
-        }}
-        onClick={toggleDescriptionPanel}
-      >
-        {editedByOthers && !selected && (
-          <div className="pointer-events-none absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-amber-400/90 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-900">
-            {`Sedang diedit: ${collaboratorNames.join(', ')}`}
-          </div>
-        )}
-        {selected && !isReadOnly && (
-          <div className="pointer-events-none absolute -top-5 left-1/2 -translate-x-1/2 text-[10px] font-semibold uppercase tracking-wide text-lime-500">
-            Editing This
-          </div>
-        )}
+        <div
+          className={`relative z-20 max-w-xs cursor-grab touch-none select-none rounded-lg border-2 px-3 py-2 shadow-lg active:cursor-grabbing ${
+            selected
+              ? 'ring-2 ring-lime-400/80 shadow-[0_0_14px_rgba(132,204,22,0.55)]'
+              : editedByOthers
+                ? 'ring-2 ring-amber-300/80 shadow-[0_0_12px_rgba(252,211,77,0.45)]'
+                : ''
+          }`}
+          style={{
+            borderColor: selected ? '#84cc16' : baseColor,
+            backgroundColor: baseColor,
+            backgroundImage: gradientEnabled ? colorValue : undefined,
+            color: lightBackground ? '#0f172a' : '#f8fafc',
+          }}
+          onClick={toggleDescriptionPanel}
+        >
+          {editedByOthers && !selected && (
+            <div className="pointer-events-none absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-amber-400/90 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-900">
+              {`Sedang diedit: ${collaboratorNames.join(', ')}`}
+            </div>
+          )}
+          {selected && !isReadOnly && (
+            <div className="pointer-events-none absolute -top-5 left-1/2 -translate-x-1/2 text-[10px] font-semibold uppercase tracking-wide text-lime-500">
+              Editing This
+            </div>
+          )}
 
-        <Handle type="target" position={Position.Top} id="t-top" className="pointer-events-none opacity-0" />
-        <Handle type="target" position={Position.Bottom} id="t-bottom" className="pointer-events-none opacity-0" />
-        <Handle type="target" position={Position.Left} id="t-left" className="pointer-events-none opacity-0" />
-        <Handle type="target" position={Position.Right} id="t-right" className="pointer-events-none opacity-0" />
-        <Handle type="source" position={Position.Top} id="s-top" className="pointer-events-none opacity-0" />
-        <Handle type="source" position={Position.Bottom} id="s-bottom" className="pointer-events-none opacity-0" />
-        <Handle type="source" position={Position.Left} id="s-left" className="pointer-events-none opacity-0" />
-        <Handle type="source" position={Position.Right} id="s-right" className="pointer-events-none opacity-0" />
+          <Handle type="target" position={Position.Top} id="t-top" className="pointer-events-none opacity-0" />
+          <Handle type="target" position={Position.Bottom} id="t-bottom" className="pointer-events-none opacity-0" />
+          <Handle type="target" position={Position.Left} id="t-left" className="pointer-events-none opacity-0" />
+          <Handle type="target" position={Position.Right} id="t-right" className="pointer-events-none opacity-0" />
+          <Handle type="source" position={Position.Top} id="s-top" className="pointer-events-none opacity-0" />
+          <Handle type="source" position={Position.Bottom} id="s-bottom" className="pointer-events-none opacity-0" />
+          <Handle type="source" position={Position.Left} id="s-left" className="pointer-events-none opacity-0" />
+          <Handle type="source" position={Position.Right} id="s-right" className="pointer-events-none opacity-0" />
 
-        <div className="pointer-events-none break-words text-sm font-semibold sm:text-base">{data.label}</div>
+          <div className="pointer-events-none break-words text-sm font-semibold sm:text-base">{data.label}</div>
+        </div>
 
         {hasDescriptionPanel && (
           <button
@@ -106,7 +108,7 @@ function FlowNodeCardComponent({ data, selected }: NodeProps<ConceptNodeData>) {
               event.stopPropagation();
               toggleDescriptionPanel();
             }}
-            className="absolute left-full top-0 ml-1 inline-flex h-full min-h-[42px] w-9 items-center justify-center rounded-sm border-2 border-slate-950 bg-white text-slate-900 shadow-sm transition hover:bg-slate-50"
+            className="inline-flex min-h-[42px] w-9 shrink-0 items-center justify-center rounded-sm border-2 border-slate-950 bg-white text-slate-900 shadow-sm transition hover:bg-slate-50"
             aria-label={isExpanded ? 'Collapse description' : 'Expand description'}
           >
             <span className="flex flex-col gap-1" aria-hidden="true">
@@ -119,10 +121,7 @@ function FlowNodeCardComponent({ data, selected }: NodeProps<ConceptNodeData>) {
       </div>
 
       {hasDescriptionPanel && isExpanded && (
-        <div
-          className="mt-2 rounded-md border border-slate-900 bg-white px-3 py-2 text-xs font-medium leading-relaxed text-slate-900"
-          style={{ width: 'calc(100% + 2.5rem)' }}
-        >
+        <div className="mt-2 w-full rounded-md border border-slate-900 bg-white px-3 py-2 text-xs font-medium leading-relaxed text-slate-900">
           {description}
         </div>
       )}
