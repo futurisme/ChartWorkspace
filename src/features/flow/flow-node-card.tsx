@@ -58,7 +58,7 @@ function FlowNodeCardComponent({ id, data, selected }: NodeProps<ConceptNodeData
         <div className="pointer-events-none absolute inset-0 z-30 rounded-lg" aria-hidden="true" />
 
         <div
-          className={`flow-node-drag-handle relative z-20 max-w-[168px] cursor-grab touch-none select-none rounded-md border px-2 py-[1px] shadow-sm active:cursor-grabbing sm:px-2 sm:py-[1px] ${
+          className={`flow-node-drag-handle relative z-20 max-w-[168px] cursor-grab touch-none select-none rounded-md border px-2 py-0 shadow-sm active:cursor-grabbing sm:px-2 sm:py-0 ${
             selected
               ? 'ring-2 ring-lime-400/80 shadow-[0_0_14px_rgba(132,204,22,0.55)]'
               : editedByOthers
@@ -93,7 +93,7 @@ function FlowNodeCardComponent({ id, data, selected }: NodeProps<ConceptNodeData
           <Handle type="source" position={Position.Left} id="s-left" className="pointer-events-none opacity-0" />
           <Handle type="source" position={Position.Right} id="s-right" className="pointer-events-none opacity-0" />
 
-          <div className="pointer-events-none break-words truncate whitespace-nowrap text-[10px] font-semibold leading-[1.05] sm:text-[11px]">{data.label}</div>
+          <div className="pointer-events-none break-words truncate whitespace-nowrap text-[9px] font-semibold leading-none sm:text-[10px]">{data.label}</div>
         </div>
 
         {hasDescriptionPanel && (

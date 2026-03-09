@@ -53,3 +53,11 @@
     z-index: 20;
   }
 }
+
+.react-flow__node-conceptNode {
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  min-height: 0 !important;
+  box-shadow: none !important;
+}
