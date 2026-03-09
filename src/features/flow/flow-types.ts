@@ -3,6 +3,8 @@
 export interface ConceptNodeData {
   label: string;
   color?: string;
+  description?: string;
+  variant?: 'default' | 'descript';
   collaboratorNames?: string[];
   editedByOthers?: boolean;
 }
@@ -37,6 +39,8 @@ export interface PersistedNodeRecord {
   label: string;
   position: XYPosition;
   color?: string;
+  description?: string;
+  variant?: 'default' | 'descript';
 }
 
 export interface PersistedEdgeRecord {

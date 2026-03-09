@@ -1,4 +1,4 @@
-import { createContext, memo, useContext } from 'react';
+import { createContext, memo, useContext, useState } from 'react';
 import { Handle, NodeProps, Position } from 'reactflow';
 import type { ConceptNodeData, NodeActionContextValue } from './flow-types';
 
@@ -27,8 +27,17 @@ function isGradientColor(value: string) {
   return value.includes('gradient(');
 }
 
+
+function normalizeNodeVariant(variant: ConceptNodeData['variant']) {
+  return variant === 'descript' ? 'descript' : 'default';
+}
+
 function FlowNodeCardComponent({ data, selected }: NodeProps<ConceptNodeData>) {
   const { isReadOnly } = useContext(NodeActionContext);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const variant = normalizeNodeVariant(data.variant);
+  const description = data.description?.trim() ?? '';
+  const hasDescriptionPanel = variant === 'descript' && description.length > 0;
   const colorValue = data.color ?? '#3b82f6';
   const gradientEnabled = isGradientColor(colorValue);
   const baseColor = gradientEnabled ? getFirstHexFromGradient(colorValue) : colorValue;
@@ -73,7 +82,31 @@ function FlowNodeCardComponent({ data, selected }: NodeProps<ConceptNodeData>) {
         <Handle type="source" position={Position.Bottom} id="s-bottom" className="pointer-events-none opacity-0" />
         <Handle type="source" position={Position.Left} id="s-left" className="pointer-events-none opacity-0" />
         <Handle type="source" position={Position.Right} id="s-right" className="pointer-events-none opacity-0" />
-        <div className="pointer-events-none break-words text-sm font-semibold sm:text-base">{data.label}</div>
+        <div className="relative flex items-stretch">
+          <div className="pointer-events-none min-w-0 flex-1 break-words pr-2 text-sm font-semibold sm:text-base">{data.label}</div>
+          {hasDescriptionPanel && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setIsExpanded((prev) => !prev);
+              }}
+              className="z-20 inline-flex h-full min-h-[42px] w-9 items-center justify-center border-l-2 border-slate-950/90 bg-white/95 text-slate-900 transition hover:bg-white"
+              aria-label={isExpanded ? 'Collapse description' : 'Expand description'}
+            >
+              <span className="flex flex-col gap-1" aria-hidden="true">
+                <span className="h-0.5 w-5 rounded-full bg-slate-900" />
+                <span className="h-0.5 w-5 rounded-full bg-slate-900" />
+                <span className="h-0.5 w-5 rounded-full bg-slate-900" />
+              </span>
+            </button>
+          )}
+        </div>
+        {hasDescriptionPanel && isExpanded && (
+          <div className="mt-2 w-full rounded-md border border-slate-800/70 bg-white/95 px-2 py-1 text-xs font-medium leading-relaxed text-slate-900">
+            {description}
+          </div>
+        )}
       </div>
     </div>
   );

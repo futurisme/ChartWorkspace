@@ -112,6 +112,8 @@ interface RefreshAlertBroadcast {
   mandatory: boolean;
 }
 
+type NodeVariant = 'default' | 'descript';
+
 interface WorkspaceArchiveFile {
   magic: string;
   version: number;
@@ -171,6 +173,12 @@ function readString(data: YRecordMap, key: string) {
   return typeof value === 'string' ? value : undefined;
 }
 
+
+function readNodeVariant(data: YRecordMap, key: string): NodeVariant {
+  const value = data.get(key);
+  return value === 'descript' ? 'descript' : 'default';
+}
+
 function readPosition(data: YRecordMap, key: string): XYPosition | null {
   const value = data.get(key);
   if (!value || typeof value !== 'object') {
@@ -191,6 +199,8 @@ function toPersistedNodeRecord(nodeId: string, nodeData: YRecordMap): PersistedN
     label: readString(nodeData, 'label') ?? 'Node',
     position: readPosition(nodeData, 'position') ?? { x: 0, y: 0 },
     color: readString(nodeData, 'color'),
+    description: readString(nodeData, 'description'),
+    variant: readNodeVariant(nodeData, 'variant'),
   };
 }
 
@@ -218,6 +228,8 @@ function buildNodeFromMap(nodeId: string, nodeData: YRecordMap): Node<ConceptNod
     data: {
       label: persisted.label,
       color: persisted.color,
+      description: persisted.description,
+      variant: persisted.variant,
     },
     position: persisted.position,
   };
@@ -258,6 +270,15 @@ function upsertNodeRecord(nodesMap: YNodeStore, node: Node<ConceptNodeData>) {
   } else {
     nodeData.delete('color');
   }
+
+  const variant = node.data?.variant === 'descript' ? 'descript' : 'default';
+  nodeData.set('variant', variant);
+
+  if (node.data?.description?.trim()) {
+    nodeData.set('description', node.data.description.trim());
+  } else {
+    nodeData.delete('description');
+  }
 }
 
 function upsertEdgeRecord(edgesMap: YEdgeStore, edge: Edge) {
@@ -295,7 +316,9 @@ function isSameNode(a: Node, b: Node) {
     a.position.x === b.position.x &&
     a.position.y === b.position.y &&
     (aData?.label ?? '') === (bData?.label ?? '') &&
-    (aData?.color ?? '') === (bData?.color ?? '')
+    (aData?.color ?? '') === (bData?.color ?? '') &&
+    (aData?.description ?? '') === (bData?.description ?? '') &&
+    (aData?.variant ?? 'default') === (bData?.variant ?? 'default')
   );
 }
 
@@ -436,7 +459,11 @@ export function FlowWorkspace({
     ? { x: Math.round(selectedNode.position.x), y: Math.round(selectedNode.position.y) }
     : null;
   const selectedNodeLabel = selectedNode ? getNodeLabel(selectedNode) : null;
-  const selectedNodeColor = (selectedNode?.data as ConceptNodeData | undefined)?.color ?? COLOR_OPTIONS[0];
+  const selectedNodeData = selectedNode?.data as ConceptNodeData | undefined;
+  const selectedNodeColor = selectedNodeData?.color ?? COLOR_OPTIONS[0];
+  const selectedNodeVariant = selectedNodeData?.variant === 'descript' ? 'descript' : 'default';
+  const selectedNodeDescription = selectedNodeData?.description ?? '';
+
 
   const remoteEditorsByNode = useMemo(() => {
     const map = new Map<string, string[]>();
@@ -718,6 +745,66 @@ export function FlowWorkspace({
     [doc, isReadOnly, setNodes]
   );
 
+  const handleChangeNodeVariant = useCallback(
+    (nodeId: string, variant: NodeVariant) => {
+      if (isReadOnly || !doc) {
+        return;
+      }
+
+      const nodesMap = doc.getMap<YRecordMap>('nodes') as YNodeStore;
+      const nodeData = nodesMap.get(nodeId);
+      if (nodeData) {
+        doc.transact(() => {
+          nodeData.set('variant', variant);
+        }, 'local');
+      }
+
+      setNodes((prev) =>
+        prev.map((node) =>
+          node.id === nodeId
+            ? { ...node, data: { ...node.data, variant } }
+            : node
+        )
+      );
+    },
+    [doc, isReadOnly, setNodes]
+  );
+
+  const handleChangeNodeDescription = useCallback(
+    (nodeId: string, description: string) => {
+      if (isReadOnly || !doc) {
+        return;
+      }
+
+      const nodesMap = doc.getMap<YRecordMap>('nodes') as YNodeStore;
+      const nodeData = nodesMap.get(nodeId);
+      if (nodeData) {
+        doc.transact(() => {
+          const normalizedDescription = description.trim();
+          if (normalizedDescription) {
+            nodeData.set('description', normalizedDescription);
+          } else {
+            nodeData.delete('description');
+          }
+        }, 'local');
+      }
+
+      setNodes((prev) =>
+        prev.map((node) =>
+          node.id === nodeId
+            ? {
+                ...node,
+                data: {
+                  ...node.data,
+                  description,
+                },
+              }
+            : node
+        )
+      );
+    },
+    [doc, isReadOnly, setNodes]
+  );
 
   const flushDragPresence = useCallback(() => {
     const pending = pendingDragPresenceRef.current;
@@ -1125,6 +1212,7 @@ export function FlowWorkspace({
       dragHandle: NODE_DRAG_HANDLE_SELECTOR,
       data: {
         label: `Concept ${nodeCountRef.current + 1}`,
+        variant: 'default',
       },
       position: safePos,
     };
@@ -1135,6 +1223,7 @@ export function FlowWorkspace({
       nodeDataMap.set('id', nodeId);
       nodeDataMap.set('label', newNode.data.label);
       nodeDataMap.set('position', newNode.position);
+      nodeDataMap.set('variant', 'default');
       nodesMap.set(nodeId, nodeDataMap);
     }, 'local');
 
@@ -1174,7 +1263,7 @@ export function FlowWorkspace({
       id: childId,
       type: 'conceptNode',
       dragHandle: NODE_DRAG_HANDLE_SELECTOR,
-      data: { label: `Concept ${nodeCountRef.current + 1}` },
+      data: { label: `Concept ${nodeCountRef.current + 1}`, variant: 'default' },
       position: childPos,
     };
 
@@ -1197,6 +1286,7 @@ export function FlowWorkspace({
       nodeDataMap.set('id', childId);
       nodeDataMap.set('label', childNode.data.label);
       nodeDataMap.set('position', childNode.position);
+      nodeDataMap.set('variant', 'default');
       nodesMap.set(childId, nodeDataMap);
 
       const edgeDataMap = new Y.Map<unknown>();
@@ -1246,7 +1336,7 @@ export function FlowWorkspace({
       id: siblingId,
       type: 'conceptNode',
       dragHandle: NODE_DRAG_HANDLE_SELECTOR,
-      data: { label: `Concept ${nodeCountRef.current + 1}` },
+      data: { label: `Concept ${nodeCountRef.current + 1}`, variant: 'default' },
       position: siblingPos,
     };
 
@@ -1281,6 +1371,7 @@ export function FlowWorkspace({
       nodeDataMap.set('id', siblingId);
       nodeDataMap.set('label', siblingNode.data.label);
       nodeDataMap.set('position', siblingNode.position);
+      nodeDataMap.set('variant', 'default');
       nodesMap.set(siblingId, nodeDataMap);
 
       const edgeDataMap = new Y.Map<unknown>();
@@ -1327,7 +1418,7 @@ export function FlowWorkspace({
       id: parentId,
       type: 'conceptNode',
       dragHandle: NODE_DRAG_HANDLE_SELECTOR,
-      data: { label: `Concept ${nodeCountRef.current + 1}` },
+      data: { label: `Concept ${nodeCountRef.current + 1}`, variant: 'default' },
       position: parentPos,
     };
 
@@ -1340,6 +1431,7 @@ export function FlowWorkspace({
       nodeDataMap.set('id', parentId);
       nodeDataMap.set('label', parentNode.data.label);
       nodeDataMap.set('position', parentNode.position);
+      nodeDataMap.set('variant', 'default');
       nodesMap.set(parentId, nodeDataMap);
 
       const edgeDataMap = new Y.Map<unknown>();
@@ -1790,6 +1882,30 @@ export function FlowWorkspace({
           <div className="pointer-events-auto flex items-center justify-between gap-1 text-[8px] font-semibold uppercase tracking-[0.08em] text-cyan-100">
             <span>{isDatabaseConnected ? 'DB OK' : 'DB OFF'}</span>
             <span className="truncate text-cyan-200/85">{connectSourceNodeId ? 'Connect' : unconnectSourceNodeId ? 'Unconnect' : `Color: ${selectedNodeLabel ?? selectedNodeId}`}</span>
+          </div>
+          <div className="pointer-events-auto rounded border border-cyan-500/25 bg-slate-900/80 p-1 text-[8px] text-cyan-100">
+            <div className="mb-1 flex items-center justify-between font-semibold uppercase tracking-[0.08em]">
+              <span>Node type</span>
+              <button
+                type="button"
+                onClick={() => handleChangeNodeVariant(selectedNodeId, selectedNodeVariant === 'default' ? 'descript' : 'default')}
+                className={`relative h-4 w-8 rounded-full transition ${selectedNodeVariant === 'descript' ? 'bg-cyan-400' : 'bg-slate-600'}`}
+                aria-label={`Switch node type to ${selectedNodeVariant === 'default' ? 'descript' : 'default'}`}
+              >
+                <span
+                  className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition ${selectedNodeVariant === 'descript' ? 'left-[17px]' : 'left-0.5'}`}
+                />
+              </button>
+            </div>
+            <p className="text-[7px] text-cyan-200/80">Left = default, Right = descript</p>
+            {selectedNodeVariant === 'descript' && (
+              <textarea
+                value={selectedNodeDescription}
+                onChange={(event) => handleChangeNodeDescription(selectedNodeId, event.target.value)}
+                placeholder="Description for expandable panel"
+                className="mt-1 min-h-[52px] w-full resize-y rounded border border-cyan-600/30 bg-slate-950/80 px-1 py-1 text-[9px] text-cyan-100 outline-none focus:border-cyan-400"
+              />
+            )}
           </div>
           <div className="pointer-events-auto rounded border border-cyan-500/25 bg-slate-900/80 p-1 text-[8px] text-cyan-100">
             <p className="mb-1 font-semibold uppercase tracking-[0.08em]">Gradients</p>
