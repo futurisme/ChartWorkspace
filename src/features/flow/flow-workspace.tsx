@@ -420,6 +420,16 @@ export function FlowWorkspace({
   const routingWorkerFailedRef = useRef(false);
   const latestRouteHashRef = useRef<string | null>(null);
   const latestDeferredEdgesRef = useRef<Edge[]>(deferredEdges);
+  const isDenseGraph = nodes.length >= DENSE_GRAPH_NODE_THRESHOLD;
+  const shouldSimplifyEdges =
+    nodes.length >= EDGE_SIMPLIFICATION_NODE_THRESHOLD
+    && edges.length >= EDGE_SIMPLIFICATION_EDGE_THRESHOLD
+    && viewportZoom < EDGE_SIMPLIFICATION_ZOOM_THRESHOLD;
+  const renderedEdges = useMemo(
+    () => (shouldSimplifyEdges ? buildSimplifiedEdges(routedEdges, selectedNodeId) : routedEdges),
+    [routedEdges, selectedNodeId, shouldSimplifyEdges]
+  );
+  const shouldRenderMiniMap = !isMobileViewport && nodes.length <= MINIMAP_MAX_NODE_THRESHOLD;
   const telemetryRef = useRef<Record<string, { samples: number; totalDurationMs: number; droppedFrames: number; maxDurationMs: number }>>({});
   const lastMovePresenceUpdateRef = useRef(0);
   const pendingMovePresenceRef = useRef<{
@@ -1697,17 +1707,6 @@ export function FlowWorkspace({
     () => ({ onChangeColor: handleChangeColor, isReadOnly }),
     [handleChangeColor, isReadOnly]
   );
-  const isDenseGraph = nodes.length >= DENSE_GRAPH_NODE_THRESHOLD;
-  const shouldSimplifyEdges =
-    nodes.length >= EDGE_SIMPLIFICATION_NODE_THRESHOLD
-    && edges.length >= EDGE_SIMPLIFICATION_EDGE_THRESHOLD
-    && viewportZoom < EDGE_SIMPLIFICATION_ZOOM_THRESHOLD;
-  const renderedEdges = useMemo(
-    () => (shouldSimplifyEdges ? buildSimplifiedEdges(routedEdges, selectedNodeId) : routedEdges),
-    [routedEdges, selectedNodeId, shouldSimplifyEdges]
-  );
-  const shouldRenderMiniMap = !isMobileViewport && nodes.length <= MINIMAP_MAX_NODE_THRESHOLD;
-
   useEffect(() => () => {
     if (movePresenceTimerRef.current) {
       clearTimeout(movePresenceTimerRef.current);
