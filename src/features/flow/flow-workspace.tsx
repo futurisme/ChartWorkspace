@@ -87,6 +87,22 @@ const GRADIENT_COLOR_OPTIONS = [
   'linear-gradient(135deg, #10b981 0%, #3b82f6 100%)',
 ];
 
+
+const COMPACT_COLOR_OPTIONS = [
+  ...GRADIENT_COLOR_OPTIONS.map((color) => ({
+    key: `gradient-${color}`,
+    color,
+    style: { backgroundImage: color } as const,
+    ariaLabel: `Set gradient color ${color}`,
+  })),
+  ...COLOR_OPTIONS.map((color) => ({
+    key: color,
+    color,
+    style: { backgroundColor: color } as const,
+    ariaLabel: `Set primary color ${color}`,
+  })),
+];
+
 const FlowToolbarDesktop = dynamic(
   () => import('./flow-toolbar-desktop').then((module) => module.FlowToolbarDesktop),
   {
@@ -1970,30 +1986,18 @@ export function FlowWorkspace({
               />
             )}
           </div>
-          <div className="pointer-events-auto rounded border border-cyan-500/25 bg-slate-900/80 p-1 text-[8px] text-cyan-100">
-            <p className="mb-1 font-semibold uppercase tracking-[0.08em]">Select color</p>
-            <div className="max-h-24 overflow-y-auto overflow-x-hidden pr-0.5">
-              <div className="grid grid-cols-3 gap-0.5">
-                {GRADIENT_COLOR_OPTIONS.map((color) => (
+          <div className="pointer-events-auto rounded border border-cyan-500/25 bg-slate-900/80 px-1 py-0.5 text-[8px] text-cyan-100">
+            <p className="mb-0.5 font-semibold uppercase tracking-[0.08em]">Select color</p>
+            <div className="max-h-16 overflow-y-scroll overflow-x-hidden pr-px">
+              <div className="grid grid-cols-3 justify-items-center gap-x-[2px] gap-y-0.5">
+                {COMPACT_COLOR_OPTIONS.map((swatch) => (
                   <button
-                    key={`gradient-${color}`}
+                    key={swatch.key}
                     type="button"
-                    onClick={() => handleChangeColor(selectedNodeId, color)}
-                    className={`h-3.5 w-3.5 rounded-[3px] border ${selectedNodeColor === color ? 'border-white' : 'border-slate-800'}`}
-                    style={{
-                      backgroundImage: color,
-                    }}
-                    aria-label={`Set gradient color ${color}`}
-                  />
-                ))}
-                {COLOR_OPTIONS.map((color) => (
-                  <button
-                    key={color}
-                    type="button"
-                    onClick={() => handleChangeColor(selectedNodeId, color)}
-                    className={`h-3.5 w-3.5 rounded-[3px] border ${selectedNodeColor === color ? 'border-white' : 'border-slate-800'}`}
-                    style={{ backgroundColor: color }}
-                    aria-label={`Set primary color ${color}`}
+                    onClick={() => handleChangeColor(selectedNodeId, swatch.color)}
+                    className={`h-3 w-3 rounded-[2px] border ${selectedNodeColor === swatch.color ? 'border-white' : 'border-slate-800'}`}
+                    style={swatch.style}
+                    aria-label={swatch.ariaLabel}
                   />
                 ))}
               </div>
