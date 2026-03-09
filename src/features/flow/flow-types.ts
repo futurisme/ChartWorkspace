@@ -5,6 +5,7 @@ export interface ConceptNodeData {
   color?: string;
   description?: string;
   variant?: 'default' | 'descript';
+  descriptionExpanded?: boolean;
   collaboratorNames?: string[];
   editedByOthers?: boolean;
 }
@@ -13,6 +14,7 @@ export type ConceptNode = Node<ConceptNodeData>;
 
 export interface NodeActionContextValue {
   onChangeColor: (nodeId: string, color: string) => void;
+  onToggleDescriptionPanel: (nodeId: string) => void;
   isReadOnly: boolean;
 }
 
@@ -41,6 +43,7 @@ export interface PersistedNodeRecord {
   color?: string;
   description?: string;
   variant?: 'default' | 'descript';
+  descriptionExpanded?: boolean;
 }
 
 export interface PersistedEdgeRecord {

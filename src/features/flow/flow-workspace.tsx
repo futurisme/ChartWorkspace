@@ -179,6 +179,11 @@ function readNodeVariant(data: YRecordMap, key: string): NodeVariant {
   return value === 'descript' ? 'descript' : 'default';
 }
 
+function readBoolean(data: YRecordMap, key: string): boolean | undefined {
+  const value = data.get(key);
+  return typeof value === 'boolean' ? value : undefined;
+}
+
 function readPosition(data: YRecordMap, key: string): XYPosition | null {
   const value = data.get(key);
   if (!value || typeof value !== 'object') {
@@ -201,6 +206,7 @@ function toPersistedNodeRecord(nodeId: string, nodeData: YRecordMap): PersistedN
     color: readString(nodeData, 'color'),
     description: readString(nodeData, 'description'),
     variant: readNodeVariant(nodeData, 'variant'),
+    descriptionExpanded: readBoolean(nodeData, 'descriptionExpanded') ?? false,
   };
 }
 
@@ -230,6 +236,7 @@ function buildNodeFromMap(nodeId: string, nodeData: YRecordMap): Node<ConceptNod
       color: persisted.color,
       description: persisted.description,
       variant: persisted.variant,
+      descriptionExpanded: persisted.descriptionExpanded,
     },
     position: persisted.position,
   };
@@ -279,6 +286,12 @@ function upsertNodeRecord(nodesMap: YNodeStore, node: Node<ConceptNodeData>) {
   } else {
     nodeData.delete('description');
   }
+
+  if (node.data?.descriptionExpanded) {
+    nodeData.set('descriptionExpanded', true);
+  } else {
+    nodeData.delete('descriptionExpanded');
+  }
 }
 
 function upsertEdgeRecord(edgesMap: YEdgeStore, edge: Edge) {
@@ -318,7 +331,8 @@ function isSameNode(a: Node, b: Node) {
     (aData?.label ?? '') === (bData?.label ?? '') &&
     (aData?.color ?? '') === (bData?.color ?? '') &&
     (aData?.description ?? '') === (bData?.description ?? '') &&
-    (aData?.variant ?? 'default') === (bData?.variant ?? 'default')
+    (aData?.variant ?? 'default') === (bData?.variant ?? 'default') &&
+    Boolean(aData?.descriptionExpanded) === Boolean(bData?.descriptionExpanded)
   );
 }
 
@@ -766,13 +780,16 @@ export function FlowWorkspace({
       if (nodeData) {
         doc.transact(() => {
           nodeData.set('variant', variant);
+          if (variant === 'default') {
+            nodeData.delete('descriptionExpanded');
+          }
         }, 'local');
       }
 
       setNodes((prev) =>
         prev.map((node) =>
           node.id === nodeId
-            ? { ...node, data: { ...node.data, variant } }
+            ? { ...node, data: { ...node.data, variant, descriptionExpanded: variant === 'descript' ? node.data.descriptionExpanded : false } }
             : node
         )
       );
@@ -795,6 +812,7 @@ export function FlowWorkspace({
             nodeData.set('description', normalizedDescription);
           } else {
             nodeData.delete('description');
+            nodeData.delete('descriptionExpanded');
           }
         }, 'local');
       }
@@ -807,10 +825,56 @@ export function FlowWorkspace({
                 data: {
                   ...node.data,
                   description,
+                  descriptionExpanded: description.trim() ? node.data.descriptionExpanded : false,
                 },
               }
             : node
         )
+      );
+    },
+    [doc, isReadOnly, setNodes]
+  );
+
+  const handleToggleDescriptionPanel = useCallback(
+    (nodeId: string) => {
+      if (isReadOnly || !doc) {
+        return;
+      }
+
+      const nodesMap = doc.getMap<YRecordMap>('nodes') as YNodeStore;
+      const nodeData = nodesMap.get(nodeId);
+      if (!nodeData) {
+        return;
+      }
+
+      const variant = readNodeVariant(nodeData, 'variant');
+      const description = readString(nodeData, 'description')?.trim() ?? '';
+      if (variant !== 'descript' || description.length === 0) {
+        return;
+      }
+
+      const nextExpanded = !(readBoolean(nodeData, 'descriptionExpanded') ?? false);
+      doc.transact(() => {
+        if (nextExpanded) {
+          nodeData.set('descriptionExpanded', true);
+        } else {
+          nodeData.delete('descriptionExpanded');
+        }
+      }, 'local');
+
+      setNodes((prev) =>
+        prev.map((node) => {
+          if (node.id !== nodeId) {
+            return node;
+          }
+
+          const normalizedDescription = node.data.description?.trim() ?? '';
+          if ((node.data.variant ?? 'default') !== 'descript' || normalizedDescription.length === 0) {
+            return { ...node, data: { ...node.data, descriptionExpanded: false } };
+          }
+
+          return { ...node, data: { ...node.data, descriptionExpanded: nextExpanded } };
+        })
       );
     },
     [doc, isReadOnly, setNodes]
@@ -1704,8 +1768,8 @@ export function FlowWorkspace({
   }, [inviteRequestToken]);
 
   const nodeActionContextValue = useMemo<NodeActionContextValue>(
-    () => ({ onChangeColor: handleChangeColor, isReadOnly }),
-    [handleChangeColor, isReadOnly]
+    () => ({ onChangeColor: handleChangeColor, onToggleDescriptionPanel: handleToggleDescriptionPanel, isReadOnly }),
+    [handleChangeColor, handleToggleDescriptionPanel, isReadOnly]
   );
   useEffect(() => () => {
     if (movePresenceTimerRef.current) {
@@ -1908,8 +1972,9 @@ export function FlowWorkspace({
           </div>
           <div className="pointer-events-auto rounded border border-cyan-500/25 bg-slate-900/80 p-1 text-[8px] text-cyan-100">
             <p className="mb-1 font-semibold uppercase tracking-[0.08em]">Gradients</p>
-            <div className="grid grid-cols-6 gap-1">
-              {GRADIENT_COLOR_OPTIONS.map((color) => (
+            <div className="max-h-28 overflow-y-auto overflow-x-hidden pr-0.5">
+              <div className="grid grid-cols-3 gap-1">
+                {GRADIENT_COLOR_OPTIONS.map((color) => (
                 <button
                   key={`gradient-${color}`}
                   type="button"
@@ -1920,13 +1985,15 @@ export function FlowWorkspace({
                   }}
                   aria-label={`Set gradient color ${color}`}
                 />
-              ))}
+                ))}
+              </div>
             </div>
           </div>
           <details className="pointer-events-auto rounded border border-cyan-500/25 bg-slate-900/80 p-1 text-[8px] text-cyan-100">
             <summary className="cursor-pointer select-none font-semibold uppercase tracking-[0.08em]">Solid colors</summary>
-            <div className="mt-1 grid grid-cols-8 gap-1">
-              {COLOR_OPTIONS.map((color) => (
+            <div className="mt-1 max-h-28 overflow-y-auto overflow-x-hidden pr-0.5">
+              <div className="grid grid-cols-3 gap-1">
+                {COLOR_OPTIONS.map((color) => (
                 <button
                   key={color}
                   type="button"
@@ -1935,7 +2002,8 @@ export function FlowWorkspace({
                   style={{ backgroundColor: color }}
                   aria-label={`Set primary color ${color}`}
                 />
-              ))}
+                ))}
+              </div>
             </div>
           </details>
         </div>

@@ -1,9 +1,10 @@
-import { createContext, memo, useContext, useEffect, useState } from 'react';
+import { createContext, memo, useContext } from 'react';
 import { Handle, NodeProps, Position } from 'reactflow';
 import type { ConceptNodeData, NodeActionContextValue } from './flow-types';
 
 export const NodeActionContext = createContext<NodeActionContextValue>({
   onChangeColor: () => {},
+  onToggleDescriptionPanel: (_nodeId: string) => {},
   isReadOnly: false,
 });
 
@@ -30,12 +31,12 @@ function normalizeNodeVariant(variant: ConceptNodeData['variant']) {
   return variant === 'descript' ? 'descript' : 'default';
 }
 
-function FlowNodeCardComponent({ data, selected }: NodeProps<ConceptNodeData>) {
-  const { isReadOnly } = useContext(NodeActionContext);
-  const [isExpanded, setIsExpanded] = useState(false);
+function FlowNodeCardComponent({ id, data, selected }: NodeProps<ConceptNodeData>) {
+  const { isReadOnly, onToggleDescriptionPanel } = useContext(NodeActionContext);
   const variant = normalizeNodeVariant(data.variant);
   const description = data.description?.trim() ?? '';
   const hasDescriptionPanel = variant === 'descript' && description.length > 0;
+  const isExpanded = Boolean(data.descriptionExpanded && hasDescriptionPanel);
   const colorValue = data.color ?? '#3b82f6';
   const gradientEnabled = isGradientColor(colorValue);
   const baseColor = gradientEnabled ? getFirstHexFromGradient(colorValue) : colorValue;
@@ -43,18 +44,12 @@ function FlowNodeCardComponent({ data, selected }: NodeProps<ConceptNodeData>) {
   const collaboratorNames = data.collaboratorNames ?? [];
   const editedByOthers = Boolean(data.editedByOthers && collaboratorNames.length > 0);
 
-  useEffect(() => {
-    if (!hasDescriptionPanel && isExpanded) {
-      setIsExpanded(false);
-    }
-  }, [hasDescriptionPanel, isExpanded]);
-
   const toggleDescriptionPanel = () => {
-    if (!hasDescriptionPanel) {
+    if (!hasDescriptionPanel || isReadOnly) {
       return;
     }
 
-    setIsExpanded((prev) => !prev);
+    onToggleDescriptionPanel(id);
   };
 
   return (
