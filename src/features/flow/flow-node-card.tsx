@@ -58,7 +58,7 @@ function FlowNodeCardComponent({ id, data, selected }: NodeProps<ConceptNodeData
         <div className="pointer-events-none absolute inset-0 z-30 rounded-lg" aria-hidden="true" />
 
         <div
-            className={`flow-node-drag-handle relative z-20 max-w-xs cursor-grab touch-none select-none rounded-lg border-2 px-3 py-2 shadow-lg active:cursor-grabbing ${
+          className={`flow-node-drag-handle relative z-20 max-w-xs cursor-grab touch-none select-none rounded-lg border-2 px-3 py-1.5 shadow-lg active:cursor-grabbing ${
             selected
               ? 'ring-2 ring-lime-400/80 shadow-[0_0_14px_rgba(132,204,22,0.55)]'
               : editedByOthers
@@ -93,7 +93,7 @@ function FlowNodeCardComponent({ id, data, selected }: NodeProps<ConceptNodeData
           <Handle type="source" position={Position.Left} id="s-left" className="pointer-events-none opacity-0" />
           <Handle type="source" position={Position.Right} id="s-right" className="pointer-events-none opacity-0" />
 
-          <div className="pointer-events-none break-words text-sm font-semibold sm:text-base">{data.label}</div>
+          <div className="pointer-events-none break-words text-sm font-semibold leading-tight sm:text-[15px]">{data.label}</div>
         </div>
 
         {hasDescriptionPanel && (
@@ -103,13 +103,13 @@ function FlowNodeCardComponent({ id, data, selected }: NodeProps<ConceptNodeData
               event.stopPropagation();
               toggleDescriptionPanel();
             }}
-            className="nodrag relative z-50 inline-flex min-h-[42px] w-9 shrink-0 items-center justify-center rounded-sm border-2 border-slate-950 bg-white text-slate-900 shadow-sm transition hover:bg-slate-50"
+            className="nodrag relative z-50 inline-flex min-h-[36px] w-8 shrink-0 items-center justify-center rounded-sm border-2 border-slate-950 bg-white text-slate-900 shadow-sm transition hover:bg-slate-50"
             aria-label={isExpanded ? 'Collapse description' : 'Expand description'}
           >
-            <span className="flex flex-col gap-1" aria-hidden="true">
-              <span className="h-0.5 w-5 rounded-full bg-slate-900" />
-              <span className="h-0.5 w-5 rounded-full bg-slate-900" />
-              <span className="h-0.5 w-5 rounded-full bg-slate-900" />
+            <span className="flex flex-col gap-0.5" aria-hidden="true">
+              <span className="h-0.5 w-4 rounded-full bg-slate-900" />
+              <span className="h-0.5 w-4 rounded-full bg-slate-900" />
+              <span className="h-0.5 w-4 rounded-full bg-slate-900" />
             </span>
           </button>
         )}
