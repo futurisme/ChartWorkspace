@@ -154,8 +154,8 @@ const EDGE_SIMPLIFICATION_NODE_THRESHOLD = 260;
 const EDGE_SIMPLIFICATION_EDGE_THRESHOLD = 900;
 const EDGE_SIMPLIFICATION_ZOOM_THRESHOLD = 0.78;
 const FLOW_TELEMETRY_ENABLED = process.env.NEXT_PUBLIC_DEBUG_FLOW_TELEMETRY === '1';
-const MOBILE_MIN_ZOOM = 0.5;
-const MOBILE_SNAP_ZOOM_THRESHOLD = 0.6;
+const MOBILE_MIN_ZOOM = 0.7;
+const MOBILE_SNAP_ZOOM_THRESHOLD = 0.85;
 
 type SchedulerWithPostTask = {
   postTask?: (callback: () => void, options?: { priority?: 'background' | 'user-visible' | 'user-blocking'; delay?: number }) => Promise<void>;
@@ -2074,13 +2074,13 @@ export function FlowWorkspace({
             attributionPosition="bottom-left"
             connectionLineType={ConnectionLineType.Straight}
             selectionOnDrag={false}
-            panOnDrag
+            panOnDrag={!isMobileViewport}
             panOnScroll={false}
             zoomOnPinch
             zoomOnScroll={!isMobileViewport}
             preventScrolling={false}
             minZoom={isMobileViewport ? MOBILE_MIN_ZOOM : 0.2}
-            nodeDragThreshold={isMobileViewport ? 1 : 2}
+            nodeDragThreshold={isMobileViewport ? 0 : 2}
             onlyRenderVisibleElements
             defaultEdgeOptions={{
               type: 'hierarchy',
