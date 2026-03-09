@@ -129,7 +129,7 @@ interface WorkspaceArchiveFile {
 
 const FRAME_BUDGET_MS = 16.7;
 const PRESENCE_MOVE_CADENCE_MS = 120;
-const NODE_DRAG_HANDLE_SELECTOR = '.flow-node-drag-hitbox';
+const NODE_DRAG_HANDLE_SELECTOR = '.flow-node-drag-handle';
 const WORKSPACE_ARCHIVE_MAGIC = 'chartworkspace/archive';
 const WORKSPACE_ARCHIVE_VERSION = 1;
 const DENSE_GRAPH_NODE_THRESHOLD = 180;
@@ -1971,41 +1971,34 @@ export function FlowWorkspace({
             )}
           </div>
           <div className="pointer-events-auto rounded border border-cyan-500/25 bg-slate-900/80 p-1 text-[8px] text-cyan-100">
-            <p className="mb-1 font-semibold uppercase tracking-[0.08em]">Gradients</p>
-            <div className="max-h-28 overflow-y-auto overflow-x-hidden pr-0.5">
-              <div className="grid grid-cols-3 gap-1">
+            <p className="mb-1 font-semibold uppercase tracking-[0.08em]">Select color</p>
+            <div className="max-h-24 overflow-y-auto overflow-x-hidden pr-0.5">
+              <div className="grid grid-cols-3 gap-0.5">
                 {GRADIENT_COLOR_OPTIONS.map((color) => (
-                <button
-                  key={`gradient-${color}`}
-                  type="button"
-                  onClick={() => handleChangeColor(selectedNodeId, color)}
-                  className={`h-4 w-4 rounded-sm border ${selectedNodeColor === color ? 'border-white' : 'border-slate-800'}`}
-                  style={{
-                    backgroundImage: color,
-                  }}
-                  aria-label={`Set gradient color ${color}`}
-                />
+                  <button
+                    key={`gradient-${color}`}
+                    type="button"
+                    onClick={() => handleChangeColor(selectedNodeId, color)}
+                    className={`h-3.5 w-3.5 rounded-[3px] border ${selectedNodeColor === color ? 'border-white' : 'border-slate-800'}`}
+                    style={{
+                      backgroundImage: color,
+                    }}
+                    aria-label={`Set gradient color ${color}`}
+                  />
+                ))}
+                {COLOR_OPTIONS.map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    onClick={() => handleChangeColor(selectedNodeId, color)}
+                    className={`h-3.5 w-3.5 rounded-[3px] border ${selectedNodeColor === color ? 'border-white' : 'border-slate-800'}`}
+                    style={{ backgroundColor: color }}
+                    aria-label={`Set primary color ${color}`}
+                  />
                 ))}
               </div>
             </div>
           </div>
-          <details className="pointer-events-auto rounded border border-cyan-500/25 bg-slate-900/80 p-1 text-[8px] text-cyan-100">
-            <summary className="cursor-pointer select-none font-semibold uppercase tracking-[0.08em]">Solid colors</summary>
-            <div className="mt-1 max-h-28 overflow-y-auto overflow-x-hidden pr-0.5">
-              <div className="grid grid-cols-3 gap-1">
-                {COLOR_OPTIONS.map((color) => (
-                <button
-                  key={color}
-                  type="button"
-                  onClick={() => handleChangeColor(selectedNodeId, color)}
-                  className={`h-4 w-4 rounded-sm border ${selectedNodeColor === color ? 'border-white' : 'border-slate-800'}`}
-                  style={{ backgroundColor: color }}
-                  aria-label={`Set primary color ${color}`}
-                />
-                ))}
-              </div>
-            </div>
-          </details>
         </div>
       )}
 
