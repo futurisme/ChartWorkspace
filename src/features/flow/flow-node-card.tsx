@@ -1,4 +1,4 @@
-import { createContext, memo, useContext, useState } from 'react';
+import { createContext, memo, useContext, useEffect, useState } from 'react';
 import { Handle, NodeProps, Position } from 'reactflow';
 import type { ConceptNodeData, NodeActionContextValue } from './flow-types';
 
@@ -17,7 +17,6 @@ function isLightColor(hex: string) {
   return luminance > 0.62;
 }
 
-
 function getFirstHexFromGradient(value: string) {
   const match = value.match(/#[0-9a-fA-F]{6}/);
   return match ? match[0] : '#3b82f6';
@@ -26,7 +25,6 @@ function getFirstHexFromGradient(value: string) {
 function isGradientColor(value: string) {
   return value.includes('gradient(');
 }
-
 
 function normalizeNodeVariant(variant: ConceptNodeData['variant']) {
   return variant === 'descript' ? 'descript' : 'default';
@@ -44,6 +42,20 @@ function FlowNodeCardComponent({ data, selected }: NodeProps<ConceptNodeData>) {
   const lightBackground = isLightColor(baseColor);
   const collaboratorNames = data.collaboratorNames ?? [];
   const editedByOthers = Boolean(data.editedByOthers && collaboratorNames.length > 0);
+
+  useEffect(() => {
+    if (!hasDescriptionPanel && isExpanded) {
+      setIsExpanded(false);
+    }
+  }, [hasDescriptionPanel, isExpanded]);
+
+  const toggleDescriptionPanel = () => {
+    if (!hasDescriptionPanel) {
+      return;
+    }
+
+    setIsExpanded((prev) => !prev);
+  };
 
   return (
     <div className="relative flow-node-drag-hitbox nopan">
@@ -63,6 +75,7 @@ function FlowNodeCardComponent({ data, selected }: NodeProps<ConceptNodeData>) {
           backgroundImage: gradientEnabled ? colorValue : undefined,
           color: lightBackground ? '#0f172a' : '#f8fafc',
         }}
+        onClick={toggleDescriptionPanel}
       >
         {editedByOthers && !selected && (
           <div className="pointer-events-none absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-amber-400/90 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-900">
@@ -74,6 +87,7 @@ function FlowNodeCardComponent({ data, selected }: NodeProps<ConceptNodeData>) {
             Editing This
           </div>
         )}
+
         <Handle type="target" position={Position.Top} id="t-top" className="pointer-events-none opacity-0" />
         <Handle type="target" position={Position.Bottom} id="t-bottom" className="pointer-events-none opacity-0" />
         <Handle type="target" position={Position.Left} id="t-left" className="pointer-events-none opacity-0" />
@@ -82,32 +96,36 @@ function FlowNodeCardComponent({ data, selected }: NodeProps<ConceptNodeData>) {
         <Handle type="source" position={Position.Bottom} id="s-bottom" className="pointer-events-none opacity-0" />
         <Handle type="source" position={Position.Left} id="s-left" className="pointer-events-none opacity-0" />
         <Handle type="source" position={Position.Right} id="s-right" className="pointer-events-none opacity-0" />
-        <div className="relative flex items-stretch">
-          <div className="pointer-events-none min-w-0 flex-1 break-words pr-2 text-sm font-semibold sm:text-base">{data.label}</div>
-          {hasDescriptionPanel && (
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                setIsExpanded((prev) => !prev);
-              }}
-              className="z-20 inline-flex h-full min-h-[42px] w-9 items-center justify-center border-l-2 border-slate-950/90 bg-white/95 text-slate-900 transition hover:bg-white"
-              aria-label={isExpanded ? 'Collapse description' : 'Expand description'}
-            >
-              <span className="flex flex-col gap-1" aria-hidden="true">
-                <span className="h-0.5 w-5 rounded-full bg-slate-900" />
-                <span className="h-0.5 w-5 rounded-full bg-slate-900" />
-                <span className="h-0.5 w-5 rounded-full bg-slate-900" />
-              </span>
-            </button>
-          )}
-        </div>
-        {hasDescriptionPanel && isExpanded && (
-          <div className="mt-2 w-full rounded-md border border-slate-800/70 bg-white/95 px-2 py-1 text-xs font-medium leading-relaxed text-slate-900">
-            {description}
-          </div>
+
+        <div className="pointer-events-none break-words text-sm font-semibold sm:text-base">{data.label}</div>
+
+        {hasDescriptionPanel && (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              toggleDescriptionPanel();
+            }}
+            className="absolute left-full top-0 ml-1 inline-flex h-full min-h-[42px] w-9 items-center justify-center rounded-sm border-2 border-slate-950 bg-white text-slate-900 shadow-sm transition hover:bg-slate-50"
+            aria-label={isExpanded ? 'Collapse description' : 'Expand description'}
+          >
+            <span className="flex flex-col gap-1" aria-hidden="true">
+              <span className="h-0.5 w-5 rounded-full bg-slate-900" />
+              <span className="h-0.5 w-5 rounded-full bg-slate-900" />
+              <span className="h-0.5 w-5 rounded-full bg-slate-900" />
+            </span>
+          </button>
         )}
       </div>
+
+      {hasDescriptionPanel && isExpanded && (
+        <div
+          className="mt-2 rounded-md border border-slate-900 bg-white px-3 py-2 text-xs font-medium leading-relaxed text-slate-900"
+          style={{ width: 'calc(100% + 2.5rem)' }}
+        >
+          {description}
+        </div>
+      )}
     </div>
   );
 }
