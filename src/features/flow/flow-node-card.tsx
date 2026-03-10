@@ -116,7 +116,7 @@ function FlowNodeCardComponent({ id, data, selected }: NodeProps<ConceptNodeData
       </div>
 
       {hasDescriptionPanel && isExpanded && (
-        <div className="mt-2 w-full rounded-md border border-slate-900 bg-white px-3 py-2 text-xs font-medium leading-relaxed text-slate-900">
+        <div className="mt-2 max-h-28 w-full overflow-y-auto rounded-md border border-slate-900 bg-white px-3 py-2 text-xs font-medium leading-relaxed text-slate-900 sm:max-h-40">
           {description}
         </div>
       )}
