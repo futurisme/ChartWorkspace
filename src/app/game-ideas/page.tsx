@@ -872,6 +872,19 @@ export default function GameIdeasPage() {
     return loading ? 'BOOTING...' : 'READY';
   }, [loading, saveState]);
 
+  useEffect(() => {
+    if (openCardIndex === null || typeof window === 'undefined') return;
+    const raf = window.requestAnimationFrame(() => {
+      const card = document.querySelector<HTMLElement>(`[data-item-index="${openCardIndex}"]`);
+      if (!card) return;
+      card.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(raf);
+    };
+  }, [openCardIndex, nav, currentCategory, items.length]);
+
   return (
     <main className="architect-shell">
       <header className="architect-header">
@@ -923,6 +936,7 @@ export default function GameIdeasPage() {
               data-drag-kind="item"
               data-drag-index={index}
               data-slot-index={index + 1}
+              data-item-index={index}
               onPointerDown={(event) => handlePointerDown('item', index, event.pointerId, event.clientX, event.clientY)}
               onPointerUp={(event) => handlePointerEnd(event.pointerId)}
               onPointerCancel={(event) => handlePointerEnd(event.pointerId)}
@@ -1406,11 +1420,11 @@ export default function GameIdeasPage() {
         .tab-btn,
         .card,
         .nav-item {
-          transition: transform 150ms cubic-bezier(0.2, 0.9, 0.2, 1), box-shadow 120ms ease;
+          transition: transform 220ms cubic-bezier(0.18, 0.92, 0.2, 1), box-shadow 140ms ease;
           will-change: transform;
         }
-        .drag-shift-up { transform: translate3d(0, -10px, 0); }
-        .drag-shift-down { transform: translate3d(0, 10px, 0); }
+        .drag-shift-up { transform: translate3d(0, calc(-100% - 8px), 0); }
+        .drag-shift-down { transform: translate3d(0, calc(100% + 8px), 0); }
         .drag-indicator {
           position: fixed;
           left: 50%;
@@ -1520,8 +1534,20 @@ export default function GameIdeasPage() {
           .sidebar { width: 100%; }
           .sub-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: 116px; gap: 5px; }
           .tab-btn { text-align: center; padding: 6px 5px; }
-          .content-area { grid-template-columns: 1fr; gap: 7px; }
+          .content-area {
+            grid-template-columns: 1fr;
+            gap: 7px;
+            max-height: 50dvh;
+            overflow-y: auto;
+            overscroll-behavior: contain;
+            padding-bottom: max(10px, env(safe-area-inset-bottom));
+          }
           .card-head { padding: 7px 40px 7px 9px; }
+          .sub-tabs {
+            max-height: 50dvh;
+            overflow-y: auto;
+            overscroll-behavior: contain;
+          }
           
           .footer { padding: 7px 6px; }
           .nav-item { padding: 6px 6px; max-width: 22vw; }
