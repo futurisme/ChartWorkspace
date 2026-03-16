@@ -52,7 +52,8 @@ const DRAG_HOLD_MS = 420;
 const CONTENT_SCROLL_EXTRA_SPACE_PX = 96;
 const NAV_ORDER_STORAGE_KEY = `${GAME_IDEA_STORAGE_KEY}_NAV_ORDER`;
 const ADMIN_ACCESS_PERSIST_KEY = `${GAME_IDEA_STORAGE_KEY}_ADMIN_GRANTED`;
-const ADMIN_ALREADY_NOTICE_MS = 2000;
+const ADMIN_RESTORE_SESSION_KEY = `${GAME_IDEA_STORAGE_KEY}_ADMIN_RESTORE_SESSION`;
+const FORCE_REMOTE_REFRESH_KEY = `${GAME_IDEA_STORAGE_KEY}_FORCE_REMOTE_REFRESH`;
 
 
 const EMPTY_GAME_IDEA_DATA: GameIdeaDatabase = {
@@ -228,7 +229,6 @@ export default function GameIdeasPage() {
   const [activeDrag, setActiveDrag] = useState<ActiveDrag | null>(null);
   const [scrollHint, setScrollHint] = useState({ show: false, up: false, down: false });
   const [dynamicScrollSpacer, setDynamicScrollSpacer] = useState(CONTENT_SCROLL_EXTRA_SPACE_PX);
-  const [adminNotice, setAdminNotice] = useState('');
 
   const hydratedRef = useRef(false);
   const dbRef = useRef(DEFAULT_GAME_IDEA_DATA);
@@ -243,7 +243,7 @@ export default function GameIdeasPage() {
   const dragPointerRef = useRef<{ kind: DragKind; pointerId: number; startX: number; startY: number } | null>(null);
   const importFileRef = useRef<HTMLInputElement | null>(null);
   const liveSyncInFlightRef = useRef(false);
-  const adminNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const adminModeRef = useRef(false);
 
   const serializedDb = useMemo(() => JSON.stringify(db), [db]);
   const dbHash = useMemo(() => hashDb(serializedDb), [serializedDb]);
@@ -251,16 +251,40 @@ export default function GameIdeasPage() {
   const categoryList = currentSection.categories;
   const currentCategory = category || categoryList[0] || '';
   const items = useMemo(() => currentSection.data[currentCategory] ?? [], [currentCategory, currentSection.data]);
+  const hasSensitiveDraftOpen = Boolean(renameAction || showItemModal);
+  const hasSensitiveDraftOpenRef = useRef(hasSensitiveDraftOpen);
+
 
   useEffect(() => {
     dbRef.current = db;
   }, [db]);
 
   useEffect(() => {
+    adminModeRef.current = adminMode;
+  }, [adminMode]);
+
+  useEffect(() => {
+    hasSensitiveDraftOpenRef.current = hasSensitiveDraftOpen;
+  }, [hasSensitiveDraftOpen]);
+
+  useEffect(() => {
     if (typeof window === 'undefined') return;
 
     let localDb: GameIdeaDatabase | null = null;
-    const cached = localStorage.getItem(GAME_IDEA_STORAGE_KEY);
+    const shouldForceRemoteRefresh = Boolean(localStorage.getItem(FORCE_REMOTE_REFRESH_KEY));
+    if (shouldForceRemoteRefresh) {
+      localStorage.removeItem(FORCE_REMOTE_REFRESH_KEY);
+      localStorage.removeItem(GAME_IDEA_STORAGE_KEY);
+    }
+
+    const restoreAdminFromSession = sessionStorage.getItem(ADMIN_RESTORE_SESSION_KEY) === '1';
+    sessionStorage.removeItem(ADMIN_RESTORE_SESSION_KEY);
+    localStorage.removeItem(ADMIN_ACCESS_PERSIST_KEY);
+    if (restoreAdminFromSession) {
+      setAdminMode(true);
+    }
+
+    const cached = shouldForceRemoteRefresh ? null : localStorage.getItem(GAME_IDEA_STORAGE_KEY);
 
     if (cached) {
       try {
@@ -430,39 +454,26 @@ export default function GameIdeasPage() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const hasPersistedAdmin = localStorage.getItem(ADMIN_ACCESS_PERSIST_KEY) === '1';
-    if (!hasPersistedAdmin) return;
 
-    setAdminMode(true);
-    setAdminNotice('ALREADY has ADMIN');
-    if (adminNoticeTimerRef.current) {
-      clearTimeout(adminNoticeTimerRef.current);
-    }
-    adminNoticeTimerRef.current = setTimeout(() => {
-      setAdminNotice('');
-      adminNoticeTimerRef.current = null;
-    }, ADMIN_ALREADY_NOTICE_MS);
-  }, []);
-
-  useEffect(
-    () => () => {
-      if (adminNoticeTimerRef.current) {
-        clearTimeout(adminNoticeTimerRef.current);
-        adminNoticeTimerRef.current = null;
+    const prepareLeave = () => {
+      if (hasSensitiveDraftOpenRef.current) {
+        sessionStorage.setItem(ADMIN_RESTORE_SESSION_KEY, adminModeRef.current ? '1' : '0');
+        return;
       }
-    },
-    []
-  );
 
-  const showAlreadyAdminNotice = useCallback(() => {
-    setAdminNotice('ALREADY has ADMIN');
-    if (adminNoticeTimerRef.current) {
-      clearTimeout(adminNoticeTimerRef.current);
-    }
-    adminNoticeTimerRef.current = setTimeout(() => {
-      setAdminNotice('');
-      adminNoticeTimerRef.current = null;
-    }, ADMIN_ALREADY_NOTICE_MS);
+      sessionStorage.removeItem(ADMIN_RESTORE_SESSION_KEY);
+      localStorage.removeItem(ADMIN_ACCESS_PERSIST_KEY);
+      localStorage.setItem(FORCE_REMOTE_REFRESH_KEY, String(Date.now()));
+      setAdminMode(false);
+    };
+
+    window.addEventListener('pagehide', prepareLeave);
+    window.addEventListener('beforeunload', prepareLeave);
+
+    return () => {
+      window.removeEventListener('pagehide', prepareLeave);
+      window.removeEventListener('beforeunload', prepareLeave);
+    };
   }, []);
 
   const openAddChooser = useCallback(() => {
@@ -485,16 +496,10 @@ export default function GameIdeasPage() {
       return;
     }
 
-    if (typeof window !== 'undefined' && localStorage.getItem(ADMIN_ACCESS_PERSIST_KEY) === '1') {
-      setAdminMode(true);
-      showAlreadyAdminNotice();
-      return;
-    }
-
     setAccessCodeInput('');
     setAccessCodeError('');
     setShowAccessModal(true);
-  }, [adminMode, showAlreadyAdminNotice]);
+  }, [adminMode]);
 
   const confirmEnableAdminMode = useCallback(() => {
     if (accessCodeInput.trim() !== ADMIN_ACCESS_CODE) {
@@ -502,9 +507,6 @@ export default function GameIdeasPage() {
       return;
     }
 
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(ADMIN_ACCESS_PERSIST_KEY, '1');
-    }
     setAdminMode(true);
     setShowAccessModal(false);
     setAccessCodeInput('');
@@ -1143,7 +1145,6 @@ export default function GameIdeasPage() {
           </button>
         </div>
       </header>
-      {adminNotice ? <div className="admin-notice" role="status" aria-live="polite">{adminNotice}</div> : null}
 
       <input ref={importFileRef} type="file" accept=".fAdHiL,application/json" className="hidden" onChange={handlePickImportFile} />
 
@@ -1517,23 +1518,6 @@ export default function GameIdeasPage() {
           align-items: center;
           justify-content: space-between;
           gap: 8px;
-        }
-        .admin-notice {
-          position: fixed;
-          top: calc(var(--header-h) + env(safe-area-inset-top) + 8px);
-          left: 50%;
-          transform: translateX(-50%);
-          z-index: 1800;
-          padding: 7px 12px;
-          border: 1px solid rgba(34, 197, 94, 0.72);
-          border-radius: 8px;
-          background: rgba(6, 20, 14, 0.96);
-          color: #86efac;
-          box-shadow: 0 0 0 1px rgba(22, 163, 74, 0.24), 0 10px 26px rgba(0, 0, 0, 0.45);
-          font-size: 10px;
-          letter-spacing: 0.14em;
-          text-transform: uppercase;
-          pointer-events: none;
         }
         .architect-header h1 { font-size: 0.78rem; letter-spacing: 0.7px; color: #fff; text-shadow: var(--neon-intense); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; transform: scaleX(0.88); transform-origin: left center; max-width: 44%; }
         .header-actions { display: inline-flex; gap: 5px; align-items: center; flex-wrap: nowrap; justify-content: flex-end; min-width: 0; flex: 1; }
