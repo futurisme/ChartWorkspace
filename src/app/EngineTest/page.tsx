@@ -1,6 +1,5 @@
 'use client';
 
-import { FadhilAiGlobalChat } from '@/components/FadhilAiGlobalChat';
 import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 
 type FadhilNode = {
@@ -309,7 +308,6 @@ export default function EngineTestPage() {
           })}
         </div>
       </section>
-          <FadhilAiGlobalChat />
     </main>
   );
 }

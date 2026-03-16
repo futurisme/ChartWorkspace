@@ -12,6 +12,7 @@ type BroadcastPayload = {
 };
 
 const CHANNEL = 'fadhil-ai-global-face-v1';
+const STORAGE_KEY = 'fadhil-ai-global-face-payload';
 
 const initialFace: FaceParams = {
   eye_open: 0.92,
@@ -53,6 +54,7 @@ export function FadhilAiGlobalChat() {
   const speakingRef = useRef(false);
   const seenRef = useRef(new Set<string>());
   const channelRef = useRef<BroadcastChannel | null>(null);
+  const canBroadcastRef = useRef(false);
 
   const [face, setFace] = useState<FaceParams>(initialFace);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
@@ -133,15 +135,34 @@ export function FadhilAiGlobalChat() {
     };
     frameRef.current = window.requestAnimationFrame(anim);
 
-    channelRef.current = new BroadcastChannel(CHANNEL);
-    channelRef.current.onmessage = (event: MessageEvent<BroadcastPayload>) => {
-      if (event.data?.type === 'fadhil-ai-chat-speak') void playPayload(event.data);
+    canBroadcastRef.current = typeof window.BroadcastChannel !== 'undefined';
+    if (canBroadcastRef.current) {
+      try {
+        channelRef.current = new BroadcastChannel(CHANNEL);
+        channelRef.current.onmessage = (event: MessageEvent<BroadcastPayload>) => {
+          if (event.data?.type === 'fadhil-ai-chat-speak') void playPayload(event.data);
+        };
+      } catch {
+        canBroadcastRef.current = false;
+      }
+    }
+
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== STORAGE_KEY || !event.newValue) return;
+      try {
+        const payload = JSON.parse(event.newValue) as BroadcastPayload;
+        if (payload?.type === 'fadhil-ai-chat-speak') void playPayload(payload);
+      } catch {
+        // ignore malformed payload
+      }
     };
+    window.addEventListener('storage', onStorage);
 
     return () => {
       window.speechSynthesis.cancel();
       window.speechSynthesis.onvoiceschanged = null;
       if (frameRef.current) window.cancelAnimationFrame(frameRef.current);
+      window.removeEventListener('storage', onStorage);
       channelRef.current?.close();
     };
   }, [playPayload]);
@@ -156,7 +177,15 @@ export function FadhilAiGlobalChat() {
       text,
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
     };
-    channelRef.current?.postMessage(payload);
+    if (canBroadcastRef.current && channelRef.current) {
+      channelRef.current.postMessage(payload);
+    } else if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+      } catch {
+        // storage may be unavailable in private mode
+      }
+    }
     await playPayload(payload);
   };
 
