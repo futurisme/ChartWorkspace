@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { MapServiceError, NO_STORE_CACHE_CONTROL, saveMap } from '@/features/maps/server/maps-service';
+import { decodeServerFadhilWebSnapshot } from '@/features/maps/server/fadhil-web-server';
 
 function createErrorResponse(error: string, status: number, details?: string) {
   return NextResponse.json(
@@ -17,8 +18,9 @@ function createErrorResponse(error: string, status: number, details?: string) {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json()) as { id?: string; snapshot?: string };
-    const result = await saveMap(body.id, body.snapshot);
+    const body = (await request.json()) as { id?: string; snapshot?: string; snapshotCompressed?: unknown };
+    const inflatedSnapshot = decodeServerFadhilWebSnapshot(body.snapshotCompressed);
+    const result = await saveMap(body.id, inflatedSnapshot ?? body.snapshot);
 
     return NextResponse.json(result, {
       headers: {

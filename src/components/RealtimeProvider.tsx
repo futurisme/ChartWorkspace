@@ -14,6 +14,7 @@ import { WebsocketProvider } from 'y-websocket';
 import { UserPresence, setupAwareness, getRemoteUsers, generateUserColor } from '@/features/collaboration/shared/presence';
 import { applyYjsSnapshot, getCurrentSnapshot } from '@/features/maps/shared/map-snapshot';
 import { formatMapId, parseMapId } from '@/features/maps/shared/map-id';
+import { encodeFadhilWebSnapshot } from '@/features/maps/shared/fadhil-web-client';
 
 const LOCAL_SIGNALING_URL = 'ws://localhost:4444';
 const REALTIME_LOG_PREFIX = '[realtime]';
@@ -700,11 +701,20 @@ export function RealtimeProvider({
     try {
       const updateMark = updateCounterRef.current;
       const snapshot = getCurrentSnapshot(doc);
-      const saveRequestBody = JSON.stringify({
-        id: mapId,
-        snapshot,
-        version: currentVersion,
-      });
+      const compressed = await encodeFadhilWebSnapshot(snapshot);
+      const saveRequestBody = JSON.stringify(
+        compressed
+          ? {
+              id: mapId,
+              snapshotCompressed: compressed,
+              version: currentVersion,
+            }
+          : {
+              id: mapId,
+              snapshot,
+              version: currentVersion,
+            }
+      );
       const approxPayloadBytes = getApproxPayloadBytes(saveRequestBody);
       lastSavePayloadBytesRef.current = approxPayloadBytes;
 
@@ -740,6 +750,7 @@ export function RealtimeProvider({
           mapId,
           mode,
           payloadBytes: approxPayloadBytes,
+          transport: compressed ? 'fadhil-web-compressed' : 'plain-json',
           note: 'Autosave intentionally avoids fetch keepalive to prevent browser transport rejections on larger payloads.',
         });
       }
