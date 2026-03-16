@@ -52,6 +52,7 @@ export function FadhilAiGlobalChat() {
   const queueRef = useRef<string[]>([]);
   const idxRef = useRef(0);
   const speakingRef = useRef(false);
+  const speechWatchdogRef = useRef<number | null>(null);
   const seenRef = useRef(new Set<string>());
   const channelRef = useRef<BroadcastChannel | null>(null);
   const canBroadcastRef = useRef(false);
@@ -73,6 +74,10 @@ export function FadhilAiGlobalChat() {
 
     const next = queueRef.current[idxRef.current];
     if (!next) {
+      if (speechWatchdogRef.current) {
+        window.clearTimeout(speechWatchdogRef.current);
+        speechWatchdogRef.current = null;
+      }
       speakingRef.current = false;
       setState('idle');
       setOverlayVisible(false);
@@ -99,6 +104,10 @@ export function FadhilAiGlobalChat() {
     utterance.volume = 1;
 
     utterance.onstart = () => {
+      if (speechWatchdogRef.current) {
+        window.clearTimeout(speechWatchdogRef.current);
+        speechWatchdogRef.current = null;
+      }
       speakingRef.current = true;
       setState('speaking');
       setOverlayVisible(true);
@@ -113,6 +122,14 @@ export function FadhilAiGlobalChat() {
     };
 
     window.speechSynthesis.speak(utterance);
+
+    if (speechWatchdogRef.current) window.clearTimeout(speechWatchdogRef.current);
+    speechWatchdogRef.current = window.setTimeout(() => {
+      if (speakingRef.current) return;
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.resume();
+      speakNext();
+    }, 280);
   }, [bestVoice]);
 
   const playPayload = useCallback(async (payload: BroadcastPayload) => {
@@ -173,6 +190,7 @@ export function FadhilAiGlobalChat() {
     window.addEventListener('storage', onStorage);
 
     return () => {
+      if (speechWatchdogRef.current) window.clearTimeout(speechWatchdogRef.current);
       window.speechSynthesis.cancel();
       window.speechSynthesis.onvoiceschanged = null;
       if (frameRef.current) window.cancelAnimationFrame(frameRef.current);
@@ -194,11 +212,16 @@ export function FadhilAiGlobalChat() {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
     };
 
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.resume();
+    }
+
     if (canBroadcastRef.current && channelRef.current) {
       channelRef.current.postMessage(payload);
     } else if (typeof window !== 'undefined') {
       try {
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+        window.localStorage.removeItem(STORAGE_KEY);
       } catch {
         // storage may be unavailable in private mode
       }
@@ -221,9 +244,9 @@ export function FadhilAiGlobalChat() {
 
   return (
     <>
-      <div className="fixed bottom-4 right-4 z-40 flex items-center gap-2">
+      <div className="fixed bottom-1 right-1 z-40 flex items-end gap-1.5">
         {openInput && (
-          <div className="flex items-center gap-1 rounded-2xl border border-cyan-300/40 bg-gradient-to-r from-slate-900/95 via-slate-900/95 to-cyan-950/90 px-2 py-1.5 shadow-[0_8px_22px_rgba(8,47,73,0.45)] backdrop-blur">
+          <div className="mb-1 flex items-center gap-1 rounded-2xl border border-cyan-300/40 bg-gradient-to-r from-slate-900/95 via-slate-900/95 to-cyan-950/90 px-2 py-1.5 shadow-[0_8px_22px_rgba(8,47,73,0.45)] backdrop-blur">
             <input
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
@@ -248,7 +271,7 @@ export function FadhilAiGlobalChat() {
           type="button"
           onClick={() => setOpenInput((v) => !v)}
           aria-label="Open global chat speech"
-          className="h-10 w-10 rounded-full border border-cyan-200/40 bg-gradient-to-br from-cyan-500 via-sky-500 to-indigo-600 text-base font-bold text-white shadow-[0_8px_24px_rgba(6,182,212,0.45)]"
+          className="h-7 w-7 rounded-full border border-cyan-200/40 bg-gradient-to-br from-cyan-500 via-sky-500 to-indigo-600 text-[10px] font-bold text-white shadow-[0_4px_14px_rgba(6,182,212,0.45)]"
         >
           💬
         </button>
