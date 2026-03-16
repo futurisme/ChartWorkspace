@@ -49,6 +49,7 @@ const CATEGORY_DELETE_CODE = 'DeleteCategoryByCode';
 const UNIVERSAL_RENAME_CLICKS = 3;
 const UNIVERSAL_RENAME_WINDOW_MS = 3000;
 const DRAG_HOLD_MS = 420;
+const CONTENT_SCROLL_EXTRA_SPACE_PX = 220;
 const NAV_ORDER_STORAGE_KEY = `${GAME_IDEA_STORAGE_KEY}_NAV_ORDER`;
 
 
@@ -205,6 +206,7 @@ export default function GameIdeasPage() {
   const hydratedRef = useRef(false);
   const dbRef = useRef(DEFAULT_GAME_IDEA_DATA);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const contentAreaRef = useRef<HTMLElement | null>(null);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const serverVersionRef = useRef<number | null>(null);
   const lastSyncedHashRef = useRef<string | null>(null);
@@ -990,7 +992,7 @@ export default function GameIdeasPage() {
     if (openCardIndex === null || typeof window === 'undefined') return;
 
     const syncIntoView = () => {
-      const container = document.querySelector<HTMLElement>('.content-area');
+      const container = contentAreaRef.current;
       const card = document.querySelector<HTMLElement>(`[data-item-index="${openCardIndex}"]`);
       if (!container || !card) return;
 
@@ -1000,7 +1002,7 @@ export default function GameIdeasPage() {
       const cardBottom = container.scrollTop + (r.bottom - cRect.top);
 
       const padTop = 10;
-      const padBottom = 16;
+      const padBottom = 24;
       const viewportTop = container.scrollTop;
       const viewportBottom = container.scrollTop + container.clientHeight;
 
@@ -1010,7 +1012,9 @@ export default function GameIdeasPage() {
       }
 
       if (cardBottom + padBottom > viewportBottom) {
-        container.scrollTo({ top: Math.min(container.scrollHeight, cardBottom + padBottom - container.clientHeight), behavior: 'smooth' });
+        const targetTop = cardBottom + padBottom - container.clientHeight + CONTENT_SCROLL_EXTRA_SPACE_PX;
+        const maxTop = Math.max(0, container.scrollHeight - container.clientHeight);
+        container.scrollTo({ top: Math.min(maxTop, targetTop), behavior: 'smooth' });
       }
     };
 
@@ -1076,7 +1080,7 @@ export default function GameIdeasPage() {
           </nav>
         </aside>
 
-        <section className="content-area">
+        <section className="content-area" ref={contentAreaRef}>
           {items.map((item, index) => (
             <div
               key={`${item.name}-${index}`}
@@ -1138,6 +1142,7 @@ export default function GameIdeasPage() {
             </div>
           ))}
 
+          <div className="content-scroll-spacer" aria-hidden="true" />
           {!loading && items.length === 0 && <p className="empty-hint">Belum ada ide di kategori ini.</p>}
           {error && <p className="error-hint">{error}</p>}
         </section>
@@ -1480,11 +1485,18 @@ export default function GameIdeasPage() {
           overflow-x: hidden;
           overscroll-behavior: contain;
           -webkit-overflow-scrolling: touch;
+          touch-action: pan-y;
+          scroll-behavior: smooth;
           display: grid;
           grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
           gap: 8px;
           align-content: start;
           padding-right: 2px;
+        }
+        .content-scroll-spacer {
+          grid-column: 1 / -1;
+          height: max(28dvh, calc(var(--footer-h) + ${CONTENT_SCROLL_EXTRA_SPACE_PX}px));
+          pointer-events: none;
         }
         .card {
           position: relative;
@@ -1746,7 +1758,7 @@ export default function GameIdeasPage() {
             -webkit-overflow-scrolling: touch;
             touch-action: pan-y;
             scroll-behavior: smooth;
-            padding-bottom: max(20px, env(safe-area-inset-bottom));
+            padding-bottom: max(20px, calc(env(safe-area-inset-bottom) + 20px));
           }
           .card-head { padding: 7px 40px 7px 9px; }
           
