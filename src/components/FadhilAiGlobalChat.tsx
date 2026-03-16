@@ -59,6 +59,7 @@ export function FadhilAiGlobalChat() {
   const [face, setFace] = useState<FaceParams>(initialFace);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [state, setState] = useState<EngineState>('idle');
+  const [overlayVisible, setOverlayVisible] = useState(false);
   const [openInput, setOpenInput] = useState(false);
   const [chatInput, setChatInput] = useState('');
 
@@ -74,6 +75,14 @@ export function FadhilAiGlobalChat() {
     if (!next) {
       speakingRef.current = false;
       setState('idle');
+      setOverlayVisible(false);
+      return;
+    }
+
+    if (typeof window.SpeechSynthesisUtterance !== 'function') {
+      speakingRef.current = false;
+      setState('unsupported');
+      setOverlayVisible(false);
       return;
     }
 
@@ -91,6 +100,7 @@ export function FadhilAiGlobalChat() {
     utterance.onstart = () => {
       speakingRef.current = true;
       setState('speaking');
+      setOverlayVisible(true);
     };
     utterance.onend = () => {
       idxRef.current += 1;
@@ -110,7 +120,9 @@ export function FadhilAiGlobalChat() {
     idxRef.current = 0;
     queueRef.current = splitIntoChunks(payload.text);
     await engineRef.current.runDetection(payload.text);
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel();
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
     speakNext();
   }, [speakNext]);
 
@@ -221,6 +233,7 @@ export function FadhilAiGlobalChat() {
         <button type="button" onClick={() => setOpenInput((v) => !v)} className="h-9 w-9 rounded-full bg-cyan-600 text-sm font-bold text-white shadow-xl">💬</button>
       </div>
 
+      {overlayVisible && (
       <div className={`pointer-events-none fixed inset-0 z-30 flex items-start justify-center transition-transform duration-300 ${state === 'speaking' ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0'}`}>
         <div className="mt-8 w-[290px] rounded-2xl border border-amber-300/50 bg-slate-900/85 p-2 shadow-2xl backdrop-blur">
           <svg viewBox="0 0 280 200" className="w-full" role="img" aria-label="FadhilAiEngine global dynamic face">
@@ -256,6 +269,7 @@ export function FadhilAiGlobalChat() {
           </svg>
         </div>
       </div>
+      )}
     </>
   );
 }
