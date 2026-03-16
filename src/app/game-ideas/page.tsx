@@ -1030,7 +1030,7 @@ export default function GameIdeasPage() {
   }, [openCardIndex, nav, currentCategory, items.length]);
 
   return (
-    <main className={`architect-shell ${adminMode ? 'with-admin-panel' : ''}`}>
+    <main className={`architect-shell ${adminMode ? 'with-admin-panel' : ''} ${items.length >= 5 ? 'has-scrollable-items' : ''}`}>
       <header className="architect-header">
         <h1>Created by Fadhil Akbar</h1>
         <div className="header-actions">
@@ -1080,7 +1080,7 @@ export default function GameIdeasPage() {
           </nav>
         </aside>
 
-        <section className="content-area" ref={contentAreaRef}>
+        <section className={`content-area ${items.length >= 5 ? 'scroll-armed' : ''}`} ref={contentAreaRef}>
           {items.map((item, index) => (
             <div
               key={`${item.name}-${index}`}
@@ -1407,6 +1407,9 @@ export default function GameIdeasPage() {
         .architect-shell.with-admin-panel .layout {
           height: calc(100dvh - var(--header-h) - var(--footer-h) - var(--admin-h) - env(safe-area-inset-bottom));
         }
+        .architect-shell.has-scrollable-items .layout {
+          height: calc(100dvh - var(--header-h) - var(--footer-h) - var(--admin-h) - env(safe-area-inset-bottom));
+        }
         .architect-header {
           padding: 7px 10px;
           border-bottom: 1px solid var(--border);
@@ -1484,7 +1487,7 @@ export default function GameIdeasPage() {
         .content-area {
           flex: 1;
           min-height: 0;
-          overflow-y: auto;
+          overflow-y: hidden;
           overflow-x: hidden;
           overscroll-behavior: contain;
           -webkit-overflow-scrolling: touch;
@@ -1495,11 +1498,18 @@ export default function GameIdeasPage() {
           gap: 8px;
           align-content: start;
           padding-right: 2px;
+          padding-bottom: max(20px, calc(var(--footer-h) + env(safe-area-inset-bottom)));
+        }
+        .content-area.scroll-armed {
+          overflow-y: auto;
         }
         .content-scroll-spacer {
           grid-column: 1 / -1;
-          height: max(28dvh, calc(var(--footer-h) + ${CONTENT_SCROLL_EXTRA_SPACE_PX}px));
+          height: max(14dvh, calc(var(--footer-h) + 64px));
           pointer-events: none;
+        }
+        .content-area.scroll-armed .content-scroll-spacer {
+          height: max(34dvh, calc(var(--footer-h) + var(--admin-h) + ${CONTENT_SCROLL_EXTRA_SPACE_PX}px));
         }
         .card {
           position: relative;
@@ -1777,6 +1787,9 @@ export default function GameIdeasPage() {
             touch-action: pan-y;
             scroll-behavior: smooth;
             padding-bottom: max(20px, calc(env(safe-area-inset-bottom) + 20px));
+          }
+          .content-area.scroll-armed {
+            padding-bottom: max(32px, calc(var(--footer-h) + var(--admin-h) + env(safe-area-inset-bottom) + 28px));
           }
           .card-head { padding: 7px 40px 7px 9px; }
           
