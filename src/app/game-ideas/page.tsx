@@ -1368,9 +1368,7 @@ export default function GameIdeasPage() {
           font-size: 12px;
           font-family: 'Orbitron', 'Rajdhani', 'Inter', 'Segoe UI', sans-serif;
           font-weight: 700;
-          overflow: auto;
-          overscroll-behavior-y: contain;
-          scrollbar-gutter: stable both-edges;
+          overflow: hidden;
         }
         .architect-shell.with-admin-panel {
           --admin-h: 56px;
@@ -1409,7 +1407,7 @@ export default function GameIdeasPage() {
         }
         .layout { flex: 1; display: flex; gap: 10px; padding: 10px; min-height: 0; overflow: hidden; }
         .sidebar { width: 170px; flex-shrink: 0; }
-        .sub-tabs { display: flex; flex-direction: column; gap: 4px; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; max-height: 100%; }
+        .sub-tabs { display: flex; flex-direction: column; gap: 4px; overflow: hidden; max-height: 100%; }
         .slot-shell {
           position: relative;
           outline: 1px solid rgba(148, 163, 184, 0.35);
@@ -1470,9 +1468,7 @@ export default function GameIdeasPage() {
           background-size: 180% 180%;
           border: 1px solid rgba(0, 242, 255, 0.42);
           box-shadow: 0 0 18px rgba(0, 242, 255, 0.2), inset 0 0 0 1px rgba(0, 242, 255, 0.14);
-          overflow: auto;
-          overscroll-behavior-y: contain;
-          scrollbar-gutter: stable both-edges;
+          overflow: hidden;
           transition: border-color 140ms ease, box-shadow 140ms ease;
         }
         .card:hover {
@@ -1711,7 +1707,7 @@ export default function GameIdeasPage() {
             overflow: hidden;
           }
           .sidebar { width: 100%; }
-          .sub-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: min(38dvh, 300px); gap: 5px; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+          .sub-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: min(38dvh, 300px); gap: 5px; overflow: hidden; }
           .tab-btn { text-align: center; padding: 6px 5px; }
           .content-area {
             grid-template-columns: 1fr;
@@ -1722,6 +1718,7 @@ export default function GameIdeasPage() {
             overflow-y: auto;
             overscroll-behavior: contain;
             -webkit-overflow-scrolling: touch;
+            touch-action: pan-y;
             scroll-behavior: smooth;
             padding-bottom: max(20px, env(safe-area-inset-bottom));
           }
