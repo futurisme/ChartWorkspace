@@ -1,11 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FadhilAiFaceSystem, type FaceParams } from '@/features/security/shared/fadhil-ai-face-system';
 
 type EngineState = 'idle' | 'speaking' | 'paused' | 'unsupported';
-type FaceMood = 'idle' | 'talking' | 'excited' | 'calm';
-type Viseme = 'rest' | 'open' | 'wide' | 'round' | 'tight';
-
 type ScanFinding = { severity: 'high' | 'medium' | 'low'; file: string; line: number; rule: string; snippet: string };
 type ScanReport = { ok: boolean; summary: string; scannedFiles: string[]; recentCommits: string[]; findings: ScanFinding[] };
 
@@ -13,76 +11,72 @@ function splitIntoChunks(text: string): string[] {
   const compact = text.replace(/\s+/g, ' ').trim();
   if (!compact) return [];
 
-  const sentenceChunks = compact
+  return compact
     .split(/(?<=[.!?])\s+/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  const output: string[] = [];
-  for (const part of sentenceChunks) {
-    if (part.length <= 220) {
-      output.push(part);
-      continue;
-    }
-
-    const words = part.split(' ');
-    let buffer = '';
-    for (const word of words) {
-      const candidate = buffer ? `${buffer} ${word}` : word;
-      if (candidate.length > 200) {
-        if (buffer) output.push(buffer);
-        buffer = word;
-      } else {
-        buffer = candidate;
+    .flatMap((part) => {
+      if (part.length <= 220) return [part];
+      const chunks: string[] = [];
+      let buffer = '';
+      for (const word of part.split(' ')) {
+        const candidate = buffer ? `${buffer} ${word}` : word;
+        if (candidate.length > 200) {
+          if (buffer) chunks.push(buffer);
+          buffer = word;
+        } else {
+          buffer = candidate;
+        }
       }
-    }
-    if (buffer) output.push(buffer);
-  }
-
-  return output;
+      if (buffer) chunks.push(buffer);
+      return chunks;
+    })
+    .filter(Boolean);
 }
 
 function pickBestVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null {
   if (voices.length === 0) return null;
-
   const preferredNames = ['Google', 'Microsoft', 'Samantha', 'Natural', 'Enhanced', 'Premium'];
-  const preferredLang = voices.find((voice) =>
-    /en|id/i.test(voice.lang)
-    && preferredNames.some((name) => voice.name.toLowerCase().includes(name.toLowerCase()))
-  );
-
-  return preferredLang ?? voices.find((voice) => /en|id/i.test(voice.lang)) ?? voices[0];
+  const preferred = voices.find((voice) => /en|id/i.test(voice.lang) && preferredNames.some((n) => voice.name.toLowerCase().includes(n.toLowerCase())));
+  return preferred ?? voices.find((voice) => /en|id/i.test(voice.lang)) ?? voices[0];
 }
+
+const initialFace: FaceParams = {
+  eye_open: 0.92,
+  eye_squint: 0.06,
+  gaze_x: 0,
+  gaze_y: 0,
+  mouth_open: 0.08,
+  jaw_rotation: 0.04,
+  lip_width: 0.75,
+  lip_height: 0.24,
+  brow_height: -0.06,
+  head_tilt: 0,
+  breath: 0,
+  blink: 0,
+};
 
 export default function TestEnginePage() {
   const scriptRef = useRef<HTMLDivElement | null>(null);
+  const engineRef = useRef<FadhilAiFaceSystem>(new FadhilAiFaceSystem());
   const queueRef = useRef<string[]>([]);
   const utteranceIndexRef = useRef(0);
   const watchdogRef = useRef<number | null>(null);
-  const faceDecayRef = useRef<number | null>(null);
-  const expressionFrameRef = useRef<number | null>(null);
-  const facePhaseRef = useRef(0);
-  const speechTickRef = useRef(0);
+  const frameRef = useRef<number | null>(null);
+  const lastTsRef = useRef(0);
 
   const [state, setState] = useState<EngineState>('idle');
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [status, setStatus] = useState('Ready');
   const [scanReport, setScanReport] = useState<ScanReport | null>(null);
   const [scanState, setScanState] = useState<'idle' | 'running'>('idle');
+  const [face, setFace] = useState<FaceParams>(initialFace);
 
-  const [faceEnergy, setFaceEnergy] = useState(0.08);
-  const [faceMood, setFaceMood] = useState<FaceMood>('idle');
-  const [faceBlink, setFaceBlink] = useState(false);
-  const [viseme, setViseme] = useState<Viseme>('rest');
-  const [eyeOffset, setEyeOffset] = useState({ x: 0, y: 0 });
-  const [squint, setSquint] = useState(0);
+  const speakingRef = useRef(false);
 
   const syncVoices = useCallback(() => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
       setState('unsupported');
       return;
     }
-
     const list = window.speechSynthesis.getVoices();
     setVoices(list);
     setStatus(list.length > 0 ? `Voice engine ready (${list.length} voices)` : 'Voice engine detected, waiting for voices...');
@@ -105,35 +99,24 @@ export default function TestEnginePage() {
       }
     }, 400);
 
-    const blinkTimer = window.setInterval(() => {
-      setFaceBlink(true);
-      window.setTimeout(() => setFaceBlink(false), 90 + Math.floor(Math.random() * 60));
-    }, 2200);
-
-    const expressionLoop = () => {
-      facePhaseRef.current += 0.06;
-      const phase = facePhaseRef.current;
-      const moodGain = faceMood === 'excited' ? 0.32 : faceMood === 'calm' ? 0.1 : 0.18;
-      const amp = Math.min(1, faceEnergy + moodGain);
-      setEyeOffset({
-        x: Math.sin(phase * 0.7) * (0.8 + amp * 1.4),
-        y: Math.cos(phase * 0.5) * (0.4 + amp * 0.9),
-      });
-      setSquint(Math.max(0, Math.sin(phase * 1.5)) * amp * 0.7);
-      expressionFrameRef.current = window.requestAnimationFrame(expressionLoop);
+    const animate = (ts: number) => {
+      const last = lastTsRef.current || ts;
+      const dt = Math.min(0.05, (ts - last) / 1000);
+      lastTsRef.current = ts;
+      const step = engineRef.current.step(ts, dt, speakingRef.current);
+      if (step.dirty) setFace({ ...step.params });
+      frameRef.current = window.requestAnimationFrame(animate);
     };
-    expressionFrameRef.current = window.requestAnimationFrame(expressionLoop);
+    frameRef.current = window.requestAnimationFrame(animate);
 
     return () => {
       window.clearInterval(voiceRetry);
-      window.clearInterval(blinkTimer);
       window.speechSynthesis.onvoiceschanged = null;
       window.speechSynthesis.cancel();
       if (watchdogRef.current) window.clearTimeout(watchdogRef.current);
-      if (faceDecayRef.current) window.clearInterval(faceDecayRef.current);
-      if (expressionFrameRef.current) window.cancelAnimationFrame(expressionFrameRef.current);
+      if (frameRef.current) window.cancelAnimationFrame(frameRef.current);
     };
-  }, [faceEnergy, faceMood, syncVoices]);
+  }, [syncVoices]);
 
   const bestVoice = useMemo(() => pickBestVoice(voices), [voices]);
 
@@ -143,46 +126,6 @@ export default function TestEnginePage() {
       watchdogRef.current = null;
     }
   };
-
-  const boostFace = useCallback((value: number, text?: string) => {
-    setFaceEnergy((prev) => Math.min(1, Math.max(prev, value)));
-    speechTickRef.current += 1;
-    const cycle = speechTickRef.current % 5;
-    setViseme(cycle === 0 ? 'open' : cycle === 1 ? 'wide' : cycle === 2 ? 'round' : cycle === 3 ? 'tight' : 'open');
-
-    if (!text) {
-      setFaceMood('talking');
-      return;
-    }
-
-    if (/[!?]/.test(text)) setFaceMood('excited');
-    else if (text.length > 100) setFaceMood('calm');
-    else setFaceMood('talking');
-  }, []);
-
-  const startFaceDecay = useCallback(() => {
-    if (typeof window === 'undefined') return;
-    if (faceDecayRef.current) window.clearInterval(faceDecayRef.current);
-
-    faceDecayRef.current = window.setInterval(() => {
-      setFaceEnergy((prev) => {
-        const next = Math.max(0.06, prev - 0.05);
-        if (next <= 0.07 && state !== 'speaking') {
-          setFaceMood('idle');
-          setViseme('rest');
-        }
-        return next;
-      });
-    }, 110);
-  }, [state]);
-
-  const stopFaceDecay = useCallback(() => {
-    if (typeof window === 'undefined') return;
-    if (faceDecayRef.current) {
-      window.clearInterval(faceDecayRef.current);
-      faceDecayRef.current = null;
-    }
-  }, []);
 
   const speakNext = useCallback(() => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
@@ -196,12 +139,9 @@ export default function TestEnginePage() {
     const index = utteranceIndexRef.current;
     const next = queueRef.current[index];
     if (!next) {
+      speakingRef.current = false;
       setState('idle');
       setStatus('Reading complete.');
-      setFaceMood('idle');
-      setViseme('rest');
-      stopFaceDecay();
-      setFaceEnergy(0.08);
       return;
     }
 
@@ -213,22 +153,14 @@ export default function TestEnginePage() {
       utterance.lang = 'en-US';
     }
 
-    utterance.rate = 0.97;
+    utterance.rate = 0.98;
     utterance.pitch = 1.02;
     utterance.volume = 1;
 
     utterance.onstart = () => {
+      speakingRef.current = true;
       setState('speaking');
       setStatus(`Speaking ${index + 1}/${queueRef.current.length}`);
-      boostFace(0.36, next);
-      startFaceDecay();
-    };
-
-    utterance.onboundary = (event) => {
-      if (event.name === 'word' || event.charIndex >= 0) {
-        const variation = 0.32 + Math.random() * 0.58;
-        boostFace(variation, next);
-      }
     };
 
     utterance.onend = () => {
@@ -248,14 +180,14 @@ export default function TestEnginePage() {
         utteranceIndexRef.current += 1;
         speakNext();
       }
-    }, 5500);
-  }, [bestVoice, boostFace, startFaceDecay, state, stopFaceDecay]);
+    }, 6000);
+  }, [bestVoice, state]);
 
   const buildScanNarration = useCallback((report: ScanReport) => {
-    const intro = [`Fadhil AI scan summary. ${report.summary}.`];
-    const findingLines = report.findings.slice(0, 6).map((f, index) => `Finding ${index + 1}. ${f.severity} severity on ${f.file} line ${f.line}. Rule ${f.rule}.`);
-    const commitLines = report.recentCommits.slice(0, 3).map((c, index) => `Recent commit ${index + 1}. ${c}.`);
-    return [...intro, ...findingLines, ...commitLines].join(' ');
+    const intro = `Fadhil AI scan summary. ${report.summary}.`;
+    const findings = report.findings.slice(0, 5).map((f, i) => `Finding ${i + 1}. ${f.severity} severity on ${f.file} line ${f.line}. Rule ${f.rule}.`).join(' ');
+    const commits = report.recentCommits.slice(0, 3).map((c, i) => `Recent commit ${i + 1}. ${c}.`).join(' ');
+    return [intro, findings, commits].filter(Boolean).join(' ');
   }, []);
 
   const ensureScanReport = useCallback(async () => {
@@ -278,16 +210,17 @@ export default function TestEnginePage() {
     }
 
     window.speechSynthesis.cancel();
-    const warm = new SpeechSynthesisUtterance(' ');
-    warm.volume = 0;
-    warm.rate = 1;
-    warm.pitch = 1;
-    window.speechSynthesis.speak(warm);
-
+    speakingRef.current = false;
     utteranceIndexRef.current = 0;
+
+    const sourceText = scriptRef.current.innerText;
+    setStatus('DetectionEngine: analyzing input...');
+    await engineRef.current.runDetection(sourceText);
+
     const report = await ensureScanReport();
     const scanNarration = report ? buildScanNarration(report) : '';
-    queueRef.current = splitIntoChunks([scanNarration, scriptRef.current.innerText].filter(Boolean).join(' '));
+    const fullText = [scanNarration, sourceText].filter(Boolean).join(' ');
+    queueRef.current = splitIntoChunks(fullText);
 
     if (queueRef.current.length === 0) {
       setState('idle');
@@ -295,12 +228,11 @@ export default function TestEnginePage() {
       return;
     }
 
-    setStatus(report ? 'Initializing live voice with scan-first narration...' : 'Initializing live voice...');
-    boostFace(0.2);
+    setStatus(report ? 'Detection complete. Starting scan-first narration...' : 'Detection complete. Starting narration...');
     window.setTimeout(() => {
       speakNext();
-    }, 40);
-  }, [boostFace, buildScanNarration, ensureScanReport, speakNext]);
+    }, 35);
+  }, [buildScanNarration, ensureScanReport, speakNext]);
 
   const handlePauseResume = useCallback(() => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
@@ -311,18 +243,17 @@ export default function TestEnginePage() {
 
     if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
       window.speechSynthesis.pause();
+      speakingRef.current = false;
       setState('paused');
       setStatus('Paused');
-      setFaceMood('calm');
-      setViseme('rest');
       return;
     }
 
     if (window.speechSynthesis.paused) {
       window.speechSynthesis.resume();
+      speakingRef.current = true;
       setState('speaking');
       setStatus('Resumed');
-      setFaceMood('talking');
       return;
     }
 
@@ -331,17 +262,13 @@ export default function TestEnginePage() {
 
   const handleStop = useCallback(() => {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel();
-
     clearWatchdog();
-    stopFaceDecay();
+    speakingRef.current = false;
     utteranceIndexRef.current = 0;
     queueRef.current = [];
     setState('idle');
     setStatus('Stopped');
-    setFaceMood('idle');
-    setFaceEnergy(0.08);
-    setViseme('rest');
-  }, [stopFaceDecay]);
+  }, []);
 
   const runScan = useCallback(async () => {
     try {
@@ -363,19 +290,13 @@ export default function TestEnginePage() {
     }
   }, []);
 
-  const mouthHeight = viseme === 'open'
-    ? 14 + faceEnergy * 34
-    : viseme === 'wide'
-      ? 10 + faceEnergy * 22
-      : viseme === 'round'
-        ? 16 + faceEnergy * 28
-        : viseme === 'tight'
-          ? 8 + faceEnergy * 12
-          : 7 + faceEnergy * 8;
-  const mouthWidth = viseme === 'round' ? 30 : viseme === 'wide' ? 58 : 50;
-  const eyeScaleY = faceBlink ? 0.05 : Math.max(0.35, 0.95 - faceEnergy * 0.3 - squint * 0.2);
-  const browOffset = faceMood === 'excited' ? -4 : faceMood === 'calm' ? 1 : -1;
-  const cheekGlow = 0.2 + faceEnergy * 0.7;
+  const eyeScaleY = Math.max(0.04, face.eye_open);
+  const browOffset = Math.round(face.brow_height * 22);
+  const mouthHeight = 8 + face.mouth_open * 34;
+  const mouthWidth = 26 + face.lip_width * 34;
+  const jawY = 128 + face.jaw_rotation * 10;
+  const cheekGlow = 0.15 + face.breath * 0.22;
+  const headTiltDeg = face.head_tilt * 10;
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
@@ -384,9 +305,7 @@ export default function TestEnginePage() {
           <div className="mb-2 text-[11px] uppercase tracking-[0.2em] text-cyan-200/80">FadhilAiEngine / TestEngine</div>
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={handleStart} className="rounded border border-cyan-300 bg-cyan-600 px-3 py-1 text-xs font-semibold text-white hover:bg-cyan-500" disabled={state === 'unsupported'}>Start</button>
-            <button type="button" onClick={handlePauseResume} className="rounded border border-violet-300 bg-violet-600 px-3 py-1 text-xs font-semibold text-white hover:bg-violet-500" disabled={state === 'unsupported' || state === 'idle'}>
-              {state === 'paused' ? 'Resume' : 'Pause'}
-            </button>
+            <button type="button" onClick={handlePauseResume} className="rounded border border-violet-300 bg-violet-600 px-3 py-1 text-xs font-semibold text-white hover:bg-violet-500" disabled={state === 'unsupported' || state === 'idle'}>{state === 'paused' ? 'Resume' : 'Pause'}</button>
             <button type="button" onClick={handleStop} className="rounded border border-red-300 bg-red-600 px-3 py-1 text-xs font-semibold text-white hover:bg-red-500" disabled={state === 'unsupported' || state === 'idle'}>Stop</button>
             <button type="button" onClick={runScan} className="rounded border border-amber-300 bg-amber-500 px-3 py-1 text-xs font-semibold text-slate-950 hover:bg-amber-400" disabled={scanState === 'running'}>{scanState === 'running' ? 'Scanning…' : 'Run FadhilAiEngine Scan'}</button>
           </div>
@@ -401,61 +320,56 @@ export default function TestEnginePage() {
             <svg viewBox="0 0 280 200" className="w-full" role="img" aria-label="FadhilAiEngine expressive face">
               <defs>
                 <radialGradient id="faceCore" cx="50%" cy="35%" r="70%">
-                  <stop offset="0%" stopColor="#67e8f9" stopOpacity={0.65 + faceEnergy * 0.2} />
+                  <stop offset="0%" stopColor="#67e8f9" stopOpacity={0.58 + face.mouth_open * 0.22} />
                   <stop offset="100%" stopColor="#0f172a" stopOpacity="1" />
                 </radialGradient>
               </defs>
 
-              <ellipse cx="140" cy="100" rx="92" ry="82" fill="url(#faceCore)" stroke="#22d3ee" strokeOpacity="0.55" />
+              <g transform={`rotate(${headTiltDeg} 140 100)`}>
+                <ellipse cx="140" cy="100" rx="92" ry={82 + face.breath * 1.7} fill="url(#faceCore)" stroke="#22d3ee" strokeOpacity="0.55" />
 
-              <circle cx="94" cy="120" r="18" fill="#22d3ee" opacity={cheekGlow} />
-              <circle cx="186" cy="120" r="18" fill="#22d3ee" opacity={cheekGlow} />
+                <circle cx="94" cy="120" r="18" fill="#22d3ee" opacity={cheekGlow} />
+                <circle cx="186" cy="120" r="18" fill="#22d3ee" opacity={cheekGlow} />
 
-              <g transform={`translate(86 ${72 + browOffset})`}>
-                <rect x="-20" y="0" width="40" height="4" rx="2" fill="#a5f3fc" opacity="0.9" />
-              </g>
-              <g transform={`translate(194 ${72 + browOffset})`}>
-                <rect x="-20" y="0" width="40" height="4" rx="2" fill="#a5f3fc" opacity="0.9" />
-              </g>
+                <g transform={`translate(86 ${72 + browOffset})`}>
+                  <rect x="-22" y="0" width="44" height="4" rx="2" fill="#a5f3fc" opacity="0.9" />
+                </g>
+                <g transform={`translate(194 ${72 + browOffset})`}>
+                  <rect x="-22" y="0" width="44" height="4" rx="2" fill="#a5f3fc" opacity="0.9" />
+                </g>
 
-              <g transform={`translate(86 90) scale(1 ${eyeScaleY})`}>
-                <ellipse cx="0" cy="0" rx="15" ry="11" fill="#e0f2fe" />
-                <circle cx={eyeOffset.x} cy={eyeOffset.y} r={5 + faceEnergy * 3} fill="#0e7490" />
-              </g>
+                <g transform={`translate(86 90) scale(1 ${eyeScaleY})`}>
+                  <ellipse cx="0" cy="0" rx="15" ry="11" fill="#e0f2fe" />
+                  <circle cx={face.gaze_x} cy={face.gaze_y} r={4.8 + face.eye_squint * 4.2} fill="#0e7490" />
+                </g>
 
-              <g transform={`translate(194 90) scale(1 ${eyeScaleY})`}>
-                <ellipse cx="0" cy="0" rx="15" ry="11" fill="#e0f2fe" />
-                <circle cx={eyeOffset.x * 0.9} cy={eyeOffset.y * 0.95} r={5 + faceEnergy * 3} fill="#0e7490" />
-              </g>
+                <g transform={`translate(194 90) scale(1 ${eyeScaleY})`}>
+                  <ellipse cx="0" cy="0" rx="15" ry="11" fill="#e0f2fe" />
+                  <circle cx={face.gaze_x * 0.94} cy={face.gaze_y * 0.88} r={4.8 + face.eye_squint * 4.2} fill="#0e7490" />
+                </g>
 
-              <g transform="translate(140 130)">
-                <rect x={-mouthWidth / 2} y={-mouthHeight / 2} width={mouthWidth} height={mouthHeight} rx={mouthHeight / 2} fill="#082f49" stroke="#38bdf8" />
-                <ellipse cx="0" cy={Math.max(0, mouthHeight * 0.12)} rx={Math.max(6, mouthWidth * 0.18)} ry={Math.max(2, mouthHeight * 0.16)} fill="#f97316" opacity={0.55 + faceEnergy * 0.35} />
-                <rect x={-(mouthWidth * 0.35)} y={-2} width={mouthWidth * 0.7} height={4} rx="2" fill="#67e8f9" opacity={0.5 + faceEnergy * 0.35} />
+                <g transform={`translate(140 ${jawY})`}>
+                  <rect x={-mouthWidth / 2} y={-mouthHeight / 2} width={mouthWidth} height={mouthHeight} rx={mouthHeight / 2} fill="#082f49" stroke="#38bdf8" />
+                  <ellipse cx="0" cy={Math.max(0, mouthHeight * 0.14)} rx={Math.max(6, mouthWidth * 0.2)} ry={Math.max(2, mouthHeight * 0.18)} fill="#fb923c" opacity={0.56 + face.mouth_open * 0.25} />
+                  <rect x={-(mouthWidth * 0.35)} y={-2} width={mouthWidth * 0.7} height={4} rx="2" fill="#67e8f9" opacity={0.48 + face.mouth_open * 0.35} />
+                </g>
               </g>
             </svg>
           </div>
         </section>
 
-        <article
-          ref={scriptRef}
-          className="space-y-3 rounded-2xl border border-slate-700 bg-slate-900/70 p-4 text-sm leading-relaxed sm:text-base"
-        >
+        <article ref={scriptRef} className="space-y-3 rounded-2xl border border-slate-700 bg-slate-900/70 p-4 text-sm leading-relaxed sm:text-base">
           <h1 className="text-lg font-bold text-cyan-200 sm:text-xl">FadhilAiEngine Live Voice Script</h1>
           <p>
-            This standalone autonomous engine reads all text in this material clearly and continuously once the Start button is pressed.
-            It uses independent in-browser synthesis and does not depend on third-party workflow libraries.
+            FadhilAiEngine now runs a native modular face pipeline: DetectionEngine, EmotionAnalyzer, SpeechAnalyzer,
+            EyeMovementEngine, LipSyncEngine, ExpressionController, FaceAnimationCore, and RenderPipeline.
           </p>
           <p>
-            The voice pipeline is optimized for intelligibility, pacing, and clear sentence boundaries.
-            The engine performs segmentation, queue scheduling, progressive utterance playback, and automatic continuation until all text is completed.
+            Detection runs first and completes before narration begins. The engine then performs low-latency speech with
+            synchronized lip shaping, autonomous micro eye motion, random blink timing, breathing drift, and expression blending.
           </p>
           <p>
-            You can pause and resume to control live narration flow.
-            You can also stop at any moment to reset the queue and start over.
-          </p>
-          <p>
-            FadhilAiEngine is intentionally isolated in this secret TestEngine route for controlled development and confidential experimentation.
+            The renderer updates only on dirty state diffs to keep frame cost low and maintain smooth mobile interaction.
           </p>
         </article>
 
