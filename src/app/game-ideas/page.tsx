@@ -49,7 +49,7 @@ const CATEGORY_DELETE_CODE = 'DeleteCategoryByCode';
 const UNIVERSAL_RENAME_CLICKS = 3;
 const UNIVERSAL_RENAME_WINDOW_MS = 3000;
 const DRAG_HOLD_MS = 420;
-const CONTENT_SCROLL_EXTRA_SPACE_PX = 220;
+const CONTENT_SCROLL_EXTRA_SPACE_PX = 96;
 const NAV_ORDER_STORAGE_KEY = `${GAME_IDEA_STORAGE_KEY}_NAV_ORDER`;
 
 
@@ -98,8 +98,13 @@ function normalizeTitleName(value: string) {
 }
 
 
-function hashDb(value: GameIdeaDatabase) {
-  return JSON.stringify(value);
+function hashDb(serialized: string) {
+  let hash = 2166136261;
+  for (let i = 0; i < serialized.length; i += 1) {
+    hash ^= serialized.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `h${(hash >>> 0).toString(36)}:${serialized.length}`;
 }
 
 function countTotalItems(db: GameIdeaDatabase) {
@@ -236,7 +241,8 @@ export default function GameIdeasPage() {
   const importFileRef = useRef<HTMLInputElement | null>(null);
   const liveSyncInFlightRef = useRef(false);
 
-  const dbHash = useMemo(() => hashDb(db), [db]);
+  const serializedDb = useMemo(() => JSON.stringify(db), [db]);
+  const dbHash = useMemo(() => hashDb(serializedDb), [serializedDb]);
   const currentSection = useMemo(() => db[nav], [db, nav]);
   const categoryList = currentSection.categories;
   const currentCategory = category || categoryList[0] || '';
@@ -278,14 +284,15 @@ export default function GameIdeasPage() {
         const merged = mergeGameIdeaDatabases(localDb, remote);
 
         serverVersionRef.current = typeof payload.version === 'number' ? payload.version : null;
-        const mergedHash = hashDb(merged);
+        const mergedSerialized = JSON.stringify(merged);
+        const mergedHash = hashDb(mergedSerialized);
         lastSyncedHashRef.current = mergedHash;
         lastLocalCacheHashRef.current = mergedHash;
         setDb(merged);
-        localStorage.setItem(GAME_IDEA_STORAGE_KEY, JSON.stringify(merged));
+        localStorage.setItem(GAME_IDEA_STORAGE_KEY, mergedSerialized);
       } catch (err) {
         if (localDb) {
-          const localHash = hashDb(localDb);
+          const localHash = hashDb(JSON.stringify(localDb));
           lastSyncedHashRef.current = localHash;
           lastLocalCacheHashRef.current = localHash;
         }
@@ -312,9 +319,9 @@ export default function GameIdeasPage() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (lastLocalCacheHashRef.current === dbHash) return;
-    localStorage.setItem(GAME_IDEA_STORAGE_KEY, JSON.stringify(db));
+    localStorage.setItem(GAME_IDEA_STORAGE_KEY, serializedDb);
     lastLocalCacheHashRef.current = dbHash;
-  }, [db, dbHash]);
+  }, [dbHash, serializedDb]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -375,7 +382,7 @@ export default function GameIdeasPage() {
           serverVersionRef.current = payload.version;
         }
 
-        lastSyncedHashRef.current = hashDb(dbRef.current);
+        lastSyncedHashRef.current = hashDb(JSON.stringify(dbRef.current));
         setSaveState('saved');
       } catch (err) {
         setSaveState('error');
@@ -937,10 +944,11 @@ export default function GameIdeasPage() {
 
     setDb(nextDb);
     setNavOrder(nextNavOrder);
-    const importedHash = hashDb(nextDb);
+    const importedSerialized = JSON.stringify(nextDb);
+    const importedHash = hashDb(importedSerialized);
     lastSyncedHashRef.current = importedHash;
     lastLocalCacheHashRef.current = importedHash;
-    localStorage.setItem(GAME_IDEA_STORAGE_KEY, JSON.stringify(nextDb));
+    localStorage.setItem(GAME_IDEA_STORAGE_KEY, importedSerialized);
     localStorage.setItem(NAV_ORDER_STORAGE_KEY, JSON.stringify(nextNavOrder));
     setRetryNonce((prev) => prev + 1);
     setError('');
@@ -984,7 +992,8 @@ export default function GameIdeasPage() {
         if (!hasRemoteUpdate) return;
 
         const remote = sanitizeGameIdeaDatabase(payload.data);
-        const remoteHash = hashDb(remote);
+        const remoteSerialized = JSON.stringify(remote);
+        const remoteHash = hashDb(remoteSerialized);
         const localUnsynced = lastSyncedHashRef.current !== dbHash;
 
         if (!localUnsynced) {
@@ -992,7 +1001,7 @@ export default function GameIdeasPage() {
           lastSyncedHashRef.current = remoteHash;
           lastLocalCacheHashRef.current = remoteHash;
           setDb(remote);
-          localStorage.setItem(GAME_IDEA_STORAGE_KEY, JSON.stringify(remote));
+          localStorage.setItem(GAME_IDEA_STORAGE_KEY, remoteSerialized);
         }
       } catch {
         // silent: polling should never block local operations
@@ -1050,9 +1059,9 @@ export default function GameIdeasPage() {
       }
 
       const cardHeight = openCard.getBoundingClientRect().height;
-      const baseline = 240;
+      const baseline = 320;
       const extra = Math.max(0, cardHeight - baseline);
-      const nextSpacer = Math.min(1600, CONTENT_SCROLL_EXTRA_SPACE_PX + extra);
+      const nextSpacer = Math.min(520, CONTENT_SCROLL_EXTRA_SPACE_PX + extra * 0.55);
       setDynamicScrollSpacer(Math.round(nextSpacer));
     };
 
@@ -1593,7 +1602,7 @@ export default function GameIdeasPage() {
         .content-area::-webkit-scrollbar-thumb { background: linear-gradient(180deg, rgba(0, 242, 255, 0.85), rgba(56, 189, 248, 0.65)); border-radius: 999px; border: 2px solid rgba(2, 6, 23, 0.8); }
         .content-scroll-spacer {
           grid-column: 1 / -1;
-          height: max(18dvh, calc(var(--footer-h) + var(--admin-h) + env(safe-area-inset-bottom) + var(--dynamic-scroll-spacer, 220px)));
+          height: max(10dvh, calc(var(--footer-h) + var(--admin-h) + env(safe-area-inset-bottom) + var(--dynamic-scroll-spacer, 96px)));
           pointer-events: none;
         }
         .scroll-indicator {
