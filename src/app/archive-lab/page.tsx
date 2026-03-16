@@ -170,7 +170,7 @@ export default function ArchiveLabPage() {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [archiveJson, setArchiveJson] = useState('');
   const [editorJson, setEditorJson] = useState('');
-  const [status, setStatus] = useState('Drop arsip .cws / .fAdHiL lalu decrypt untuk edit.');
+  const [status, setStatus] = useState('Drop arsip .fAdHiL lalu decrypt untuk edit.');
   const [error, setError] = useState('');
 
   const parsedCounts = useMemo(() => {
@@ -192,14 +192,12 @@ export default function ArchiveLabPage() {
     setError('');
     const raw = await file.text();
 
-    let parsed = JSON.parse(raw) as Partial<WorkspaceArchiveFile>;
-    if (parsed.magic !== MAGIC && file.name.toLowerCase().endsWith('.fadhil')) {
-      const decoded = await decodeFadhilArchive(raw);
-      if (decoded.contentType !== 'workspace-archive') {
-        throw new Error('File .fAdHiL ini bukan arsip workspace editor.');
-      }
-      parsed = decoded.payload as Partial<WorkspaceArchiveFile>;
+    const decoded = await decodeFadhilArchive(raw);
+    if (decoded.contentType !== 'workspace-archive') {
+      throw new Error('File .fAdHiL ini bukan arsip workspace editor.');
     }
+
+    const parsed = decoded.payload as Partial<WorkspaceArchiveFile>;
 
     if (parsed.magic !== MAGIC) {
       throw new Error('Format tidak valid. magic mismatch.');
@@ -224,7 +222,7 @@ export default function ArchiveLabPage() {
     applyYjsSnapshot(doc, archive.snapshot);
     const editable = workspaceToEditorJson(doc, archive);
 
-    setArchiveJson(JSON.stringify(archive, null, 2));
+    setArchiveJson(raw);
     setEditorJson(JSON.stringify(editable, null, 2));
     setStatus('Decrypt sukses. Silakan edit JSON manusiawi, lalu encrypt lagi.');
   }, []);
@@ -242,12 +240,17 @@ export default function ArchiveLabPage() {
     }
   }, [handleLoadArchiveFile]);
 
-  const handleDecryptFromTextarea = useCallback(() => {
+  const handleDecryptFromTextarea = useCallback(async () => {
     try {
       setError('');
-      const parsed = JSON.parse(archiveJson) as Partial<WorkspaceArchiveFile>;
+      const decoded = await decodeFadhilArchive(archiveJson.trim());
+      if (decoded.contentType !== 'workspace-archive') {
+        throw new Error('Input bukan arsip workspace .fAdHiL.');
+      }
+
+      const parsed = decoded.payload as Partial<WorkspaceArchiveFile>;
       if (parsed.magic !== MAGIC || parsed.version !== VERSION || !parsed.snapshot) {
-        throw new Error('Archive JSON invalid. Pastikan magic/version/snapshot benar.');
+        throw new Error('Payload archive tidak valid. Pastikan magic/version/snapshot benar.');
       }
 
       const archive: WorkspaceArchiveFile = {
@@ -261,6 +264,7 @@ export default function ArchiveLabPage() {
 
       const doc = createEmptyDoc();
       applyYjsSnapshot(doc, archive.snapshot);
+      setArchiveJson(archiveJson.trim());
       setEditorJson(JSON.stringify(workspaceToEditorJson(doc, archive), null, 2));
       setStatus('Decrypt dari textarea berhasil.');
     } catch (err) {
@@ -268,7 +272,7 @@ export default function ArchiveLabPage() {
     }
   }, [archiveJson]);
 
-  const handleEncrypt = useCallback(() => {
+  const handleEncrypt = useCallback(async () => {
     try {
       setError('');
       const parsed = JSON.parse(editorJson) as EditableWorkspace;
@@ -277,8 +281,9 @@ export default function ArchiveLabPage() {
       }
 
       const archive = editorJsonToArchive(parsed);
-      setArchiveJson(JSON.stringify(archive, null, 2));
-      setStatus('Encrypt sukses. Unduh file .fAdHiL untuk dipakai di workspace lain.');
+      const encoded = await encodeFadhilArchive(archive, 'workspace-archive');
+      setArchiveJson(encoded);
+      setStatus('Encrypt sukses. String .fAdHiL siap diekspor.');
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -287,14 +292,17 @@ export default function ArchiveLabPage() {
   const handleDownloadArchive = useCallback(async () => {
     try {
       setError('');
-      const parsed = JSON.parse(archiveJson) as Partial<WorkspaceArchiveFile>;
+      const decoded = await decodeFadhilArchive(archiveJson.trim());
+      if (decoded.contentType !== 'workspace-archive') {
+        throw new Error('Data textarea bukan arsip workspace .fAdHiL.');
+      }
+      const parsed = decoded.payload as Partial<WorkspaceArchiveFile>;
       if (parsed.magic !== MAGIC || parsed.version !== VERSION || !parsed.snapshot) {
-        throw new Error('Archive JSON belum valid untuk diunduh.');
+        throw new Error('Payload archive belum valid untuk diunduh.');
       }
 
       const sourceMapId = typeof parsed.sourceMapId === 'string' ? parsed.sourceMapId : '0000';
-      const encoded = await encodeFadhilArchive(parsed, 'workspace-archive');
-      const blob = new Blob([encoded], { type: 'application/x-fadhil-archive+json' });
+      const blob = new Blob([archiveJson.trim()], { type: 'application/x-fadhil-archive' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -311,13 +319,12 @@ export default function ArchiveLabPage() {
 
 
   return (
-    <main className="min-h-screen bg-slate-950 p-2 text-slate-100 sm:p-4">
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top,_#0b1120,_#020617_60%,_#02030a)] p-2 text-slate-100 sm:p-4">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-3 sm:gap-4">
-        <header className="rounded-lg border border-cyan-500/30 bg-slate-900/70 p-3 sm:p-4">
-          <h1 className="text-base font-bold leading-tight text-cyan-200 sm:text-xl">Archive Lab (.cws / .fAdHiL) — Decrypt / Modify / Encrypt</h1>
+        <header className="rounded-2xl border border-fuchsia-400/30 bg-slate-900/70 p-3 shadow-[0_0_32px_rgba(217,70,239,0.25)] sm:p-5">
+          <h1 className="text-base font-bold leading-tight text-cyan-200 sm:text-xl">FadhilLabEncrypt (BETA) — Futuristic .fAdHiL Forge</h1>
           <p className="mt-1 text-xs leading-relaxed text-slate-300 sm:text-sm">
-            Halaman terpisah untuk menerjemahkan arsip workspace ke JSON manusiawi (nama node, position, color, koneksi),
-            lalu re-encrypt kembali agar bisa di-load ke editor.
+            Laboratorium enkripsi generasi baru: decrypt arsip .fAdHiL, edit JSON manusiawi, lalu encrypt kembali dengan format simbol alien ultra-singkat.
           </p>
           <div className="mt-3 grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
             <button
@@ -325,21 +332,21 @@ export default function ArchiveLabPage() {
               onClick={() => fileRef.current?.click()}
               className="w-full rounded border border-cyan-300 bg-cyan-600 px-3 py-2 text-xs font-semibold text-white hover:bg-cyan-500 sm:w-auto sm:py-1 sm:text-sm"
             >
-              Upload .cws / .fAdHiL
+              Upload .fAdHiL
             </button>
             <button
               type="button"
               onClick={handleDecryptFromTextarea}
               className="w-full rounded border border-violet-300 bg-violet-600 px-3 py-2 text-xs font-semibold text-white hover:bg-violet-500 sm:w-auto sm:py-1 sm:text-sm"
             >
-              Decrypt Archive JSON
+              Decrypt .fAdHiL String
             </button>
             <button
               type="button"
               onClick={handleEncrypt}
               className="w-full rounded border border-emerald-300 bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-500 sm:w-auto sm:py-1 sm:text-sm"
             >
-              Encrypt from Editable JSON
+              Encrypt Futuristic Payload
             </button>
             <button
               type="button"
@@ -349,7 +356,7 @@ export default function ArchiveLabPage() {
               Download .fAdHiL
             </button>
           </div>
-          <input ref={fileRef} type="file" accept=".cws,.fAdHiL,application/json" className="hidden" onChange={handlePickFile} />
+          <input ref={fileRef} type="file" accept=".fAdHiL" className="hidden" onChange={handlePickFile} />
           <p className="mt-3 text-xs text-cyan-100">Status: {status}</p>
           {parsedCounts && <p className="text-xs text-cyan-100">Parsed nodes: {parsedCounts.nodes} • edges: {parsedCounts.edges}</p>}
           {error && <p className="mt-2 rounded bg-red-900/40 px-2 py-1 text-xs text-red-200">Error: {error}</p>}
@@ -357,7 +364,7 @@ export default function ArchiveLabPage() {
 
         <section className="grid gap-3 lg:grid-cols-2 lg:gap-4">
           <div className="rounded-lg border border-slate-700 bg-slate-900/70 p-2 sm:p-3">
-            <h2 className="mb-2 text-xs font-semibold text-cyan-100 sm:text-sm">Archive JSON (encrypted snapshot)</h2>
+            <h2 className="mb-2 text-xs font-semibold text-cyan-100 sm:text-sm">Encrypted .fAdHiL (alien symbols)</h2>
             <textarea
               value={archiveJson}
               onChange={(event) => setArchiveJson(event.target.value)}

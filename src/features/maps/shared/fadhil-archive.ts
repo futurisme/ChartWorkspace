@@ -2,8 +2,8 @@ export type FadhilContentType = 'workspace-archive' | 'featurelib-gameideas';
 
 export type FadhilArchiveFile = {
   magic: 'chartworkspace/fadhil-archive';
-  version: 1;
-  algo: 'aes-gcm+gzip+base64url';
+  version: 2;
+  algo: 'aes-gcm+deflate+alien-b8192';
   compressed: boolean;
   iv: string;
   data: string;
@@ -12,13 +12,21 @@ export type FadhilArchiveFile = {
 };
 
 const MAGIC = 'chartworkspace/fadhil-archive';
+const CURRENT_VERSION = 2;
+const CURRENT_ALGO = 'aes-gcm+deflate+alien-b8192';
+const LEGACY_ALGO = 'aes-gcm+gzip+base64url';
+const PREFIX = '🜂fAdHiL🜁';
+const ALIEN_BLOCK_START = 0x3400;
+const ALIEN_BASE = 8192;
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 }
 
-const PASSPHRASE = 'FadhilAkbar.ChartWorkspace.FeatureLib.v1';
-const SALT = 'ChartWorkspace::fAdHiL::2026';
+const PASSPHRASE_V2 = 'FadhilAkbar.ChartWorkspace.FeatureLib.v2';
+const SALT_V2 = 'ChartWorkspace::fAdHiL::Alien::2026';
+const PASSPHRASE_V1 = 'FadhilAkbar.ChartWorkspace.FeatureLib.v1';
+const SALT_V1 = 'ChartWorkspace::fAdHiL::2026';
 
 function toBase64Url(bytes: Uint8Array): string {
   let binary = '';
@@ -40,12 +48,61 @@ function fromBase64Url(value: string): Uint8Array {
   return output;
 }
 
-async function maybeGzip(bytes: Uint8Array): Promise<{ bytes: Uint8Array; compressed: boolean }> {
+function encodeAlienBase8192(bytes: Uint8Array): string {
+  let bits = 0;
+  let bitCount = 0;
+  let out = '';
+
+  for (const byte of bytes) {
+    bits = (bits << 8) | byte;
+    bitCount += 8;
+
+    while (bitCount >= 13) {
+      bitCount -= 13;
+      const value = (bits >> bitCount) & 0x1fff;
+      out += String.fromCharCode(ALIEN_BLOCK_START + value);
+      bits &= (1 << bitCount) - 1;
+    }
+  }
+
+  if (bitCount > 0) {
+    const value = (bits << (13 - bitCount)) & 0x1fff;
+    out += String.fromCharCode(ALIEN_BLOCK_START + value);
+  }
+
+  return out;
+}
+
+function decodeAlienBase8192(text: string): Uint8Array {
+  let bits = 0;
+  let bitCount = 0;
+  const out: number[] = [];
+
+  for (let i = 0; i < text.length; i += 1) {
+    const value = text.charCodeAt(i) - ALIEN_BLOCK_START;
+    if (value < 0 || value >= ALIEN_BASE) {
+      throw new Error('Simbol alien .fAdHiL rusak / di luar rentang.');
+    }
+
+    bits = (bits << 13) | value;
+    bitCount += 13;
+
+    while (bitCount >= 8) {
+      bitCount -= 8;
+      out.push((bits >> bitCount) & 0xff);
+      bits &= (1 << bitCount) - 1;
+    }
+  }
+
+  return new Uint8Array(out);
+}
+
+async function maybeDeflate(bytes: Uint8Array): Promise<{ bytes: Uint8Array; compressed: boolean }> {
   if (typeof CompressionStream === 'undefined') {
     return { bytes, compressed: false };
   }
 
-  const stream = new Blob([toArrayBuffer(bytes)]).stream().pipeThrough(new CompressionStream('gzip'));
+  const stream = new Blob([toArrayBuffer(bytes)]).stream().pipeThrough(new CompressionStream('deflate-raw'));
   const result = new Uint8Array(await new Response(stream).arrayBuffer());
   if (result.length >= bytes.length) {
     return { bytes, compressed: false };
@@ -54,21 +111,21 @@ async function maybeGzip(bytes: Uint8Array): Promise<{ bytes: Uint8Array; compre
   return { bytes: result, compressed: true };
 }
 
-async function maybeGunzip(bytes: Uint8Array, compressed: boolean): Promise<Uint8Array> {
+async function inflate(bytes: Uint8Array, format: 'deflate-raw' | 'gzip', compressed: boolean): Promise<Uint8Array> {
   if (!compressed) return bytes;
   if (typeof DecompressionStream === 'undefined') {
     throw new Error('Browser tidak mendukung decompression stream untuk file .fAdHiL terkompresi.');
   }
 
-  const stream = new Blob([toArrayBuffer(bytes)]).stream().pipeThrough(new DecompressionStream('gzip'));
+  const stream = new Blob([toArrayBuffer(bytes)]).stream().pipeThrough(new DecompressionStream(format));
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
-async function getKey() {
+async function getKey(mode: 'legacy' | 'current') {
   const encoder = new TextEncoder();
   const baseKey = await crypto.subtle.importKey(
     'raw',
-    encoder.encode(PASSPHRASE),
+    encoder.encode(mode === 'legacy' ? PASSPHRASE_V1 : PASSPHRASE_V2),
     { name: 'PBKDF2' },
     false,
     ['deriveKey']
@@ -77,8 +134,8 @@ async function getKey() {
   return crypto.subtle.deriveKey(
     {
       name: 'PBKDF2',
-      salt: encoder.encode(SALT),
-      iterations: 120000,
+      salt: encoder.encode(mode === 'legacy' ? SALT_V1 : SALT_V2),
+      iterations: mode === 'legacy' ? 120000 : 150000,
       hash: 'SHA-256',
     },
     baseKey,
@@ -88,44 +145,75 @@ async function getKey() {
   );
 }
 
+function serializeV2(file: FadhilArchiveFile): string {
+  return `${PREFIX}§${file.contentType}§${file.compressed ? '1' : '0'}§${file.iv}§${file.data}§${file.exportedAt}`;
+}
+
+function parseV2(raw: string): Partial<FadhilArchiveFile> | null {
+  if (!raw.startsWith(`${PREFIX}§`)) {
+    return null;
+  }
+
+  const parts = raw.split('§');
+  if (parts.length !== 6) {
+    throw new Error('Format string .fAdHiL futuristik tidak valid.');
+  }
+
+  const [, contentType, compressedFlag, iv, data, exportedAt] = parts;
+  return {
+    magic: MAGIC,
+    version: CURRENT_VERSION,
+    algo: CURRENT_ALGO,
+    contentType: contentType as FadhilContentType,
+    compressed: compressedFlag === '1',
+    iv,
+    data,
+    exportedAt,
+  };
+}
+
 export async function encodeFadhilArchive(payload: unknown, contentType: FadhilContentType): Promise<string> {
   const text = JSON.stringify(payload);
   const encoder = new TextEncoder();
   const sourceBytes = encoder.encode(text);
-  const { bytes: packedBytes, compressed } = await maybeGzip(sourceBytes);
+  const { bytes: packedBytes, compressed } = await maybeDeflate(sourceBytes);
 
-  const key = await getKey();
+  const key = await getKey('current');
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: toArrayBuffer(iv) }, key, toArrayBuffer(packedBytes));
 
   const file: FadhilArchiveFile = {
     magic: MAGIC,
-    version: 1,
-    algo: 'aes-gcm+gzip+base64url',
+    version: CURRENT_VERSION,
+    algo: CURRENT_ALGO,
     compressed,
-    iv: toBase64Url(iv),
-    data: toBase64Url(new Uint8Array(cipher)),
+    iv: encodeAlienBase8192(iv),
+    data: encodeAlienBase8192(new Uint8Array(cipher)),
     contentType,
     exportedAt: new Date().toISOString(),
   };
 
-  return JSON.stringify(file);
+  return serializeV2(file);
 }
 
 export async function decodeFadhilArchive(text: string): Promise<{ payload: unknown; contentType: FadhilContentType }> {
-  const parsed = JSON.parse(text) as Partial<FadhilArchiveFile>;
-  if (parsed.magic !== MAGIC || parsed.version !== 1 || parsed.algo !== 'aes-gcm+gzip+base64url') {
+  const parsedV2 = parseV2(text);
+  const parsed = parsedV2 ?? (JSON.parse(text) as Partial<FadhilArchiveFile>);
+
+  const isLegacy = parsed.magic === MAGIC && parsed.version === 1 && parsed.algo === LEGACY_ALGO;
+  const isCurrent = parsed.magic === MAGIC && parsed.version === CURRENT_VERSION && parsed.algo === CURRENT_ALGO;
+  if (!isLegacy && !isCurrent) {
     throw new Error('Format file .fAdHiL tidak valid.');
   }
   if ((parsed.contentType !== 'workspace-archive' && parsed.contentType !== 'featurelib-gameideas') || !parsed.data || !parsed.iv) {
     throw new Error('Metadata file .fAdHiL tidak lengkap.');
   }
 
-  const key = await getKey();
-  const cipherBytes = fromBase64Url(parsed.data);
-  const iv = fromBase64Url(parsed.iv);
+  const key = await getKey(isLegacy ? 'legacy' : 'current');
+  const cipherBytes = isLegacy ? fromBase64Url(parsed.data) : decodeAlienBase8192(parsed.data);
+  const iv = isLegacy ? fromBase64Url(parsed.iv) : decodeAlienBase8192(parsed.iv);
   const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: toArrayBuffer(iv) }, key, toArrayBuffer(cipherBytes));
-  const unpacked = await maybeGunzip(new Uint8Array(plain), Boolean(parsed.compressed));
+  const unpacked = await inflate(new Uint8Array(plain), isLegacy ? 'gzip' : 'deflate-raw', Boolean(parsed.compressed));
   const payload = JSON.parse(new TextDecoder().decode(unpacked));
 
   return {

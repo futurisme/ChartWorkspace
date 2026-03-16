@@ -26,6 +26,7 @@ import 'reactflow/dist/style.css';
 import * as Y from 'yjs';
 import { useRealtime } from '@/components/RealtimeProvider';
 import { applyYjsSnapshot, getCurrentSnapshot } from '@/features/maps/shared/map-snapshot';
+import { decodeFadhilArchive, encodeFadhilArchive } from '@/features/maps/shared/fadhil-archive';
 import {
   EDGE_STYLE,
   COLOR_OPTIONS,
@@ -1630,46 +1631,52 @@ export function FlowWorkspace({
     setRenameText('');
   }, []);
 
-  const handleExportWorkspace = useCallback(() => {
+  const handleExportWorkspace = useCallback(async () => {
     if (!doc) {
       return;
     }
 
-    const instance = reactFlowInstanceRef.current;
-    const viewport = instance
-      ? instance.getViewport()
-      : undefined;
+    try {
+      const instance = reactFlowInstanceRef.current;
+      const viewport = instance
+        ? instance.getViewport()
+        : undefined;
 
-    const archivePayload: WorkspaceArchiveFile = {
-      magic: WORKSPACE_ARCHIVE_MAGIC,
-      version: WORKSPACE_ARCHIVE_VERSION,
-      exportedAt: new Date().toISOString(),
-      sourceMapId: mapId,
-      snapshot: getCurrentSnapshot(doc),
-      viewport: viewport
-        ? {
-            x: viewport.x,
-            y: viewport.y,
-            zoom: viewport.zoom,
-          }
-        : undefined,
-    };
+      const archivePayload: WorkspaceArchiveFile = {
+        magic: WORKSPACE_ARCHIVE_MAGIC,
+        version: WORKSPACE_ARCHIVE_VERSION,
+        exportedAt: new Date().toISOString(),
+        sourceMapId: mapId,
+        snapshot: getCurrentSnapshot(doc),
+        viewport: viewport
+          ? {
+              x: viewport.x,
+              y: viewport.y,
+              zoom: viewport.zoom,
+            }
+          : undefined,
+      };
 
-    const archiveString = JSON.stringify(archivePayload);
-    const archiveBlob = new Blob([archiveString], { type: 'application/x-chartworkspace+json' });
-    const downloadUrl = URL.createObjectURL(archiveBlob);
-    const anchor = document.createElement('a');
-    const timestamp = archivePayload.exportedAt
-      .replace(/[:.]/g, '-')
-      .replace('T', '_')
-      .replace('Z', '');
+      const encoded = await encodeFadhilArchive(archivePayload, 'workspace-archive');
+      const archiveBlob = new Blob([encoded], { type: 'application/x-fadhil-archive' });
+      const downloadUrl = URL.createObjectURL(archiveBlob);
+      const anchor = document.createElement('a');
+      const timestamp = archivePayload.exportedAt
+        .replace(/[:.]/g, '-')
+        .replace('T', '_')
+        .replace('Z', '');
 
-    anchor.href = downloadUrl;
-    anchor.download = `workspace-${mapId}-${timestamp}.cws`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    document.body.removeChild(anchor);
-    URL.revokeObjectURL(downloadUrl);
+      anchor.href = downloadUrl;
+      anchor.download = `workspace-${mapId}-${timestamp}.fAdHiL`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(downloadUrl);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Gagal mengekspor workspace .fAdHiL:', error);
+      window.alert(`Gagal mengekspor workspace: ${message}`);
+    }
   }, [doc, mapId]);
 
   const handleImportWorkspace = useCallback(() => {
@@ -1693,13 +1700,12 @@ export function FlowWorkspace({
 
       try {
         const raw = await file.text();
-        const parsed: unknown = JSON.parse(raw);
-
-        if (!parsed || typeof parsed !== 'object') {
-          throw new Error('Format file tidak valid.');
+        const decoded = await decodeFadhilArchive(raw);
+        if (decoded.contentType !== 'workspace-archive') {
+          throw new Error('File .fAdHiL ini bukan arsip workspace editor.');
         }
 
-        const archive = parsed as Partial<WorkspaceArchiveFile>;
+        const archive = decoded.payload as Partial<WorkspaceArchiveFile>;
         if (archive.magic !== WORKSPACE_ARCHIVE_MAGIC) {
           throw new Error('File bukan format arsip ChartWorkspace.');
         }
@@ -2013,7 +2019,7 @@ export function FlowWorkspace({
       <input
         ref={importFileInputRef}
         type="file"
-        accept=".cws,application/x-chartworkspace+json,application/json"
+        accept=".fAdHiL"
         className="hidden"
         onChange={handleWorkspaceFilePicked}
       />

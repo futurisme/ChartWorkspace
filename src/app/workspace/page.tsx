@@ -181,7 +181,7 @@ export default function WorkspaceHome() {
                   onClick={() => router.push('/archive-lab')}
                   className="rounded-xl border border-violet-400/40 bg-violet-500/20 px-4 py-2 text-sm font-semibold text-violet-100 transition hover:bg-violet-500/35"
                 >
-                  Open Archive (Beta)
+                  Open FadhilLabEncrypt (BETA)
                 </button>
                 <button
                   type="button"
