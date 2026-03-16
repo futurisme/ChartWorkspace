@@ -99,12 +99,29 @@ export async function listMaps(query: string | null, limit: number) {
     prisma.map.findMany({
       where: normalizedQuery
         ? {
-            title: {
-              contains: normalizedQuery,
-              mode: 'insensitive',
-            },
+            AND: [
+              {
+                title: {
+                  contains: normalizedQuery,
+                  mode: 'insensitive',
+                },
+              },
+              {
+                NOT: {
+                  title: {
+                    startsWith: '__SYSTEM__',
+                  },
+                },
+              },
+            ],
           }
-        : undefined,
+        : {
+            NOT: {
+              title: {
+                startsWith: '__SYSTEM__',
+              },
+            },
+          },
       orderBy: { updatedAt: 'desc' },
       take: limit,
       select: {

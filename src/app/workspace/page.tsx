@@ -179,9 +179,16 @@ export default function WorkspaceHome() {
                 <button
                   type="button"
                   onClick={() => router.push('/archive-lab')}
-                  className="sm:col-span-2 rounded-xl border border-violet-400/40 bg-violet-500/20 px-4 py-2 text-sm font-semibold text-violet-100 transition hover:bg-violet-500/35"
+                  className="rounded-xl border border-violet-400/40 bg-violet-500/20 px-4 py-2 text-sm font-semibold text-violet-100 transition hover:bg-violet-500/35"
                 >
                   Open Archive Lab (.cws decrypt / encrypt)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => router.push('/game-ideas')}
+                  className="rounded-xl border border-cyan-400/40 bg-cyan-500/20 px-4 py-2 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-500/35"
+                >
+                  Open Game Idea Architect
                 </button>
               </div>
 
