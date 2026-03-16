@@ -494,7 +494,12 @@ export default function GameIdeasPage() {
                 onClick={() => setOpenCardIndex((prev) => (prev === index ? null : index))}
               >
                 <h3>{item.name}</h3>
-                <span className="tag">{item.tag || 'UNTAGGED'}</span>
+                <div className="card-meta">
+                  <span className="tag">{item.tag || 'UNTAGGED'}</span>
+                  <span className="expand-indicator" aria-hidden="true">
+                    {openCardIndex === index ? '▲ collapse' : '▼ expand'}
+                  </span>
+                </div>
               </button>
               <div className="card-body-wrapper">
                 <div className="card-body">
@@ -505,8 +510,8 @@ export default function GameIdeasPage() {
                     ) : (
                       Object.entries(item.stats).map(([key, value]) => (
                         <div key={`${item.name}-${key}`} className="stat">
-                          <span>{key}</span>
-                          <span>{value}</span>
+                          <span className="stat-label">{key}:</span>
+                          <span className="stat-value">{value}</span>
                         </div>
                       ))
                     )}
@@ -699,9 +704,10 @@ export default function GameIdeasPage() {
         .sidebar { width: 170px; flex-shrink: 0; }
         .sub-tabs { display: flex; flex-direction: column; gap: 4px; overflow: auto; max-height: 100%; }
         .tab-btn {
-          padding: 7px 9px;
+          padding: 6px 8px;
           text-align: left;
-          border: 1px solid rgba(255, 255, 255, 0.08);
+          border: 1px solid rgba(0, 242, 255, 0.48);
+          box-shadow: inset 0 0 0 1px rgba(0, 242, 255, 0.18), 0 0 12px rgba(0, 242, 255, 0.18);
           background: var(--surface);
           color: var(--dim);
           cursor: pointer;
@@ -709,17 +715,24 @@ export default function GameIdeasPage() {
           line-height: 1.2;
         }
         .tab-btn.active {
-          color: var(--accent);
+          color: #e8fbff;
           border-color: var(--accent);
-          background: linear-gradient(90deg, rgba(0, 242, 255, 0.15), transparent);
+          box-shadow: 0 0 14px rgba(0, 242, 255, 0.38), inset 0 0 0 1px rgba(0, 242, 255, 0.42);
+          background: linear-gradient(90deg, rgba(0, 242, 255, 0.22), transparent);
           text-shadow: var(--neon);
+        }
+        .tab-btn:focus-visible,
+        .card-head:focus-visible,
+        .btn-icon.del:focus-visible {
+          outline: 1px solid var(--accent);
+          outline-offset: 1px;
         }
         .content-area {
           flex: 1;
           min-height: 0;
           overflow: auto;
           display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+          grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
           gap: 8px;
           align-content: start;
           padding-right: 2px;
@@ -727,46 +740,71 @@ export default function GameIdeasPage() {
         .card {
           position: relative;
           background: var(--surface);
-          border: 1px solid rgba(255, 255, 255, 0.08);
+          border: 1px solid rgba(0, 242, 255, 0.42);
+          box-shadow: 0 0 16px rgba(0, 242, 255, 0.16), inset 0 0 0 1px rgba(0, 242, 255, 0.1);
           overflow: hidden;
+          transition: border-color 140ms ease, box-shadow 140ms ease;
         }
-        .admin-tools { position: absolute; right: 6px; top: 6px; z-index: 3; }
+        .card:hover {
+          border-color: rgba(0, 242, 255, 0.72);
+          box-shadow: 0 0 18px rgba(0, 242, 255, 0.28), inset 0 0 0 1px rgba(0, 242, 255, 0.22);
+        }
+        .admin-tools { position: absolute; right: 6px; top: 5px; z-index: 3; }
         .btn-icon.del {
-          background: rgba(255, 42, 95, 0.15);
-          color: #ff2a5f;
-          border: 1px solid rgba(255, 42, 95, 0.9);
-          padding: 3px 6px;
+          background: rgba(255, 42, 95, 0.12);
+          color: #ff6a8f;
+          border: 1px solid rgba(255, 42, 95, 0.68);
+          border-radius: 3px;
+          padding: 1px 3px;
+          min-width: 0;
+          line-height: 1.1;
           cursor: pointer;
-          font-size: 10px;
+          font-size: 8px;
+          letter-spacing: 0.02em;
         }
         .card-head {
           width: 100%;
           border: 0;
           background: transparent;
           color: inherit;
-          padding: 10px 12px;
+          padding: 8px 48px 8px 10px;
+          display: grid;
+          gap: 3px;
+          align-items: center;
+          cursor: pointer;
+          text-align: left;
+        }
+        .card-head h3 { text-align: left; font-size: 11px; color: #fff; line-height: 1.15; margin: 0; }
+        .card-meta {
           display: flex;
           align-items: center;
-          justify-content: space-between;
-          cursor: pointer;
-          gap: 8px;
+          gap: 6px;
+          flex-wrap: wrap;
         }
-        .card-head h3 { text-align: left; font-size: 12px; color: #fff; line-height: 1.2; margin-right: auto; }
         .tag {
-          font-size: 9px;
+          font-size: 8px;
           color: var(--accent2);
           border: 1px solid var(--accent2);
-          padding: 1px 4px;
+          padding: 1px 3px;
           white-space: nowrap;
         }
         .card-body-wrapper { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 180ms ease; }
         .card.open .card-body-wrapper { grid-template-rows: 1fr; }
-        .card-body { overflow: hidden; }
-        .inner { padding: 0 12px 10px; border-top: 1px solid rgba(0, 242, 255, 0.1); }
-        .desc { color: #9ca3af; margin: 7px 0; font-size: 11px; line-height: 1.4; }
-        .stat { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.04); font-size: 10px; }
-        .stat span:first-child { color: var(--dim); }
-        .stat span:last-child { color: var(--accent); font-weight: 700; }
+        .card-body { overflow: hidden; contain: content; }
+        .inner { padding: 0 10px 8px; border-top: 1px solid rgba(0, 242, 255, 0.14); }
+        .desc { color: #9ca3af; margin: 5px 0; font-size: 10px; line-height: 1.35; }
+        .stat { display: inline-flex; align-items: baseline; gap: 2px; padding: 2px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.04); font-size: 10px; }
+        .stat-label { color: #94a3b8; }
+        .stat-value { color: var(--accent); font-weight: 700; }
+        .expand-indicator {
+          font-size: 8px;
+          color: #8beeff;
+          border: 1px solid rgba(0, 242, 255, 0.38);
+          border-radius: 999px;
+          padding: 0 4px;
+          line-height: 1.4;
+          white-space: nowrap;
+        }
         .admin-panel {
           display: flex;
           gap: 6px;
@@ -777,6 +815,7 @@ export default function GameIdeasPage() {
         }
         .admin-action {
           border: 1px solid #334155;
+          box-shadow: inset 0 0 0 1px rgba(0,242,255,0.08);
           background: rgba(255, 255, 255, 0.02);
           color: #cbd5e1;
           cursor: pointer;
@@ -837,9 +876,9 @@ export default function GameIdeasPage() {
           .layout { flex-direction: column; padding: 8px; gap: 8px; }
           .sidebar { width: 100%; }
           .sub-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: 116px; gap: 5px; }
-          .tab-btn { text-align: center; padding: 7px 6px; }
+          .tab-btn { text-align: center; padding: 6px 5px; }
           .content-area { grid-template-columns: 1fr; gap: 7px; }
-          .card-head { padding: 8px 10px; }
+          .card-head { padding: 7px 40px 7px 9px; }
           .admin-panel { padding: 6px 8px; }
           .footer { padding: 7px 6px; }
           .nav-item { padding: 6px 6px; }
