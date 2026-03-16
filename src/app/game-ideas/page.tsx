@@ -187,7 +187,7 @@ export default function GameIdeasPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const [syncNonce, setSyncNonce] = useState(0);
+  const [retryNonce, setRetryNonce] = useState(0);
   const [showItemModal, setShowItemModal] = useState(false);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [showAddChooser, setShowAddChooser] = useState(false);
@@ -208,7 +208,6 @@ export default function GameIdeasPage() {
   const serverVersionRef = useRef<number | null>(null);
   const lastSyncedHashRef = useRef<string | null>(null);
   const lastLocalCacheHashRef = useRef<string | null>(null);
-  const lastHandledManualSyncRef = useRef(0);
   const renameClickTrackerRef = useRef<{ key: string; count: number; startedAt: number } | null>(null);
   const dragHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dragPointerRef = useRef<{ kind: DragKind; pointerId: number; startX: number; startY: number } | null>(null);
@@ -303,14 +302,9 @@ export default function GameIdeasPage() {
     if (!hydratedRef.current) return;
 
     const currentHash = dbHash;
-    const manualSyncRequested = syncNonce !== lastHandledManualSyncRef.current;
 
-    if (!manualSyncRequested && lastSyncedHashRef.current === currentHash) {
+    if (lastSyncedHashRef.current === currentHash) {
       return;
-    }
-
-    if (manualSyncRequested) {
-      lastHandledManualSyncRef.current = syncNonce;
     }
 
     if (saveTimerRef.current) {
@@ -367,7 +361,7 @@ export default function GameIdeasPage() {
           clearTimeout(retryTimerRef.current);
         }
         retryTimerRef.current = setTimeout(() => {
-          setSyncNonce((prev) => prev + 1);
+          setRetryNonce((prev) => prev + 1);
         }, 2200);
       }
     }, SAVE_DEBOUNCE_MS);
@@ -378,7 +372,7 @@ export default function GameIdeasPage() {
         saveTimerRef.current = null;
       }
     };
-  }, [db, dbHash, syncNonce]);
+  }, [db, dbHash, retryNonce]);
 
   useEffect(
     () => () => {
@@ -399,10 +393,6 @@ export default function GameIdeasPage() {
     dragPointerRef.current = null;
     setActiveDrag(null);
   }, [adminMode]);
-
-  const triggerSyncNow = useCallback(() => {
-    setSyncNonce((prev) => prev + 1);
-  }, []);
 
   const openAddChooser = useCallback(() => {
     setAddTarget('item');
@@ -965,9 +955,6 @@ export default function GameIdeasPage() {
         <h1>Created by Fadhil Akbar</h1>
         <div className="header-actions">
           <span className={`sync-state ${saveState}`}>{statusLabel}</span>
-          <button type="button" className="sync-now" onClick={triggerSyncNow}>
-            SYNC NOW
-          </button>
           <button type="button" className="sync-now" onClick={() => { void handleExportFadhil(); }}>
             EXPORT .fAdHiL
           </button>
@@ -1332,8 +1319,8 @@ export default function GameIdeasPage() {
           justify-content: space-between;
           gap: 8px;
         }
-        .architect-header h1 { font-size: 0.82rem; letter-spacing: 0.8px; color: #fff; text-shadow: var(--neon-intense); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 900; }
-        .header-actions { display: inline-flex; gap: 5px; align-items: center; flex-wrap: nowrap; justify-content: flex-end; min-width: 0; }
+        .architect-header h1 { font-size: 0.78rem; letter-spacing: 0.7px; color: #fff; text-shadow: var(--neon-intense); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; transform: scaleX(0.88); transform-origin: left center; max-width: 44%; }
+        .header-actions { display: inline-flex; gap: 5px; align-items: center; flex-wrap: nowrap; justify-content: flex-end; min-width: 0; flex: 1; }
         .sync-state { font-size: 9px; letter-spacing: 0.5px; color: #75f7ff; white-space: nowrap; }
         .sync-state.error { color: #fb7185; }
         .admin-toggle,
@@ -1342,8 +1329,7 @@ export default function GameIdeasPage() {
         .btn-abort,
         .btn-confirm,
         .admin-action,
-        .btn-icon,
-        .sync-now { font-family: inherit; }
+        .btn-icon { font-family: inherit; }
         .admin-toggle,
         .sync-now {
           padding: 4px 8px;
@@ -1642,7 +1628,7 @@ export default function GameIdeasPage() {
             --admin-h: 54px;
           }
           .architect-header { padding: 6px 8px; gap: 6px; }
-          .architect-header h1 { font-size: 0.72rem; letter-spacing: 0.2px; max-width: 42vw; }
+          .architect-header h1 { font-size: 0.66rem; letter-spacing: 0.15px; max-width: 38vw; transform: scaleX(0.84); }
           .header-actions { gap: 4px; }
           .sync-state { font-size: 8px; }
           .admin-toggle, .sync-now { font-size: 8px; padding: 4px 6px; }
@@ -1650,7 +1636,8 @@ export default function GameIdeasPage() {
             flex-direction: column;
             padding: 8px;
             gap: 8px;
-            height: calc(100dvh - var(--header-h) - var(--footer-h) - var(--admin-h));
+            height: calc(100dvh - var(--header-h) - var(--footer-h) - var(--admin-h) - env(safe-area-inset-bottom));
+            min-height: 0;
           }
           .sidebar { width: 100%; }
           .sub-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: min(42dvh, 320px); gap: 5px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
@@ -1658,12 +1645,13 @@ export default function GameIdeasPage() {
           .content-area {
             grid-template-columns: 1fr;
             gap: 7px;
-            flex: 1;
-            max-height: calc(100dvh - var(--header-h) - var(--footer-h) - var(--admin-h) - var(--shell-v-pad) - 96px);
+            flex: 1 1 auto;
+            min-height: 0;
+            height: 100%;
             overflow-y: auto;
             overscroll-behavior: contain;
             -webkit-overflow-scrolling: touch;
-            padding-bottom: max(10px, env(safe-area-inset-bottom));
+            padding-bottom: max(16px, env(safe-area-inset-bottom));
           }
           .card-head { padding: 7px 40px 7px 9px; }
           
