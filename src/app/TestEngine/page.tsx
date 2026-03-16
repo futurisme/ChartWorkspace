@@ -4,6 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 type EngineState = 'idle' | 'speaking' | 'paused' | 'unsupported';
 
+type ScanFinding = { severity: 'high' | 'medium' | 'low'; file: string; line: number; rule: string; snippet: string };
+type ScanReport = { ok: boolean; summary: string; scannedFiles: string[]; recentCommits: string[]; findings: ScanFinding[] };
+
 function splitIntoChunks(text: string): string[] {
   const compact = text.replace(/\s+/g, ' ').trim();
   if (!compact) return [];
@@ -57,6 +60,8 @@ export default function TestEnginePage() {
   const [state, setState] = useState<EngineState>('idle');
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [status, setStatus] = useState('Ready');
+  const [scanReport, setScanReport] = useState<ScanReport | null>(null);
+  const [scanState, setScanState] = useState<'idle' | 'running'>('idle');
 
   const syncVoices = useCallback(() => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
@@ -215,6 +220,29 @@ export default function TestEnginePage() {
     }
   }, [speakNext]);
 
+
+  const runScan = useCallback(async () => {
+    try {
+      setScanState('running');
+      const response = await fetch('/api/fadhil-ai/scan', { cache: 'no-store' });
+      const data = (await response.json()) as ScanReport;
+      setScanReport(data);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setScanReport({
+        ok: false,
+        summary: `FadhilAiEngine scan request failed: ${message}`,
+        scannedFiles: [],
+        recentCommits: [],
+        findings: [
+          { severity: 'high', file: 'runtime', line: 0, rule: 'scan-fetch-error', snippet: message },
+        ],
+      });
+    } finally {
+      setScanState('idle');
+    }
+  }, []);
+
   const handleStop = useCallback(() => {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel();
@@ -238,9 +266,11 @@ export default function TestEnginePage() {
               {state === 'paused' ? 'Resume' : 'Pause'}
             </button>
             <button type="button" onClick={handleStop} className="rounded border border-red-300 bg-red-600 px-3 py-1 text-xs font-semibold text-white hover:bg-red-500" disabled={state === 'unsupported' || state === 'idle'}>Stop</button>
+            <button type="button" onClick={runScan} className="rounded border border-amber-300 bg-amber-500 px-3 py-1 text-xs font-semibold text-slate-950 hover:bg-amber-400" disabled={scanState === 'running'}>{scanState === 'running' ? 'Scanning…' : 'Run FadhilAiEngine Scan'}</button>
           </div>
           <p className="mt-2 text-[11px] text-cyan-100/90">Status: {status}</p>
           <p className="text-[11px] text-slate-300">Voice: {bestVoice ? `${bestVoice.name} (${bestVoice.lang})` : 'Auto / pending'}</p>
+          <p className="text-[11px] font-semibold text-amber-200">Required policy: run FadhilAiEngine scan before every push.</p>
         </header>
 
         <article
@@ -264,6 +294,34 @@ export default function TestEnginePage() {
             FadhilAiEngine is intentionally isolated in this secret TestEngine route for controlled development and confidential experimentation.
           </p>
         </article>
+
+        <section className="mt-3 rounded-2xl border border-amber-500/30 bg-slate-900/70 p-4 text-xs sm:text-sm">
+          <h2 className="mb-2 font-bold text-amber-200">FadhilAiEngine Analysis & Verification</h2>
+          {!scanReport && <p className="text-slate-300">No scan report yet. Press <strong>Run FadhilAiEngine Scan</strong> before push.</p>}
+          {scanReport && (
+            <div className="space-y-2">
+              <p className={scanReport.ok ? 'text-emerald-300' : 'text-red-300'}>{scanReport.summary}</p>
+              <p className="text-slate-300">Scanned files: {scanReport.scannedFiles.length}</p>
+              {scanReport.recentCommits.length > 0 && (
+                <div>
+                  <p className="font-semibold text-cyan-200">Recent commits</p>
+                  <ul className="list-disc space-y-1 pl-5 text-slate-300">
+                    {scanReport.recentCommits.map((item) => <li key={item}>{item}</li>)}
+                  </ul>
+                </div>
+              )}
+              {scanReport.findings.length > 0 && (
+                <div>
+                  <p className="font-semibold text-cyan-200">Findings</p>
+                  <ul className="list-disc space-y-1 pl-5 text-slate-300">
+                    {scanReport.findings.map((f, idx) => <li key={`${f.file}-${f.line}-${idx}`}>[{f.severity.toUpperCase()}] {f.rule} — {f.file}:{f.line}</li>)}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+
       </section>
     </main>
   );
