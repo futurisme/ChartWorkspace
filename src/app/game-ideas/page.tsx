@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import {
   DEFAULT_GAME_IDEA_DATA,
   GAME_IDEA_NAV_ORDER,
@@ -36,6 +36,10 @@ type ActiveDrag = {
   fromIndex: number;
   overIndex: number;
   pointerId: number;
+  startX: number;
+  startY: number;
+  currentX: number;
+  currentY: number;
 };
 
 const SAVE_DEBOUNCE_MS = 420;
@@ -156,6 +160,19 @@ function dragShiftForIndex(index: number, activeDrag: ActiveDrag | null, kind: D
   return activeDrag.fromIndex < activeDrag.overIndex ? 'drag-shift-up' : 'drag-shift-down';
 }
 
+
+function isDraggedIndex(index: number, activeDrag: ActiveDrag | null, kind: DragKind) {
+  return Boolean(activeDrag && activeDrag.kind === kind && activeDrag.fromIndex === index);
+}
+
+function dragStyle(activeDrag: ActiveDrag | null, kind: DragKind) {
+  if (!activeDrag || activeDrag.kind !== kind) return undefined;
+  return {
+    '--drag-x': `${activeDrag.currentX - activeDrag.startX}px`,
+    '--drag-y': `${activeDrag.currentY - activeDrag.startY}px`,
+  } as CSSProperties;
+}
+
 export default function GameIdeasPage() {
   const [db, setDb] = useState<GameIdeaDatabase>(EMPTY_GAME_IDEA_DATA);
   const [nav, setNav] = useState<GameIdeaNav>('govt');
@@ -192,7 +209,7 @@ export default function GameIdeasPage() {
   const lastHandledManualSyncRef = useRef(0);
   const renameClickTrackerRef = useRef<{ key: string; count: number; startedAt: number } | null>(null);
   const dragHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const dragPointerRef = useRef<{ kind: DragKind; pointerId: number } | null>(null);
+  const dragPointerRef = useRef<{ kind: DragKind; pointerId: number; startX: number; startY: number } | null>(null);
 
   const dbHash = useMemo(() => hashDb(db), [db]);
   const currentSection = useMemo(() => db[nav], [db, nav]);
@@ -693,16 +710,25 @@ export default function GameIdeasPage() {
     setConfirmDeleteAction(null);
   }, [confirmDeleteAction, currentCategory, nav]);
 
-  const handlePointerDown = useCallback((kind: DragKind, index: number, pointerId: number) => {
+  const handlePointerDown = useCallback((kind: DragKind, index: number, pointerId: number, clientX: number, clientY: number) => {
     if (!adminMode) return;
 
     if (dragHoldTimerRef.current) {
       clearTimeout(dragHoldTimerRef.current);
     }
 
-    dragPointerRef.current = { kind, pointerId };
+    dragPointerRef.current = { kind, pointerId, startX: clientX, startY: clientY };
     dragHoldTimerRef.current = setTimeout(() => {
-      setActiveDrag({ kind, fromIndex: index, overIndex: index, pointerId });
+      setActiveDrag({
+        kind,
+        fromIndex: index,
+        overIndex: index,
+        pointerId,
+        startX: clientX,
+        startY: clientY,
+        currentX: clientX,
+        currentY: clientY,
+      });
       dragHoldTimerRef.current = null;
     }, DRAG_HOLD_MS);
   }, [adminMode]);
@@ -718,8 +744,13 @@ export default function GameIdeasPage() {
         }
 
         const overIndex = findDragIndexFromPoint(pointer.kind, event.clientX, event.clientY);
-        if (overIndex === null || overIndex === prev.overIndex) return prev;
-        return { ...prev, overIndex };
+        if (overIndex === null) {
+          if (prev.currentX === event.clientX && prev.currentY === event.clientY) return prev;
+          return { ...prev, currentX: event.clientX, currentY: event.clientY };
+        }
+
+        if (overIndex === prev.overIndex && prev.currentX === event.clientX && prev.currentY === event.clientY) return prev;
+        return { ...prev, overIndex, currentX: event.clientX, currentY: event.clientY };
       });
     };
 
@@ -862,10 +893,11 @@ export default function GameIdeasPage() {
               <button
                 key={cat}
                 type="button"
-                className={`tab-btn ${cat === currentCategory ? 'active' : ''} ${activeDrag?.kind === 'category' && activeDrag.overIndex === index ? 'drag-target' : ''} ${dragShiftForIndex(index, activeDrag, 'category')}`}
+                className={`tab-btn ${cat === currentCategory ? 'active' : ''} ${activeDrag?.kind === 'category' && activeDrag.overIndex === index ? 'drag-target' : ''} ${dragShiftForIndex(index, activeDrag, 'category')} ${isDraggedIndex(index, activeDrag, 'category') ? 'dragged' : ''}`}
+                style={dragStyle(isDraggedIndex(index, activeDrag, 'category') ? activeDrag : null, 'category')}
                 data-drag-kind="category"
                 data-drag-index={index}
-                onPointerDown={(event) => handlePointerDown('category', index, event.pointerId)}
+                onPointerDown={(event) => handlePointerDown('category', index, event.pointerId, event.clientX, event.clientY)}
                 onPointerUp={(event) => handlePointerEnd(event.pointerId)}
                 onPointerCancel={(event) => handlePointerEnd(event.pointerId)}
                 onClick={() => {
@@ -884,10 +916,11 @@ export default function GameIdeasPage() {
           {items.map((item, index) => (
             <article
               key={`${item.name}-${index}`}
-              className={`card ${openCardIndex === index ? 'open' : ''} ${activeDrag?.kind === 'item' && activeDrag.overIndex === index ? 'drag-target' : ''} ${dragShiftForIndex(index, activeDrag, 'item')}`}
+              className={`card ${openCardIndex === index ? 'open' : ''} ${activeDrag?.kind === 'item' && activeDrag.overIndex === index ? 'drag-target' : ''} ${dragShiftForIndex(index, activeDrag, 'item')} ${isDraggedIndex(index, activeDrag, 'item') ? 'dragged' : ''}`}
+              style={dragStyle(isDraggedIndex(index, activeDrag, 'item') ? activeDrag : null, 'item')}
               data-drag-kind="item"
               data-drag-index={index}
-              onPointerDown={(event) => handlePointerDown('item', index, event.pointerId)}
+              onPointerDown={(event) => handlePointerDown('item', index, event.pointerId, event.clientX, event.clientY)}
               onPointerUp={(event) => handlePointerEnd(event.pointerId)}
               onPointerCancel={(event) => handlePointerEnd(event.pointerId)}
             >
@@ -947,10 +980,11 @@ export default function GameIdeasPage() {
           <button
             key={key}
             type="button"
-            className={`nav-item ${nav === key ? 'active' : ''} ${activeDrag?.kind === 'nav' && activeDrag.overIndex === index ? 'drag-target' : ''} ${dragShiftForIndex(index, activeDrag, 'nav')}`}
+            className={`nav-item ${nav === key ? 'active' : ''} ${activeDrag?.kind === 'nav' && activeDrag.overIndex === index ? 'drag-target' : ''} ${dragShiftForIndex(index, activeDrag, 'nav')} ${isDraggedIndex(index, activeDrag, 'nav') ? 'dragged' : ''}`}
+            style={dragStyle(isDraggedIndex(index, activeDrag, 'nav') ? activeDrag : null, 'nav')}
             data-drag-kind="nav"
             data-drag-index={index}
-            onPointerDown={(event) => handlePointerDown('nav', index, event.pointerId)}
+            onPointerDown={(event) => handlePointerDown('nav', index, event.pointerId, event.clientX, event.clientY)}
             onPointerUp={(event) => handlePointerEnd(event.pointerId)}
             onPointerCancel={(event) => handlePointerEnd(event.pointerId)}
             onClick={() => {
@@ -1348,16 +1382,23 @@ export default function GameIdeasPage() {
           outline-offset: -2px;
           box-shadow: 0 0 20px rgba(0, 242, 255, 0.55), inset 0 0 0 1px rgba(0, 242, 255, 0.4);
         }
+        .dragged {
+          transform: translate3d(var(--drag-x, 0), var(--drag-y, 0), 0) scale(1.01);
+          z-index: 80;
+          pointer-events: none;
+          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45), 0 0 22px rgba(0, 242, 255, 0.45);
+          filter: brightness(1.06);
+        }
         .drag-shift-up,
         .drag-shift-down,
         .tab-btn,
         .card,
         .nav-item {
-          transition: transform 170ms cubic-bezier(0.2, 0.9, 0.2, 1), box-shadow 140ms ease;
+          transition: transform 140ms cubic-bezier(0.2, 0.9, 0.2, 1), box-shadow 120ms ease;
           will-change: transform;
         }
-        .drag-shift-up { transform: translate3d(0, -8px, 0); }
-        .drag-shift-down { transform: translate3d(0, 8px, 0); }
+        .drag-shift-up { transform: translate3d(0, -10px, 0); }
+        .drag-shift-down { transform: translate3d(0, 10px, 0); }
         .drag-indicator {
           position: fixed;
           left: 50%;
