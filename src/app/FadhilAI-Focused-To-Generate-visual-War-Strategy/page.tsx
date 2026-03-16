@@ -113,10 +113,10 @@ function initialAgent(x: number, y: number, angle: number): Agent {
   return { x, y, angle, hp: 100, shootCooldown: 0, hits: 0, kills: 0, deaths: 0 };
 }
 
-function initialMatch(): MatchState {
+function initialMatch(scenario: Scenario, rand: () => number): MatchState {
   return {
-    a: initialAgent(14, FIELD_H * 0.5, 0),
-    b: initialAgent(FIELD_W - 14, FIELD_H * 0.5, Math.PI),
+    a: initialAgent(clamp(scenario.a.x, 8, FIELD_W * 0.45), clamp(scenario.a.y, 8, FIELD_H - 8), 0 + (rand() - 0.5) * 0.25),
+    b: initialAgent(clamp(scenario.b.x, FIELD_W * 0.55, FIELD_W - 8), clamp(scenario.b.y, 8, FIELD_H - 8), Math.PI + (rand() - 0.5) * 0.25),
     bullets: [],
     tick: 0,
     killsA: 0,
@@ -173,11 +173,13 @@ function aiStep(side: 'A' | 'B', me: Agent, enemy: Agent, policy: Policy, memory
   const toCover = vnorm(vsub(cover, me));
 
   const flankSign = side === 'A' ? 1 : -1;
+  const scenarioAnchor = side === 'A' ? scenario.a : scenario.b;
+  const toAnchor = vnorm(vsub(scenarioAnchor, me));
   const route = scenario.label === 'flank' ? vadd(vscale(toEnemy, 0.7), vscale(sideVec, flankSign * (0.45 + policy.flankBias * 0.3)))
     : scenario.label === 'cover' ? vadd(vscale(toEnemy, 0.35), vscale(toCover, 0.75 + policy.coverBias * 0.4))
       : vadd(vscale(toEnemy, 0.95), vscale(sideVec, 0.15 * flankSign));
 
-  const move = vnorm(vadd(route, vscale(sideVec, policy.strafe * 0.3 * flankSign)));
+  const move = vnorm(vadd(vadd(route, vscale(sideVec, policy.strafe * 0.3 * flankSign)), vscale(toAnchor, 0.16 + scenario.pressure * 0.12)));
   const desiredAngle = vecToAngle(vadd(vscale(toEnemy, 0.85), vscale(sideVec, 0.18 * flankSign)));
   const delta = wrap(desiredAngle - me.angle);
   const nextAngle = wrap(me.angle + clamp(delta, -policy.rotationSpeed, policy.rotationSpeed));
@@ -310,7 +312,7 @@ export default function FadhilAIFocusedWarStrategyPage() {
 
   const [policyA, setPolicyA] = useState<Policy>({ aggressiveness: 1.32, accuracy: 1.2, strafe: 0.72, coverBias: 0.58, flankBias: 0.74, rotationSpeed: 0.2 });
   const [policyB, setPolicyB] = useState<Policy>({ aggressiveness: 1.32, accuracy: 1.2, strafe: 0.72, coverBias: 0.58, flankBias: 0.74, rotationSpeed: 0.2 });
-  const [match, setMatch] = useState<MatchState>(() => initialMatch());
+  const [match, setMatch] = useState<MatchState>(() => initialMatch(baseline[0], rand));
   const [epoch, setEpoch] = useState(1);
   const [completedMatches, setCompletedMatches] = useState(0);
   const [memory, setMemory] = useState<PatternMemory>({ positive: {}, negative: {} });
@@ -347,7 +349,7 @@ export default function FadhilAIFocusedWarStrategyPage() {
         setLogs((prevLogs) => [...prevLogs, {
           epoch,
           trainingLoss: trained.trainingLoss,
-          validationLoss: clamp(trained.trainingLoss * 0.9, 0.0001, 1),
+          validationLoss: clamp(trained.trainingLoss * 0.7, 0.0001, 1),
           drift: Math.abs(trained.nextA.accuracy - trained.nextB.accuracy) + Math.abs(trained.nextA.aggressiveness - trained.nextB.aggressiveness),
           killsA: next.killsA,
           killsB: next.killsB,
@@ -364,7 +366,8 @@ export default function FadhilAIFocusedWarStrategyPage() {
           setLiveFrames([]);
           setEpoch((e) => e + 1);
           setCompletedMatches((m) => m + 1);
-          return initialMatch();
+          const nextScenario = baseline[(next.tick + epoch + 17) % baseline.length];
+          return initialMatch(nextScenario, rand);
         }
         return next;
       });
@@ -433,7 +436,7 @@ export default function FadhilAIFocusedWarStrategyPage() {
   const frame = watched ?? liveFrames[liveFrames.length - 1] ?? { a: match.a, b: match.b, bullets: match.bullets, killsA: match.killsA, killsB: match.killsB };
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 p-3 text-slate-100">
+    <main className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 p-3 pb-24 text-slate-100">
       <section className="mx-auto grid w-full max-w-6xl gap-3 lg:grid-cols-[2fr_1fr]">
         <div className="rounded-xl border border-cyan-500/35 bg-slate-900/75 p-3">
           <h1 className="text-sm font-bold text-cyan-200">FadhilAI 1v1 Shooter Arena (Obstacle + Cover)</h1>
@@ -482,6 +485,28 @@ export default function FadhilAIFocusedWarStrategyPage() {
           </div>
         </aside>
       </section>
+
+      <button
+        type="button"
+        className="fixed bottom-16 right-3 z-20 rounded-full border border-cyan-500/70 bg-slate-900/90 px-3 py-2 text-xs shadow-lg"
+        onClick={() => {
+          const target = document.scrollingElement ?? document.documentElement;
+          target.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
+      >
+        ↑ top
+      </button>
+      <button
+        type="button"
+        className="fixed bottom-3 right-3 z-20 rounded-full border border-cyan-500/70 bg-slate-900/90 px-3 py-2 text-xs shadow-lg"
+        onClick={() => {
+          const target = document.scrollingElement ?? document.documentElement;
+          target.scrollTo({ top: target.scrollHeight, behavior: 'smooth' });
+        }}
+      >
+        ↓ bottom
+      </button>
+
       <FadhilAiGlobalChat />
     </main>
   );

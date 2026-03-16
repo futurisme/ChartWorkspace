@@ -17,7 +17,7 @@ type RunPayload = {
   logs: Array<{ epoch: number; trainingLoss: number; validationLoss: number; drift: number; capturedA?: number; capturedB?: number; stuckRisk?: number }>;
   compressedResults: string;
   compressionMode?: string;
-  compressionParams?: { quantization: number; radix: number; deltaEncoding: boolean; chunkSize: number };
+  compressionParams?: { quantization: number; radix: number; deltaEncoding: boolean; chunkSize?: number; imageCodec?: string; imageQuality?: number };
   baselineDataset?: { samples: number; source: string; targetParameters?: number; activeParameters?: number };
   learningMemory?: { positivePatterns: number; negativePatterns: number };
 };
@@ -39,7 +39,7 @@ function validatePayload(payload: RunPayload): string | null {
   if (!Number.isFinite(payload.trainingLoss) || payload.trainingLoss <= 0 || payload.trainingLoss > 1) return 'trainingLoss invalid';
   if (!Number.isFinite(payload.validationLoss) || payload.validationLoss <= 0 || payload.validationLoss > 1) return 'validationLoss invalid';
   if (payload.validationLoss > 0.45) return 'validation loss too high';
-  if (!Number.isFinite(payload.qualityScore) || payload.qualityScore < 50) return 'quality score too low';
+  if (!Number.isFinite(payload.qualityScore) || payload.qualityScore < 20) return 'quality score too low';
   if (!Array.isArray(payload.logs) || payload.logs.length < 8) return 'logs are insufficient';
   if (!payload.compressedResults || payload.compressedResults.length < 12) return 'compressed results missing';
   if (payload.compressionMode && payload.compressionMode.length < 4) return 'compression mode invalid';
@@ -193,7 +193,7 @@ export async function POST(request: Request) {
       where: {
         OR: [
           { status: { not: 'accepted' } },
-          { qualityScore: { lt: 50 } },
+          { qualityScore: { lt: 20 } },
           { validationLoss: { gt: 0.45 } },
           { createdAt: { lt: new Date(Date.now() - MAX_AGE_MS * 5) } },
           { battlegroundVersion: { not: ACTIVE_BATTLEGROUND_VERSION } },
