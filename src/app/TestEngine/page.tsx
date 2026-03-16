@@ -1,5 +1,6 @@
 'use client';
 
+import { FadhilAiGlobalChat } from '@/components/FadhilAiGlobalChat';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FadhilAiFaceSystem, type FaceParams } from '@/features/security/shared/fadhil-ai-face-system';
 
@@ -461,6 +462,7 @@ export default function TestEnginePage() {
           )}
         </section>
       </section>
+          <FadhilAiGlobalChat />
     </main>
   );
 }
