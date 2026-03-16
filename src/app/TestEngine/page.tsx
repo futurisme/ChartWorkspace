@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 type EngineState = 'idle' | 'speaking' | 'paused' | 'unsupported';
 type FaceMood = 'idle' | 'talking' | 'excited' | 'calm';
+type Viseme = 'rest' | 'open' | 'wide' | 'round' | 'tight';
 
 type ScanFinding = { severity: 'high' | 'medium' | 'low'; file: string; line: number; rule: string; snippet: string };
 type ScanReport = { ok: boolean; summary: string; scannedFiles: string[]; recentCommits: string[]; findings: ScanFinding[] };
@@ -59,16 +60,22 @@ export default function TestEnginePage() {
   const utteranceIndexRef = useRef(0);
   const watchdogRef = useRef<number | null>(null);
   const faceDecayRef = useRef<number | null>(null);
+  const expressionFrameRef = useRef<number | null>(null);
+  const facePhaseRef = useRef(0);
+  const speechTickRef = useRef(0);
+
   const [state, setState] = useState<EngineState>('idle');
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [status, setStatus] = useState('Ready');
   const [scanReport, setScanReport] = useState<ScanReport | null>(null);
   const [scanState, setScanState] = useState<'idle' | 'running'>('idle');
 
-  // Mobile-only expressive face runtime
   const [faceEnergy, setFaceEnergy] = useState(0.08);
   const [faceMood, setFaceMood] = useState<FaceMood>('idle');
   const [faceBlink, setFaceBlink] = useState(false);
+  const [viseme, setViseme] = useState<Viseme>('rest');
+  const [eyeOffset, setEyeOffset] = useState({ x: 0, y: 0 });
+  const [squint, setSquint] = useState(0);
 
   const syncVoices = useCallback(() => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
@@ -100,22 +107,33 @@ export default function TestEnginePage() {
 
     const blinkTimer = window.setInterval(() => {
       setFaceBlink(true);
-      window.setTimeout(() => setFaceBlink(false), 110);
-    }, 2800);
+      window.setTimeout(() => setFaceBlink(false), 90 + Math.floor(Math.random() * 60));
+    }, 2200);
+
+    const expressionLoop = () => {
+      facePhaseRef.current += 0.06;
+      const phase = facePhaseRef.current;
+      const moodGain = faceMood === 'excited' ? 0.32 : faceMood === 'calm' ? 0.1 : 0.18;
+      const amp = Math.min(1, faceEnergy + moodGain);
+      setEyeOffset({
+        x: Math.sin(phase * 0.7) * (0.8 + amp * 1.4),
+        y: Math.cos(phase * 0.5) * (0.4 + amp * 0.9),
+      });
+      setSquint(Math.max(0, Math.sin(phase * 1.5)) * amp * 0.7);
+      expressionFrameRef.current = window.requestAnimationFrame(expressionLoop);
+    };
+    expressionFrameRef.current = window.requestAnimationFrame(expressionLoop);
 
     return () => {
       window.clearInterval(voiceRetry);
       window.clearInterval(blinkTimer);
       window.speechSynthesis.onvoiceschanged = null;
       window.speechSynthesis.cancel();
-      if (watchdogRef.current) {
-        window.clearTimeout(watchdogRef.current);
-      }
-      if (faceDecayRef.current) {
-        window.clearInterval(faceDecayRef.current);
-      }
+      if (watchdogRef.current) window.clearTimeout(watchdogRef.current);
+      if (faceDecayRef.current) window.clearInterval(faceDecayRef.current);
+      if (expressionFrameRef.current) window.cancelAnimationFrame(expressionFrameRef.current);
     };
-  }, [syncVoices]);
+  }, [faceEnergy, faceMood, syncVoices]);
 
   const bestVoice = useMemo(() => pickBestVoice(voices), [voices]);
 
@@ -128,35 +146,34 @@ export default function TestEnginePage() {
 
   const boostFace = useCallback((value: number, text?: string) => {
     setFaceEnergy((prev) => Math.min(1, Math.max(prev, value)));
+    speechTickRef.current += 1;
+    const cycle = speechTickRef.current % 5;
+    setViseme(cycle === 0 ? 'open' : cycle === 1 ? 'wide' : cycle === 2 ? 'round' : cycle === 3 ? 'tight' : 'open');
+
     if (!text) {
       setFaceMood('talking');
       return;
     }
 
-    if (/[!?]/.test(text)) {
-      setFaceMood('excited');
-    } else if (text.length > 100) {
-      setFaceMood('calm');
-    } else {
-      setFaceMood('talking');
-    }
+    if (/[!?]/.test(text)) setFaceMood('excited');
+    else if (text.length > 100) setFaceMood('calm');
+    else setFaceMood('talking');
   }, []);
 
   const startFaceDecay = useCallback(() => {
     if (typeof window === 'undefined') return;
-    if (faceDecayRef.current) {
-      window.clearInterval(faceDecayRef.current);
-    }
+    if (faceDecayRef.current) window.clearInterval(faceDecayRef.current);
 
     faceDecayRef.current = window.setInterval(() => {
       setFaceEnergy((prev) => {
         const next = Math.max(0.06, prev - 0.05);
         if (next <= 0.07 && state !== 'speaking') {
           setFaceMood('idle');
+          setViseme('rest');
         }
         return next;
       });
-    }, 120);
+    }, 110);
   }, [state]);
 
   const stopFaceDecay = useCallback(() => {
@@ -182,6 +199,7 @@ export default function TestEnginePage() {
       setState('idle');
       setStatus('Reading complete.');
       setFaceMood('idle');
+      setViseme('rest');
       stopFaceDecay();
       setFaceEnergy(0.08);
       return;
@@ -195,20 +213,20 @@ export default function TestEnginePage() {
       utterance.lang = 'en-US';
     }
 
-    utterance.rate = 0.95;
-    utterance.pitch = 1.04;
+    utterance.rate = 0.97;
+    utterance.pitch = 1.02;
     utterance.volume = 1;
 
     utterance.onstart = () => {
       setState('speaking');
       setStatus(`Speaking ${index + 1}/${queueRef.current.length}`);
-      boostFace(0.34, next);
+      boostFace(0.36, next);
       startFaceDecay();
     };
 
     utterance.onboundary = (event) => {
       if (event.name === 'word' || event.charIndex >= 0) {
-        const variation = 0.28 + Math.random() * 0.55;
+        const variation = 0.32 + Math.random() * 0.58;
         boostFace(variation, next);
       }
     };
@@ -233,7 +251,26 @@ export default function TestEnginePage() {
     }, 5500);
   }, [bestVoice, boostFace, startFaceDecay, state, stopFaceDecay]);
 
-  const handleStart = useCallback(() => {
+  const buildScanNarration = useCallback((report: ScanReport) => {
+    const intro = [`Fadhil AI scan summary. ${report.summary}.`];
+    const findingLines = report.findings.slice(0, 6).map((f, index) => `Finding ${index + 1}. ${f.severity} severity on ${f.file} line ${f.line}. Rule ${f.rule}.`);
+    const commitLines = report.recentCommits.slice(0, 3).map((c, index) => `Recent commit ${index + 1}. ${c}.`);
+    return [...intro, ...findingLines, ...commitLines].join(' ');
+  }, []);
+
+  const ensureScanReport = useCallback(async () => {
+    if (scanReport) return scanReport;
+    try {
+      const response = await fetch('/api/fadhil-ai/scan', { cache: 'no-store' });
+      const data = (await response.json()) as ScanReport;
+      setScanReport(data);
+      return data;
+    } catch {
+      return null;
+    }
+  }, [scanReport]);
+
+  const handleStart = useCallback(async () => {
     if (!scriptRef.current || typeof window === 'undefined' || !('speechSynthesis' in window)) {
       setState('unsupported');
       setStatus('Speech engine unsupported in this browser.');
@@ -248,7 +285,9 @@ export default function TestEnginePage() {
     window.speechSynthesis.speak(warm);
 
     utteranceIndexRef.current = 0;
-    queueRef.current = splitIntoChunks(scriptRef.current.innerText);
+    const report = await ensureScanReport();
+    const scanNarration = report ? buildScanNarration(report) : '';
+    queueRef.current = splitIntoChunks([scanNarration, scriptRef.current.innerText].filter(Boolean).join(' '));
 
     if (queueRef.current.length === 0) {
       setState('idle');
@@ -256,12 +295,12 @@ export default function TestEnginePage() {
       return;
     }
 
-    setStatus('Initializing live voice...');
+    setStatus(report ? 'Initializing live voice with scan-first narration...' : 'Initializing live voice...');
     boostFace(0.2);
     window.setTimeout(() => {
       speakNext();
     }, 40);
-  }, [boostFace, speakNext]);
+  }, [boostFace, buildScanNarration, ensureScanReport, speakNext]);
 
   const handlePauseResume = useCallback(() => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
@@ -275,6 +314,7 @@ export default function TestEnginePage() {
       setState('paused');
       setStatus('Paused');
       setFaceMood('calm');
+      setViseme('rest');
       return;
     }
 
@@ -286,15 +326,11 @@ export default function TestEnginePage() {
       return;
     }
 
-    if (!window.speechSynthesis.speaking && queueRef.current.length > 0) {
-      speakNext();
-    }
+    if (!window.speechSynthesis.speaking && queueRef.current.length > 0) speakNext();
   }, [speakNext]);
 
   const handleStop = useCallback(() => {
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-    }
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel();
 
     clearWatchdog();
     stopFaceDecay();
@@ -304,6 +340,7 @@ export default function TestEnginePage() {
     setStatus('Stopped');
     setFaceMood('idle');
     setFaceEnergy(0.08);
+    setViseme('rest');
   }, [stopFaceDecay]);
 
   const runScan = useCallback(async () => {
@@ -319,17 +356,24 @@ export default function TestEnginePage() {
         summary: `FadhilAiEngine scan request failed: ${message}`,
         scannedFiles: [],
         recentCommits: [],
-        findings: [
-          { severity: 'high', file: 'runtime', line: 0, rule: 'scan-fetch-error', snippet: message },
-        ],
+        findings: [{ severity: 'high', file: 'runtime', line: 0, rule: 'scan-fetch-error', snippet: message }],
       });
     } finally {
       setScanState('idle');
     }
   }, []);
 
-  const mouthHeight = 8 + faceEnergy * 22;
-  const eyeScaleY = faceBlink ? 0.08 : 0.95 - faceEnergy * 0.22;
+  const mouthHeight = viseme === 'open'
+    ? 14 + faceEnergy * 34
+    : viseme === 'wide'
+      ? 10 + faceEnergy * 22
+      : viseme === 'round'
+        ? 16 + faceEnergy * 28
+        : viseme === 'tight'
+          ? 8 + faceEnergy * 12
+          : 7 + faceEnergy * 8;
+  const mouthWidth = viseme === 'round' ? 30 : viseme === 'wide' ? 58 : 50;
+  const eyeScaleY = faceBlink ? 0.05 : Math.max(0.35, 0.95 - faceEnergy * 0.3 - squint * 0.2);
   const browOffset = faceMood === 'excited' ? -4 : faceMood === 'calm' ? 1 : -1;
   const cheekGlow = 0.2 + faceEnergy * 0.7;
 
@@ -351,7 +395,6 @@ export default function TestEnginePage() {
           <p className="text-[11px] font-semibold text-amber-200">Required policy: run FadhilAiEngine scan before every push.</p>
         </header>
 
-        {/* Mobile-only expressive AI face */}
         <section className="mb-3 block rounded-2xl border border-cyan-500/20 bg-slate-900/70 p-3 sm:hidden">
           <div className="mb-2 text-[10px] uppercase tracking-[0.2em] text-cyan-200/80">Dynamic Face</div>
           <div className="mx-auto w-full max-w-[280px]">
@@ -377,17 +420,18 @@ export default function TestEnginePage() {
 
               <g transform={`translate(86 90) scale(1 ${eyeScaleY})`}>
                 <ellipse cx="0" cy="0" rx="15" ry="11" fill="#e0f2fe" />
-                <circle cx="0" cy="0" r={5 + faceEnergy * 3} fill="#0e7490" />
+                <circle cx={eyeOffset.x} cy={eyeOffset.y} r={5 + faceEnergy * 3} fill="#0e7490" />
               </g>
 
               <g transform={`translate(194 90) scale(1 ${eyeScaleY})`}>
                 <ellipse cx="0" cy="0" rx="15" ry="11" fill="#e0f2fe" />
-                <circle cx="0" cy="0" r={5 + faceEnergy * 3} fill="#0e7490" />
+                <circle cx={eyeOffset.x * 0.9} cy={eyeOffset.y * 0.95} r={5 + faceEnergy * 3} fill="#0e7490" />
               </g>
 
               <g transform="translate(140 130)">
-                <rect x={-26} y={-mouthHeight / 2} width={52} height={mouthHeight} rx={mouthHeight / 2} fill="#082f49" stroke="#38bdf8" />
-                <rect x={-18} y={-2} width={36} height={4} rx="2" fill="#67e8f9" opacity={0.6 + faceEnergy * 0.3} />
+                <rect x={-mouthWidth / 2} y={-mouthHeight / 2} width={mouthWidth} height={mouthHeight} rx={mouthHeight / 2} fill="#082f49" stroke="#38bdf8" />
+                <ellipse cx="0" cy={Math.max(0, mouthHeight * 0.12)} rx={Math.max(6, mouthWidth * 0.18)} ry={Math.max(2, mouthHeight * 0.16)} fill="#f97316" opacity={0.55 + faceEnergy * 0.35} />
+                <rect x={-(mouthWidth * 0.35)} y={-2} width={mouthWidth * 0.7} height={4} rx="2" fill="#67e8f9" opacity={0.5 + faceEnergy * 0.35} />
               </g>
             </svg>
           </div>
@@ -441,7 +485,6 @@ export default function TestEnginePage() {
             </div>
           )}
         </section>
-
       </section>
     </main>
   );
