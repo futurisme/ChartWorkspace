@@ -10,10 +10,16 @@ export interface GameIdeaItem {
   colorGradient?: string;
 }
 
+export interface GameIdeaFolder {
+  name: string;
+  items: GameIdeaItem[];
+}
+
 export interface GameIdeaSection {
   title: string;
   categories: string[];
   data: Record<string, GameIdeaItem[]>;
+  folders?: Record<string, GameIdeaFolder[]>;
   navGradient?: string;
   categoryGradients?: Record<string, string>;
 }
@@ -93,6 +99,17 @@ function sanitizeItem(value: unknown): GameIdeaItem | null {
   };
 }
 
+function sanitizeFolder(value: unknown): GameIdeaFolder | null {
+  if (!isRecord(value)) return null;
+  const name = typeof value.name === 'string' ? value.name.trim().slice(0, 80) : '';
+  if (!name) return null;
+
+  const rawItems = Array.isArray(value.items) ? value.items : [];
+  const items = rawItems.map(sanitizeItem).filter((item): item is GameIdeaItem => Boolean(item)).slice(0, 500);
+
+  return { name, items };
+}
+
 function sanitizeSection(value: unknown, fallback: GameIdeaSection): GameIdeaSection {
   const sectionObj = isRecord(value) ? value : {};
   const title = typeof sectionObj.title === 'string' && sectionObj.title.trim() ? sectionObj.title.trim() : fallback.title;
@@ -115,6 +132,16 @@ function sanitizeSection(value: unknown, fallback: GameIdeaSection): GameIdeaSec
     data[category] = incoming.map(sanitizeItem).filter((item): item is GameIdeaItem => Boolean(item)).slice(0, 500);
   });
 
+  const rawFolders = isRecord(sectionObj.folders) ? sectionObj.folders : {};
+  const folders: Record<string, GameIdeaFolder[]> = {};
+  safeCategories.forEach((category) => {
+    const incomingFolders = Array.isArray(rawFolders[category]) ? rawFolders[category] : [];
+    folders[category] = incomingFolders
+      .map(sanitizeFolder)
+      .filter((folder): folder is GameIdeaFolder => Boolean(folder))
+      .slice(0, 120);
+  });
+
   const categoryGradientsRaw = isRecord(sectionObj.categoryGradients) ? sectionObj.categoryGradients : {};
   const categoryGradients: Record<string, string> = {};
   safeCategories.forEach((category) => {
@@ -130,6 +157,7 @@ function sanitizeSection(value: unknown, fallback: GameIdeaSection): GameIdeaSec
     title,
     categories: safeCategories,
     data,
+    folders,
     ...(Object.keys(categoryGradients).length > 0 ? { categoryGradients } : {}),
     ...(navGradient ? { navGradient } : {}),
   };

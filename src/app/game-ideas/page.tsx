@@ -55,10 +55,10 @@ const ADMIN_ACCESS_PERSIST_KEY = `${GAME_IDEA_STORAGE_KEY}_ADMIN_GRANTED`;
 
 
 const EMPTY_GAME_IDEA_DATA: GameIdeaDatabase = {
-  govt: { title: 'CODEX: GOVT', categories: [], data: {} },
-  units: { title: 'CODEX: UNITS', categories: [], data: {} },
-  tech: { title: 'CODEX: TECH', categories: [], data: {} },
-  econ: { title: 'CODEX: ECON', categories: [], data: {} },
+  govt: { title: 'CODEX: GOVT', categories: [], data: {}, folders: {} },
+  units: { title: 'CODEX: UNITS', categories: [], data: {}, folders: {} },
+  tech: { title: 'CODEX: TECH', categories: [], data: {}, folders: {} },
+  econ: { title: 'CODEX: ECON', categories: [], data: {}, folders: {} },
 };
 
 
@@ -96,6 +96,10 @@ function normalizeCategoryName(value: string) {
 
 function normalizeTitleName(value: string) {
   return value.trim().replace(/\s+/g, ' ').slice(0, 64);
+}
+
+function normalizeFolderName(value: string) {
+  return value.trim().replace(/\s+/g, ' ').slice(0, 80);
 }
 
 
@@ -216,13 +220,17 @@ export default function GameIdeasPage() {
   const [showItemModal, setShowItemModal] = useState(false);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [showAddChooser, setShowAddChooser] = useState(false);
-  const [addTarget, setAddTarget] = useState<'item' | 'category'>('item');
+  const [addTarget, setAddTarget] = useState<'item' | 'category' | 'folder'>('item');
   const [itemDraft, setItemDraft] = useState<ItemDraft>(emptyDraft());
   const [categoryDraft, setCategoryDraft] = useState('');
+  const [folderDraft, setFolderDraft] = useState('');
   const [confirmDeleteAction, setConfirmDeleteAction] = useState<ConfirmDeleteAction>(null);
   const [renameAction, setRenameAction] = useState<RenameAction>(null);
   const [renameDraft, setRenameDraft] = useState('');
   const [itemRenameDraft, setItemRenameDraft] = useState<ItemDraft>(emptyDraft());
+  const [showFolderModal, setShowFolderModal] = useState(false);
+  const [openFolders, setOpenFolders] = useState<Record<string, boolean>>({});
+  const [transferItemIndex, setTransferItemIndex] = useState<number | null>(null);
   const [navOrder, setNavOrder] = useState<GameIdeaNav[]>([...GAME_IDEA_NAV_ORDER]);
   const [activeDrag, setActiveDrag] = useState<ActiveDrag | null>(null);
   const [scrollHint, setScrollHint] = useState({ show: false, up: false, down: false });
@@ -248,6 +256,7 @@ export default function GameIdeasPage() {
   const categoryList = currentSection.categories;
   const currentCategory = category || categoryList[0] || '';
   const items = useMemo(() => currentSection.data[currentCategory] ?? [], [currentCategory, currentSection.data]);
+  const currentFolders = useMemo(() => currentSection.folders?.[currentCategory] ?? [], [currentCategory, currentSection.folders]);
 
 
   useEffect(() => {
@@ -438,6 +447,10 @@ export default function GameIdeasPage() {
       setShowCategoryModal(true);
       return;
     }
+    if (addTarget === 'folder') {
+      setShowFolderModal(true);
+      return;
+    }
     setShowItemModal(true);
   }, [addTarget]);
 
@@ -542,6 +555,10 @@ export default function GameIdeasPage() {
             ...section.data,
             [categoryName]: [],
           },
+          folders: {
+            ...(section.folders ?? {}),
+            [categoryName]: [],
+          },
         },
       };
     });
@@ -550,6 +567,34 @@ export default function GameIdeasPage() {
     setCategoryDraft('');
     setShowCategoryModal(false);
   }, [categoryDraft, nav]);
+
+  const saveFolder = useCallback(() => {
+    const folderName = normalizeFolderName(folderDraft);
+    if (!folderName || !currentCategory) return;
+
+    setDb((prev) => {
+      const section = prev[nav];
+      const folders = section.folders ?? {};
+      const categoryFolders = folders[currentCategory] ?? [];
+      if (categoryFolders.some((folder) => folder.name.toLowerCase() === folderName.toLowerCase())) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        [nav]: {
+          ...section,
+          folders: {
+            ...folders,
+            [currentCategory]: [...categoryFolders, { name: folderName, items: [] }],
+          },
+        },
+      };
+    });
+
+    setFolderDraft('');
+    setShowFolderModal(false);
+  }, [currentCategory, folderDraft, nav]);
 
   const requestRenameCategory = useCallback((targetCategory: string) => {
     if (!targetCategory) return;
@@ -597,12 +642,17 @@ export default function GameIdeasPage() {
         data[nextName] = data[oldName] ?? [];
         delete data[oldName];
 
+        const folders = { ...(section.folders ?? {}) };
+        folders[nextName] = folders[oldName] ?? [];
+        delete folders[oldName];
+
         return {
           ...prev,
           [nav]: {
             ...section,
             categories,
             data,
+            folders,
           },
         };
       });
@@ -735,6 +785,8 @@ export default function GameIdeasPage() {
         const categories = section.categories.filter((cat) => cat !== target);
         const data = { ...section.data };
         delete data[target];
+        const folders = { ...(section.folders ?? {}) };
+        delete folders[target];
 
         return {
           ...prev,
@@ -742,6 +794,7 @@ export default function GameIdeasPage() {
             ...section,
             categories,
             data,
+            folders,
           },
         };
       });
@@ -749,6 +802,44 @@ export default function GameIdeasPage() {
 
     setConfirmDeleteAction(null);
   }, [confirmDeleteAction, currentCategory, nav]);
+
+  const transferItemToFolder = useCallback((folderIndex: number) => {
+    if (transferItemIndex === null) return;
+
+    setDb((prev) => {
+      const section = prev[nav];
+      const categoryItems = section.data[currentCategory] ?? [];
+      if (transferItemIndex < 0 || transferItemIndex >= categoryItems.length) return prev;
+
+      const folders = section.folders ?? {};
+      const categoryFolders = folders[currentCategory] ?? [];
+      if (folderIndex < 0 || folderIndex >= categoryFolders.length) return prev;
+
+      const picked = categoryItems[transferItemIndex];
+      const nextItems = categoryItems.filter((_, idx) => idx !== transferItemIndex);
+      const nextFolders = categoryFolders.map((folder, idx) => (
+        idx === folderIndex ? { ...folder, items: [...folder.items, picked] } : folder
+      ));
+
+      return {
+        ...prev,
+        [nav]: {
+          ...section,
+          data: {
+            ...section.data,
+            [currentCategory]: nextItems,
+          },
+          folders: {
+            ...folders,
+            [currentCategory]: nextFolders,
+          },
+        },
+      };
+    });
+
+    setTransferItemIndex(null);
+    setOpenCardIndex(null);
+  }, [currentCategory, nav, transferItemIndex]);
 
   const handlePointerDown = useCallback((kind: DragKind, index: number, pointerId: number, clientX: number, clientY: number) => {
     if (!adminMode) return;
@@ -1157,6 +1248,9 @@ export default function GameIdeasPage() {
             >
               {adminMode && (
                 <div className="admin-tools">
+                  <button type="button" className="btn-icon folder" onClick={() => setTransferItemIndex(index)} disabled={currentFolders.length === 0}>
+                    FOLDER
+                  </button>
                   <button type="button" className="btn-icon del" onClick={() => requestDeleteItem(index)}>
                     DELETE
                   </button>
@@ -1202,8 +1296,47 @@ export default function GameIdeasPage() {
             </div>
           ))}
 
+          {currentFolders.map((folder, folderIndex) => {
+            const folderKey = `${nav}:${currentCategory}:${folderIndex}`;
+            const isOpenFolder = openFolders[folderKey] ?? true;
+            return (
+              <article key={`folder-${folder.name}-${folderIndex}`} className={`folder-card ${isOpenFolder ? 'open' : ''}`}>
+                <button
+                  type="button"
+                  className="folder-head"
+                  onClick={() => setOpenFolders((prev) => ({ ...prev, [folderKey]: !isOpenFolder }))}
+                >
+                  <div>
+                    <h3>{folder.name}</h3>
+                    <p>{folder.items.length} ITEMCARDS</p>
+                  </div>
+                  <span className="expand-indicator" aria-hidden="true">
+                    {isOpenFolder ? '▲ Collapse folder' : '▼ Expand folder'}
+                  </span>
+                </button>
+                {isOpenFolder ? (
+                  <div className="folder-body">
+                    {folder.items.length === 0 ? (
+                      <p className="desc">Folder kosong.</p>
+                    ) : (
+                      folder.items.map((item, itemIndex) => (
+                        <div key={`folder-item-${folder.name}-${item.name}-${itemIndex}`} className="folder-item-card">
+                          <div className="folder-item-head">
+                            <span>{item.name}</span>
+                            <span className="tag">{item.tag || 'UNTAGGED'}</span>
+                          </div>
+                          <p className="desc desc-content">{item.desc || 'No description.'}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                ) : null}
+              </article>
+            );
+          })}
+
           <div className="content-scroll-spacer" aria-hidden="true" />
-          {!loading && items.length === 0 && <p className="empty-hint">Belum ada ide di kategori ini.</p>}
+          {!loading && items.length === 0 && currentFolders.length === 0 && <p className="empty-hint">Belum ada ide di kategori ini.</p>}
           {error && <p className="error-hint">{error}</p>}
         </section>
         {scrollHint.show && (
@@ -1259,6 +1392,10 @@ export default function GameIdeasPage() {
               <label className="add-choice">
                 <input type="checkbox" checked={addTarget === 'category'} onChange={() => setAddTarget('category')} />
                 <span>ADD CATEGORY</span>
+              </label>
+              <label className="add-choice">
+                <input type="checkbox" checked={addTarget === 'folder'} onChange={() => setAddTarget('folder')} />
+                <span>ADD FOLDER</span>
               </label>
               <label className="add-choice">
                 <input type="checkbox" checked={addTarget === 'item'} onChange={() => setAddTarget('item')} />
@@ -1348,6 +1485,53 @@ export default function GameIdeasPage() {
               </button>
               <button type="button" className="btn-confirm" onClick={saveCategory}>
                 INITIATE
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showFolderModal && (
+        <div className="modal-overlay" role="dialog" aria-modal="true">
+          <div className="modal">
+            <h2>NEW_FOLDER_NODE</h2>
+            <div className="input-group">
+              <label>FOLDER NAME</label>
+              <input value={folderDraft} onChange={(e) => setFolderDraft(e.target.value)} />
+            </div>
+            <div className="modal-btns">
+              <button type="button" className="btn-abort" onClick={() => setShowFolderModal(false)}>
+                ABORT
+              </button>
+              <button type="button" className="btn-confirm" onClick={saveFolder}>
+                INITIATE
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {transferItemIndex !== null && (
+        <div className="modal-overlay" role="dialog" aria-modal="true">
+          <div className="modal">
+            <h2>TRANSFER ITEM TO FOLDER</h2>
+            {currentFolders.length === 0 ? (
+              <p className="desc">Belum ada folder di kategori ini.</p>
+            ) : (
+              <div className="transfer-list">
+                {currentFolders.map((folder, idx) => (
+                  <div key={`transfer-${folder.name}-${idx}`} className="transfer-row">
+                    <span>{folder.name}</span>
+                    <button type="button" className="btn-confirm" onClick={() => transferItemToFolder(idx)}>
+                      TRANSFER
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="modal-btns">
+              <button type="button" className="btn-abort" onClick={() => setTransferItemIndex(null)}>
+                CLOSE
               </button>
             </div>
           </div>
@@ -1655,6 +1839,39 @@ export default function GameIdeasPage() {
         .card-body-wrapper { display: grid; grid-template-rows: 0fr; transition: none; }
         .card.open .card-body-wrapper { grid-template-rows: 1fr; }
         .card-body { overflow: hidden; contain: content; }
+        .folder-card {
+          border: 1px solid rgba(125, 211, 252, 0.75);
+          border-radius: 10px;
+          background: linear-gradient(140deg, rgba(255, 255, 255, 0.98), rgba(240, 249, 255, 0.96));
+          box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.3), 0 10px 24px rgba(6, 182, 212, 0.22);
+          color: #0f172a;
+          overflow: hidden;
+        }
+        .folder-head {
+          width: 100%;
+          border: 0;
+          background: linear-gradient(130deg, rgba(255, 255, 255, 0.98), rgba(224, 242, 254, 0.97));
+          color: #0f172a;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 10px;
+          padding: 11px 12px;
+          text-align: left;
+          cursor: pointer;
+        }
+        .folder-head h3 { margin: 0; font-size: 12px; letter-spacing: 0.03em; }
+        .folder-head p { margin: 3px 0 0; font-size: 10px; color: #0369a1; }
+        .folder-body { padding: 0 10px 10px; display: grid; gap: 8px; }
+        .folder-item-card {
+          border: 1px solid rgba(14, 116, 144, 0.24);
+          border-radius: 8px;
+          background: rgba(255, 255, 255, 0.95);
+          padding: 8px;
+        }
+        .folder-item-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11px; color: #0f172a; margin-bottom: 4px; }
+        .transfer-list { display: grid; gap: 8px; max-height: 280px; overflow: auto; }
+        .transfer-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 1px solid rgba(0, 242, 255, 0.32); padding: 8px 10px; }
         .inner { padding: 0 10px 8px; border-top: 1px solid rgba(0, 242, 255, 0.14); }
         .desc { color: #d5dee9; margin: 6px 0; font-size: 11px; line-height: 1.5; font-weight: 500; letter-spacing: 0.01em; }
         .desc-content { white-space: pre-wrap; word-break: break-word; }
