@@ -26,9 +26,11 @@ type ConfirmDeleteAction =
 type RenameAction =
   | { type: 'item'; index: number; currentName: string }
   | { type: 'category'; currentName: string }
+  | { type: 'nav'; navKey: GameIdeaNav; currentName: string }
   | null;
 
 const SAVE_DEBOUNCE_MS = 420;
+const RENAME_CLICK_COUNT = 4;
 const ADMIN_ACCESS_CODE = 'IzinEditKhususGG123';
 
 function emptyDraft(): ItemDraft {
@@ -55,6 +57,10 @@ function parseStats(input: string) {
 
 function normalizeCategoryName(value: string) {
   return value.trim().toUpperCase().replace(/\s+/g, ' ').slice(0, 32);
+}
+
+function normalizeTitleName(value: string) {
+  return value.trim().replace(/\s+/g, ' ').slice(0, 64);
 }
 
 function hashDb(value: GameIdeaDatabase) {
@@ -393,6 +399,12 @@ export default function GameIdeasPage() {
     setRenameDraft(item.name);
   }, [items]);
 
+  const requestRenameNav = useCallback((navKey: GameIdeaNav) => {
+    const navTitle = db[navKey].title?.trim() || navKey.toUpperCase();
+    setRenameAction({ type: 'nav', navKey, currentName: navTitle });
+    setRenameDraft(navTitle);
+  }, [db]);
+
   const confirmRename = useCallback(() => {
     if (!renameAction) return;
 
@@ -450,6 +462,24 @@ export default function GameIdeasPage() {
               ...section.data,
               [currentCategory]: nextItems,
             },
+          },
+        };
+      });
+    }
+
+    if (renameAction.type === 'nav') {
+      const nextTitle = normalizeTitleName(renameDraft);
+      if (!nextTitle) return;
+
+      setDb((prev) => {
+        const section = prev[renameAction.navKey];
+        if (!section || section.title === nextTitle) return prev;
+
+        return {
+          ...prev,
+          [renameAction.navKey]: {
+            ...section,
+            title: nextTitle,
           },
         };
       });
@@ -565,10 +595,14 @@ export default function GameIdeasPage() {
                 type="button"
                 className={`tab-btn ${cat === currentCategory ? 'active' : ''}`}
                 onClick={(event) => {
-                  if (event.detail > 1) return;
-                  setCategory(cat);
+                  if (event.detail >= RENAME_CLICK_COUNT) {
+                    requestRenameCategory(cat);
+                    return;
+                  }
+                  if (event.detail === 1) {
+                    setCategory(cat);
+                  }
                 }}
-                onDoubleClick={() => requestRenameCategory(cat)}
               >
                 {cat}
               </button>
@@ -590,10 +624,14 @@ export default function GameIdeasPage() {
                 type="button"
                 className="card-head"
                 onClick={(event) => {
-                  if (event.detail > 1) return;
-                  setOpenCardIndex((prev) => (prev === index ? null : index));
+                  if (event.detail >= RENAME_CLICK_COUNT) {
+                    requestRenameItem(index);
+                    return;
+                  }
+                  if (event.detail === 1) {
+                    setOpenCardIndex((prev) => (prev === index ? null : index));
+                  }
                 }}
-                onDoubleClick={() => requestRenameItem(index)}
               >
                 <h3>{item.name}</h3>
                 <div className="card-meta">
@@ -644,8 +682,22 @@ export default function GameIdeasPage() {
 
       <footer className="footer">
         {GAME_IDEA_NAV_ORDER.map((key) => (
-          <button key={key} type="button" className={`nav-item ${nav === key ? 'active' : ''}`} onClick={() => setNav(key)}>
-            {key.toUpperCase()}
+          <button
+            key={key}
+            type="button"
+            className={`nav-item ${nav === key ? 'active' : ''}`}
+            onClick={(event) => {
+              if (event.detail >= RENAME_CLICK_COUNT) {
+                requestRenameNav(key);
+                return;
+              }
+              if (event.detail === 1) {
+                setNav(key);
+              }
+            }}
+            title={`4x click to rename ${key.toUpperCase()} section`}
+          >
+            {(db[key].title || key.toUpperCase()).toUpperCase()}
           </button>
         ))}
       </footer>
@@ -751,13 +803,13 @@ export default function GameIdeasPage() {
       {renameAction && (
         <div className="modal-overlay" role="dialog" aria-modal="true">
           <div className="modal">
-            <h2>{renameAction.type === 'category' ? 'RENAME CATEGORY' : 'RENAME ITEM'}</h2>
+            <h2>{renameAction.type === 'category' ? 'RENAME CATEGORY' : renameAction.type === 'nav' ? 'RENAME BOTTOM SECTION' : 'RENAME ITEM'}</h2>
             <div className="input-group">
-              <label>{renameAction.type === 'category' ? 'NAMA KATEGORI BARU' : 'NAMA ITEM BARU'}</label>
+              <label>{renameAction.type === 'category' ? 'NAMA KATEGORI BARU' : renameAction.type === 'nav' ? 'NAMA SECTION BARU' : 'NAMA ITEM BARU'}</label>
               <input
                 value={renameDraft}
                 onChange={(e) => setRenameDraft(e.target.value)}
-                maxLength={renameAction.type === 'category' ? 32 : 120}
+                maxLength={renameAction.type === 'category' ? 32 : renameAction.type === 'nav' ? 64 : 120}
               />
             </div>
             <div className="modal-btns">
@@ -801,6 +853,8 @@ export default function GameIdeasPage() {
           background-size: 40px 40px, 40px 40px, 100% 100%;
           color: var(--text);
           font-size: 12px;
+          font-family: 'Orbitron', 'Rajdhani', 'Inter', 'Segoe UI', sans-serif;
+          font-weight: 700;
           overflow: hidden;
         }
         .architect-header {
@@ -812,7 +866,7 @@ export default function GameIdeasPage() {
           justify-content: space-between;
           gap: 8px;
         }
-        .architect-header h1 { font-size: 0.82rem; letter-spacing: 0.6px; color: #fff; text-shadow: var(--neon-intense); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .architect-header h1 { font-size: 0.82rem; letter-spacing: 0.8px; color: #fff; text-shadow: var(--neon-intense); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 900; }
         .header-actions { display: inline-flex; gap: 5px; align-items: center; flex-wrap: nowrap; justify-content: flex-end; min-width: 0; }
         .sync-state { font-size: 9px; letter-spacing: 0.5px; color: #75f7ff; white-space: nowrap; }
         .sync-state.error { color: #fb7185; }
@@ -834,6 +888,7 @@ export default function GameIdeasPage() {
           font-size: 9px;
           line-height: 1.1;
           white-space: nowrap;
+          font-weight: 800;
         }
         .layout { flex: 1; display: flex; gap: 10px; padding: 10px; min-height: 0; }
         .sidebar { width: 170px; flex-shrink: 0; }
@@ -970,7 +1025,7 @@ export default function GameIdeasPage() {
           padding: 8px;
           background: #000;
         }
-        .nav-item { border: 0; background: transparent; color: var(--dim); padding: 6px 10px; cursor: pointer; font-size: 10px; font-weight: 700; }
+        .nav-item { border: 0; background: transparent; color: var(--dim); padding: 6px 10px; cursor: pointer; font-size: 10px; font-weight: 800; max-width: 24vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .nav-item.active { color: var(--accent); text-shadow: var(--neon); }
         .empty-hint,
         .error-hint { font-size: 12px; color: #9ca3af; }
@@ -1041,7 +1096,7 @@ export default function GameIdeasPage() {
           .card-head { padding: 7px 40px 7px 9px; }
           .admin-panel { padding: 6px 8px; }
           .footer { padding: 7px 6px; }
-          .nav-item { padding: 6px 6px; }
+          .nav-item { padding: 6px 6px; max-width: 22vw; }
         }
       `}</style>
     </main>
