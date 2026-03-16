@@ -6,6 +6,9 @@ import {
   saveGameIdeas,
 } from '@/features/game-ideas/server/game-ideas-service';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 const NO_STORE = 'no-store';
 
 function createErrorResponse(error: string, status: number, details?: string) {
