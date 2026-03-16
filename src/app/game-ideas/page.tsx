@@ -30,10 +30,15 @@ type RenameAction =
   | null;
 
 const SAVE_DEBOUNCE_MS = 420;
-const RENAME_CLICK_COUNT = 4;
-const RECOLOR_CLICK_COUNT = 5;
-const MULTI_CLICK_DELAY_MS = 190;
 const ADMIN_ACCESS_CODE = 'IzinEditKhususGG123';
+
+
+const EMPTY_GAME_IDEA_DATA: GameIdeaDatabase = {
+  govt: { title: 'CODEX: GOVT', categories: [], data: {} },
+  units: { title: 'CODEX: UNITS', categories: [], data: {} },
+  tech: { title: 'CODEX: TECH', categories: [], data: {} },
+  econ: { title: 'CODEX: ECON', categories: [], data: {} },
+};
 
 const PRIMARY_GRADIENTS = [
   'linear-gradient(135deg,#00f5ff 0%,#0066ff 100%)',
@@ -82,48 +87,12 @@ function hashDb(value: GameIdeaDatabase) {
   return JSON.stringify(value);
 }
 
-function mergeGameIdeaItems(localItems: GameIdeaItem[], remoteItems: GameIdeaItem[]): GameIdeaItem[] {
-  const seen = new Set<string>();
-  const merged: GameIdeaItem[] = [];
-
-  [...remoteItems, ...localItems].forEach((item) => {
-    const key = `${item.name.trim().toLowerCase()}|${item.tag.trim().toLowerCase()}|${item.desc.trim().toLowerCase()}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    merged.push(item);
-  });
-
-  return merged;
-}
-
-function mergeGameIdeaDatabases(local: GameIdeaDatabase, remote: GameIdeaDatabase): GameIdeaDatabase {
-  const merged = sanitizeGameIdeaDatabase(remote);
-
-  GAME_IDEA_NAV_ORDER.forEach((navKey) => {
-    const localSection = local[navKey];
-    const remoteSection = merged[navKey];
-
-    const categories = Array.from(new Set([...remoteSection.categories, ...localSection.categories]));
-    const data: Record<string, GameIdeaItem[]> = {};
-
-    categories.forEach((category) => {
-      const remoteItems = remoteSection.data[category] ?? [];
-      const localItems = localSection.data[category] ?? [];
-      data[category] = mergeGameIdeaItems(localItems, remoteItems);
-    });
-
-    merged[navKey] = {
-      ...remoteSection,
-      categories,
-      data,
-    };
-  });
-
-  return sanitizeGameIdeaDatabase(merged);
+function mergeGameIdeaDatabases(_local: GameIdeaDatabase | null, remote: GameIdeaDatabase): GameIdeaDatabase {
+  return sanitizeGameIdeaDatabase(remote);
 }
 
 export default function GameIdeasPage() {
-  const [db, setDb] = useState<GameIdeaDatabase>(DEFAULT_GAME_IDEA_DATA);
+  const [db, setDb] = useState<GameIdeaDatabase>(EMPTY_GAME_IDEA_DATA);
   const [nav, setNav] = useState<GameIdeaNav>('govt');
   const [category, setCategory] = useState(DEFAULT_GAME_IDEA_DATA.govt.categories[0] ?? '');
   const [openCardIndex, setOpenCardIndex] = useState<number | null>(null);
@@ -142,6 +111,7 @@ export default function GameIdeasPage() {
   const [confirmDeleteAction, setConfirmDeleteAction] = useState<ConfirmDeleteAction>(null);
   const [renameAction, setRenameAction] = useState<RenameAction>(null);
   const [renameDraft, setRenameDraft] = useState('');
+  const [selectedItemIndex, setSelectedItemIndex] = useState<number | null>(null);
 
   const hydratedRef = useRef(false);
   const dbRef = useRef(DEFAULT_GAME_IDEA_DATA);
@@ -151,7 +121,6 @@ export default function GameIdeasPage() {
   const lastSyncedHashRef = useRef<string | null>(null);
   const lastLocalCacheHashRef = useRef<string | null>(null);
   const lastHandledManualSyncRef = useRef(0);
-  const multiClickTimerRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   const dbHash = useMemo(() => hashDb(db), [db]);
   const currentSection = useMemo(() => db[nav], [db, nav]);
@@ -166,7 +135,7 @@ export default function GameIdeasPage() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    let localDb = DEFAULT_GAME_IDEA_DATA;
+    let localDb: GameIdeaDatabase | null = null;
     const cached = localStorage.getItem(GAME_IDEA_STORAGE_KEY);
 
     if (cached) {
@@ -199,9 +168,11 @@ export default function GameIdeasPage() {
         setDb(merged);
         localStorage.setItem(GAME_IDEA_STORAGE_KEY, JSON.stringify(merged));
       } catch (err) {
-        const localHash = hashDb(localDb);
-        lastSyncedHashRef.current = localHash;
-        lastLocalCacheHashRef.current = localHash;
+        if (localDb) {
+          const localHash = hashDb(localDb);
+          lastSyncedHashRef.current = localHash;
+          lastLocalCacheHashRef.current = localHash;
+        }
         if ((err as Error).name !== 'AbortError') {
           setError(err instanceof Error ? err.message : 'Gagal memuat data server.');
         }
@@ -265,13 +236,16 @@ export default function GameIdeasPage() {
         if (response.status === 409) {
           const conflictPayload = (await response.json()) as { data?: unknown; version?: number };
           const remote = sanitizeGameIdeaDatabase(conflictPayload.data);
-          const merged = mergeGameIdeaDatabases(dbRef.current, remote);
+          const resolved = mergeGameIdeaDatabases(null, remote);
 
           serverVersionRef.current = typeof conflictPayload.version === 'number' ? conflictPayload.version : serverVersionRef.current;
-          setDb(merged);
-          localStorage.setItem(GAME_IDEA_STORAGE_KEY, JSON.stringify(merged));
-          setError('Conflict detected. Merging local and server data...');
-          setSaveState('saving');
+          const resolvedHash = hashDb(resolved);
+          lastSyncedHashRef.current = resolvedHash;
+          lastLocalCacheHashRef.current = resolvedHash;
+          setDb(resolved);
+          localStorage.setItem(GAME_IDEA_STORAGE_KEY, JSON.stringify(resolved));
+          setError('Conflict detected. Server version applied to prevent data resurrection.');
+          setSaveState('saved');
           return;
         }
 
@@ -313,8 +287,6 @@ export default function GameIdeasPage() {
         clearTimeout(retryTimerRef.current);
         retryTimerRef.current = null;
       }
-      Object.values(multiClickTimerRef.current).forEach((timer) => clearTimeout(timer));
-      multiClickTimerRef.current = {};
     },
     []
   );
@@ -405,6 +377,7 @@ export default function GameIdeasPage() {
   }, [categoryDraft, nav]);
 
   const requestRenameCategory = useCallback((targetCategory: string) => {
+    if (!targetCategory) return;
     setRenameAction({ type: 'category', currentName: targetCategory });
     setRenameDraft(targetCategory);
   }, []);
@@ -424,6 +397,8 @@ export default function GameIdeasPage() {
   }, [db]);
 
   const recolorCategory = useCallback((targetCategory: string) => {
+    if (!targetCategory) return;
+
     setDb((prev) => {
       const section = prev[nav];
       const current = section.categoryGradients?.[targetCategory];
@@ -448,13 +423,11 @@ export default function GameIdeasPage() {
       const existing = section.data[currentCategory] ?? [];
       if (index < 0 || index >= existing.length) return prev;
 
-      const nextItems = existing.map((item, idx) => {
-        if (idx !== index) return item;
-        return {
-          ...item,
-          colorGradient: nextGradient(item.colorGradient),
-        };
-      });
+      const nextItems = existing.map((item, idx) => (
+        idx === index
+          ? { ...item, colorGradient: nextGradient(item.colorGradient) }
+          : item
+      ));
 
       return {
         ...prev,
@@ -482,34 +455,6 @@ export default function GameIdeasPage() {
     });
   }, []);
 
-  const executeClickAction = useCallback((key: string, clickCount: number, onRename: () => void, onRecolor: () => void, onSingle?: () => void) => {
-    if (clickCount >= RECOLOR_CLICK_COUNT) {
-      const currentTimer = multiClickTimerRef.current[key];
-      if (currentTimer) {
-        clearTimeout(currentTimer);
-        delete multiClickTimerRef.current[key];
-      }
-      onRecolor();
-      return;
-    }
-
-    if (clickCount === RENAME_CLICK_COUNT) {
-      const currentTimer = multiClickTimerRef.current[key];
-      if (currentTimer) {
-        clearTimeout(currentTimer);
-      }
-      multiClickTimerRef.current[key] = setTimeout(() => {
-        onRename();
-        delete multiClickTimerRef.current[key];
-      }, MULTI_CLICK_DELAY_MS);
-      return;
-    }
-
-    if (clickCount === 1 && onSingle) {
-      onSingle();
-    }
-  }, []);
-
   const confirmRename = useCallback(() => {
     if (!renameAction) return;
 
@@ -529,12 +474,19 @@ export default function GameIdeasPage() {
         data[nextName] = data[oldName] ?? [];
         delete data[oldName];
 
+        const categoryGradients = { ...(section.categoryGradients ?? {}) };
+        if (categoryGradients[oldName]) {
+          categoryGradients[nextName] = categoryGradients[oldName];
+          delete categoryGradients[oldName];
+        }
+
         return {
           ...prev,
           [nav]: {
             ...section,
             categories,
             data,
+            ...(Object.keys(categoryGradients).length > 0 ? { categoryGradients } : {}),
           },
         };
       });
@@ -554,9 +506,7 @@ export default function GameIdeasPage() {
         if (renameAction.index < 0 || renameAction.index >= existing.length) return prev;
 
         const nextItems = existing.map((item, idx) => (
-          idx === renameAction.index
-            ? { ...item, name: nextName }
-            : item
+          idx === renameAction.index ? { ...item, name: nextName } : item
         ));
 
         return {
@@ -700,15 +650,7 @@ export default function GameIdeasPage() {
                 type="button"
                 className={`tab-btn ${cat === currentCategory ? 'active' : ''}`}
                 style={currentSection.categoryGradients?.[cat] ? { backgroundImage: currentSection.categoryGradients[cat] } : undefined}
-                onClick={(event) =>
-                  executeClickAction(
-                    `category:${nav}:${cat}`,
-                    event.detail,
-                    () => requestRenameCategory(cat),
-                    () => recolorCategory(cat),
-                    () => setCategory(cat)
-                  )
-                }
+                onClick={() => setCategory(cat)}
               >
                 {cat}
               </button>
@@ -733,15 +675,10 @@ export default function GameIdeasPage() {
               <button
                 type="button"
                 className="card-head"
-                onClick={(event) =>
-                  executeClickAction(
-                    `item:${nav}:${currentCategory}:${index}`,
-                    event.detail,
-                    () => requestRenameItem(index),
-                    () => recolorItem(index),
-                    () => setOpenCardIndex((prev) => (prev === index ? null : index))
-                  )
-                }
+                onClick={() => {
+                  setSelectedItemIndex(index);
+                  setOpenCardIndex((prev) => (prev === index ? null : index));
+                }}
               >
                 <h3>{item.name}</h3>
                 <div className="card-meta">
@@ -778,15 +715,15 @@ export default function GameIdeasPage() {
 
       {adminMode && (
         <section className="admin-panel">
-          <button type="button" className="admin-action add" onClick={() => setShowItemModal(true)}>
-            + ITEM
-          </button>
-          <button type="button" className="admin-action add" onClick={() => setShowCategoryModal(true)}>
-            + CATEGORY
-          </button>
-          <button type="button" className="admin-action del" onClick={requestDeleteCategory}>
-            DELETE CATEGORY
-          </button>
+          <button type="button" className="admin-action add" onClick={() => setShowItemModal(true)}>+I</button>
+          <button type="button" className="admin-action add" onClick={() => setShowCategoryModal(true)}>+C</button>
+          <button type="button" className="admin-action" onClick={() => requestRenameCategory(currentCategory)}>RC</button>
+          <button type="button" className="admin-action" onClick={() => recolorCategory(currentCategory)}>CC</button>
+          <button type="button" className="admin-action" onClick={() => requestRenameItem(selectedItemIndex ?? 0)} disabled={selectedItemIndex === null}>RI</button>
+          <button type="button" className="admin-action" onClick={() => recolorItem(selectedItemIndex ?? 0)} disabled={selectedItemIndex === null}>CI</button>
+          <button type="button" className="admin-action" onClick={() => requestRenameNav(nav)}>RN</button>
+          <button type="button" className="admin-action" onClick={() => recolorNav(nav)}>CN</button>
+          <button type="button" className="admin-action del" onClick={requestDeleteCategory}>DC</button>
         </section>
       )}
 
@@ -797,16 +734,7 @@ export default function GameIdeasPage() {
             type="button"
             className={`nav-item ${nav === key ? 'active' : ''}`}
             style={db[key].navGradient ? { backgroundImage: db[key].navGradient } : undefined}
-            onClick={(event) =>
-              executeClickAction(
-                `nav:${key}`,
-                event.detail,
-                () => requestRenameNav(key),
-                () => recolorNav(key),
-                () => setNav(key)
-              )
-            }
-            title={`4x click rename / 5x click recolor ${key.toUpperCase()} section`}
+            onClick={() => setNav(key)}
           >
             {(db[key].title || key.toUpperCase()).toUpperCase()}
           </button>
@@ -1091,7 +1019,7 @@ export default function GameIdeasPage() {
           padding: 1px 3px;
           white-space: nowrap;
         }
-        .card-body-wrapper { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 180ms ease; }
+        .card-body-wrapper { display: grid; grid-template-rows: 0fr; transition: none; }
         .card.open .card-body-wrapper { grid-template-rows: 1fr; }
         .card-body { overflow: hidden; contain: content; }
         .inner { padding: 0 10px 8px; border-top: 1px solid rgba(0, 242, 255, 0.14); }
@@ -1112,12 +1040,19 @@ export default function GameIdeasPage() {
           box-shadow: 0 0 10px rgba(0, 242, 255, 0.25);
         }
         .admin-panel {
-          display: flex;
-          gap: 6px;
-          border-top: 1px solid var(--border);
-          padding: 6px 10px;
-          background: rgba(0, 0, 0, 0.92);
-          flex-wrap: wrap;
+          position: fixed;
+          left: 6px;
+          top: 50%;
+          transform: translateY(-50%);
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 4px;
+          border: 1px solid rgba(0,242,255,0.45);
+          border-radius: 8px;
+          padding: 6px;
+          width: 48px;
+          background: rgba(0, 0, 0, 0.9);
+          z-index: 20;
         }
         .admin-action {
           border: 1px solid #334155;
@@ -1125,9 +1060,14 @@ export default function GameIdeasPage() {
           background: rgba(255, 255, 255, 0.02);
           color: #cbd5e1;
           cursor: pointer;
-          font-size: 10px;
-          padding: 5px 8px;
+          font-size: 8px;
+          width: 34px;
+          height: 34px;
+          padding: 0;
+          border-radius: 6px;
+          font-weight: 800;
         }
+        .admin-action:disabled { opacity: 0.35; cursor: not-allowed; }
         .admin-action.add { border-color: rgba(0, 242, 255, 0.7); color: var(--accent); }
         .admin-action.del { border-color: rgba(255, 42, 95, 0.8); color: #ff2a5f; }
         .footer {
@@ -1200,14 +1140,14 @@ export default function GameIdeasPage() {
           .header-actions { gap: 4px; }
           .sync-state { font-size: 8px; }
           .admin-toggle, .sync-now { font-size: 8px; padding: 4px 6px; }
-          .layout { flex-direction: column; padding: 8px; gap: 8px; }
+          .layout { flex-direction: column; padding: 8px 8px 8px 62px; gap: 8px; }
           .sidebar { width: 100%; }
           .sub-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: 116px; gap: 5px; }
           .tab-btn { text-align: center; padding: 6px 5px; }
           .content-area { grid-template-columns: 1fr; gap: 7px; }
           .card-head { padding: 7px 40px 7px 9px; }
-          .admin-panel { padding: 6px 8px; }
-          .footer { padding: 7px 6px; }
+          .admin-panel { left: 8px; width: 52px; }
+          .footer { padding: 7px 6px 7px 62px; }
           .nav-item { padding: 6px 6px; max-width: 22vw; }
         }
       `}</style>
