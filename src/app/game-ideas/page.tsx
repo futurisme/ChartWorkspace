@@ -1300,37 +1300,43 @@ export default function GameIdeasPage() {
             const folderKey = `${nav}:${currentCategory}:${folderIndex}`;
             const isOpenFolder = openFolders[folderKey] ?? true;
             return (
-              <article key={`folder-${folder.name}-${folderIndex}`} className={`folder-card ${isOpenFolder ? 'open' : ''}`}>
+              <article key={`folder-${folder.name}-${folderIndex}`} className={`card folder-card ${isOpenFolder ? 'open' : ''}`}>
                 <button
                   type="button"
-                  className="folder-head"
+                  className="card-head folder-head"
                   onClick={() => setOpenFolders((prev) => ({ ...prev, [folderKey]: !isOpenFolder }))}
                 >
                   <div>
                     <h3>{folder.name}</h3>
-                    <p>{folder.items.length} ITEMCARDS</p>
+                    <div className="card-meta">
+                      <span className="tag folder-tag">{folder.items.length} ITEMCARDS</span>
+                    </div>
                   </div>
                   <span className="expand-indicator" aria-hidden="true">
                     {isOpenFolder ? '▲ Collapse folder' : '▼ Expand folder'}
                   </span>
                 </button>
-                {isOpenFolder ? (
-                  <div className="folder-body">
-                    {folder.items.length === 0 ? (
-                      <p className="desc">Folder kosong.</p>
-                    ) : (
-                      folder.items.map((item, itemIndex) => (
-                        <div key={`folder-item-${folder.name}-${item.name}-${itemIndex}`} className="folder-item-card">
-                          <div className="folder-item-head">
-                            <span>{item.name}</span>
-                            <span className="tag">{item.tag || 'UNTAGGED'}</span>
-                          </div>
-                          <p className="desc desc-content">{item.desc || 'No description.'}</p>
-                        </div>
-                      ))
-                    )}
+                <div className="card-body-wrapper folder-body-wrapper">
+                  <div className="card-body">
+                    {isOpenFolder ? (
+                      <div className="inner folder-inner">
+                        {folder.items.length === 0 ? (
+                          <p className="desc folder-desc">Folder kosong.</p>
+                        ) : (
+                          folder.items.map((item, itemIndex) => (
+                            <article key={`folder-item-${folder.name}-${item.name}-${itemIndex}`} className="folder-item-card">
+                              <div className="folder-item-head">
+                                <h4>{item.name}</h4>
+                                <span className="tag folder-tag">{item.tag || 'UNTAGGED'}</span>
+                              </div>
+                              <p className="desc desc-content folder-desc">{item.desc || 'No description.'}</p>
+                            </article>
+                          ))
+                        )}
+                      </div>
+                    ) : null}
                   </div>
-                ) : null}
+                </div>
               </article>
             );
           })}
@@ -1852,36 +1858,38 @@ export default function GameIdeasPage() {
         .card.open .card-body-wrapper { grid-template-rows: 1fr; }
         .card-body { overflow: hidden; contain: content; }
         .folder-card {
-          border: 1px solid rgba(125, 211, 252, 0.75);
-          border-radius: 10px;
           background: linear-gradient(140deg, rgba(255, 255, 255, 0.98), rgba(240, 249, 255, 0.96));
-          box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.3), 0 10px 24px rgba(6, 182, 212, 0.22);
+          border: 1px solid rgba(125, 211, 252, 0.88);
+          box-shadow: 0 0 18px rgba(56, 189, 248, 0.22), inset 0 0 0 1px rgba(56, 189, 248, 0.18);
           color: #0f172a;
-          overflow: hidden;
         }
         .folder-head {
-          width: 100%;
-          border: 0;
-          background: linear-gradient(130deg, rgba(255, 255, 255, 0.98), rgba(224, 242, 254, 0.97));
+          background: transparent;
           color: #0f172a;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          gap: 10px;
-          padding: 11px 12px;
-          text-align: left;
-          cursor: pointer;
+          padding-right: 10px;
         }
-        .folder-head h3 { margin: 0; font-size: 12px; letter-spacing: 0.03em; }
-        .folder-head p { margin: 3px 0 0; font-size: 10px; color: #0369a1; }
-        .folder-body { padding: 0 10px 10px; display: grid; gap: 8px; }
+        .folder-head h3 { margin: 0; font-size: 11px; color: #0f172a; line-height: 1.15; }
+        .folder-card .expand-indicator {
+          color: #0369a1;
+          border-color: rgba(14, 116, 144, 0.45);
+          box-shadow: 0 0 10px rgba(56, 189, 248, 0.25);
+        }
+        .folder-tag {
+          color: #0369a1;
+          border-color: rgba(14, 116, 144, 0.45);
+          box-shadow: 0 0 8px rgba(56, 189, 248, 0.2);
+        }
+        .folder-body-wrapper { grid-template-rows: 1fr; }
+        .folder-inner { padding: 0 10px 10px; border-top: 1px solid rgba(14, 116, 144, 0.2); display: grid; gap: 8px; }
         .folder-item-card {
           border: 1px solid rgba(14, 116, 144, 0.24);
           border-radius: 8px;
-          background: rgba(255, 255, 255, 0.95);
+          background: rgba(248, 250, 252, 0.98);
           padding: 8px;
         }
-        .folder-item-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11px; color: #0f172a; margin-bottom: 4px; }
+        .folder-item-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+        .folder-item-head h4 { margin: 0; font-size: 11px; color: #0f172a; }
+        .folder-desc { color: #1e293b; }
         .transfer-list { display: grid; gap: 8px; max-height: 280px; overflow: auto; }
         .transfer-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 1px solid rgba(0, 242, 255, 0.32); padding: 8px 10px; }
         .inner { padding: 0 10px 8px; border-top: 1px solid rgba(0, 242, 255, 0.14); }
