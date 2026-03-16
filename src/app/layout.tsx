@@ -2,7 +2,6 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { ServiceWorkerRegistration } from '@/components/service-worker-registration';
 import { PerformanceMetrics } from '@/components/performance-metrics';
-import { FadhilAiGlobalChat } from '@/components/FadhilAiGlobalChat';
 
 const siteUrl = 'https://mindmapper.qzz.io';
 const siteName = 'MindMapper Workspace';
@@ -73,7 +72,6 @@ export default function RootLayout({
         <ServiceWorkerRegistration />
         <PerformanceMetrics />
         {children}
-        <FadhilAiGlobalChat />
       </body>
     </html>
   );
