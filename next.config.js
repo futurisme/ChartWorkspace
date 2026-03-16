@@ -24,6 +24,21 @@ const nextConfig = {
   experimental: {
     optimizePackageImports: ['reactflow'],
   },
+
+  async redirects() {
+    return [
+      {
+        source: '/Archive',
+        destination: '/archive-lab',
+        permanent: false,
+      },
+      {
+        source: '/archive',
+        destination: '/archive-lab',
+        permanent: false,
+      },
+    ];
+  },
   async headers() {
     return [
       {

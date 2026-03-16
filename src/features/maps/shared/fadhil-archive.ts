@@ -11,6 +11,18 @@ export type FadhilArchiveFile = {
   exportedAt: string;
 };
 
+
+export type LegacyFadhilArchiveFile = {
+  magic: 'chartworkspace/fadhil-archive';
+  version: 1;
+  algo: 'aes-gcm+gzip+base64url';
+  compressed: boolean;
+  iv: string;
+  data: string;
+  contentType: FadhilContentType;
+  exportedAt: string;
+};
+
 const MAGIC = 'chartworkspace/fadhil-archive';
 const CURRENT_VERSION = 2;
 const CURRENT_ALGO = 'aes-gcm+deflate+alien-b8192';
@@ -198,7 +210,7 @@ export async function encodeFadhilArchive(payload: unknown, contentType: FadhilC
 
 export async function decodeFadhilArchive(text: string): Promise<{ payload: unknown; contentType: FadhilContentType }> {
   const parsedV2 = parseV2(text);
-  const parsed = parsedV2 ?? (JSON.parse(text) as Partial<FadhilArchiveFile>);
+  const parsed = parsedV2 ?? (JSON.parse(text) as Partial<FadhilArchiveFile | LegacyFadhilArchiveFile>);
 
   const isLegacy = parsed.magic === MAGIC && parsed.version === 1 && parsed.algo === LEGACY_ALGO;
   const isCurrent = parsed.magic === MAGIC && parsed.version === CURRENT_VERSION && parsed.algo === CURRENT_ALGO;
