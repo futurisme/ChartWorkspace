@@ -1403,6 +1403,7 @@ export default function GameIdeasPage() {
         }
         .architect-shell.with-admin-panel {
           --admin-h: 56px;
+          padding-bottom: calc(var(--admin-h) + env(safe-area-inset-bottom));
         }
         .architect-header {
           padding: 7px 10px;
@@ -1574,13 +1575,20 @@ export default function GameIdeasPage() {
           box-shadow: 0 0 10px rgba(0, 242, 255, 0.25);
         }
         .admin-panel {
+          position: fixed;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          z-index: 900;
+          min-height: var(--admin-h);
           display: flex;
           flex-wrap: wrap;
           align-items: center;
           gap: 6px;
           border-top: 1px solid var(--border);
-          padding: 8px 10px;
-          background: rgba(0, 0, 0, 0.9);
+          padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+          background: rgba(0, 0, 0, 0.94);
+          backdrop-filter: blur(2px);
         }
         .admin-action {
           border: 1px solid #334155;
@@ -1644,6 +1652,9 @@ export default function GameIdeasPage() {
           border-top: 1px solid var(--border);
           padding: 8px;
           background: #000;
+        }
+        .architect-shell.with-admin-panel .footer {
+          margin-bottom: calc(var(--admin-h) + env(safe-area-inset-bottom));
         }
         .nav-item { border: 0; background: transparent; color: #ddf7ff; padding: 6px 10px; cursor: pointer; font-size: 10px; font-weight: 800; max-width: 24vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: none; touch-action: pan-y; }
         .nav-item.active { color: var(--accent); text-shadow: var(--neon); }
