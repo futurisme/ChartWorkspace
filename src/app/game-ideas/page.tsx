@@ -18,7 +18,13 @@ type ItemDraft = {
   stats: string;
 };
 
+type ConfirmDeleteAction =
+  | { type: 'item'; index: number; label: string }
+  | { type: 'category'; category: string; label: string }
+  | null;
+
 const SAVE_DEBOUNCE_MS = 420;
+const ADMIN_ACCESS_CODE = 'IzinEditKhususGG123';
 
 function emptyDraft(): ItemDraft {
   return { name: '', tag: '', desc: '', stats: '' };
@@ -42,6 +48,13 @@ function parseStats(input: string) {
   return stats;
 }
 
+function normalizeCategoryName(value: string) {
+  return value.trim().toUpperCase().replace(/\s+/g, ' ').slice(0, 32);
+}
+
+function hashDb(value: GameIdeaDatabase) {
+  return JSON.stringify(value);
+}
 
 function mergeGameIdeaItems(localItems: GameIdeaItem[], remoteItems: GameIdeaItem[]): GameIdeaItem[] {
   const seen = new Set<string>();
@@ -82,12 +95,16 @@ function mergeGameIdeaDatabases(local: GameIdeaDatabase, remote: GameIdeaDatabas
 
   return sanitizeGameIdeaDatabase(merged);
 }
+
 export default function GameIdeasPage() {
   const [db, setDb] = useState<GameIdeaDatabase>(DEFAULT_GAME_IDEA_DATA);
   const [nav, setNav] = useState<GameIdeaNav>('govt');
   const [category, setCategory] = useState(DEFAULT_GAME_IDEA_DATA.govt.categories[0] ?? '');
   const [openCardIndex, setOpenCardIndex] = useState<number | null>(null);
   const [adminMode, setAdminMode] = useState(false);
+  const [showAccessModal, setShowAccessModal] = useState(false);
+  const [accessCodeInput, setAccessCodeInput] = useState('');
+  const [accessCodeError, setAccessCodeError] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -96,24 +113,35 @@ export default function GameIdeasPage() {
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [itemDraft, setItemDraft] = useState<ItemDraft>(emptyDraft());
   const [categoryDraft, setCategoryDraft] = useState('');
+  const [confirmDeleteAction, setConfirmDeleteAction] = useState<ConfirmDeleteAction>(null);
 
   const hydratedRef = useRef(false);
+  const dbRef = useRef(DEFAULT_GAME_IDEA_DATA);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const serverVersionRef = useRef<number | null>(null);
+  const lastSyncedHashRef = useRef<string | null>(null);
+  const lastHandledManualSyncRef = useRef(0);
 
-  const currentSection = db[nav];
+  const currentSection = useMemo(() => db[nav], [db, nav]);
   const categoryList = currentSection.categories;
   const currentCategory = category || categoryList[0] || '';
-  const items = currentSection.data[currentCategory] ?? [];
+  const items = useMemo(() => currentSection.data[currentCategory] ?? [], [currentCategory, currentSection.data]);
+
+  useEffect(() => {
+    dbRef.current = db;
+  }, [db]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+
+    let localDb = DEFAULT_GAME_IDEA_DATA;
     const cached = localStorage.getItem(GAME_IDEA_STORAGE_KEY);
+
     if (cached) {
       try {
-        const parsed = JSON.parse(cached) as unknown;
-        setDb(sanitizeGameIdeaDatabase(parsed));
+        localDb = sanitizeGameIdeaDatabase(JSON.parse(cached) as unknown);
+        setDb(localDb);
       } catch {
         localStorage.removeItem(GAME_IDEA_STORAGE_KEY);
       }
@@ -130,11 +158,15 @@ export default function GameIdeasPage() {
         }
 
         const payload = (await response.json()) as { data?: unknown; version?: number };
-        const sanitized = sanitizeGameIdeaDatabase(payload.data);
+        const remote = sanitizeGameIdeaDatabase(payload.data);
+        const merged = mergeGameIdeaDatabases(localDb, remote);
+
         serverVersionRef.current = typeof payload.version === 'number' ? payload.version : null;
-        setDb(sanitized);
-        localStorage.setItem(GAME_IDEA_STORAGE_KEY, JSON.stringify(sanitized));
+        lastSyncedHashRef.current = hashDb(merged);
+        setDb(merged);
+        localStorage.setItem(GAME_IDEA_STORAGE_KEY, JSON.stringify(merged));
       } catch (err) {
+        lastSyncedHashRef.current = hashDb(localDb);
         if ((err as Error).name !== 'AbortError') {
           setError(err instanceof Error ? err.message : 'Gagal memuat data server.');
         }
@@ -162,6 +194,18 @@ export default function GameIdeasPage() {
 
   useEffect(() => {
     if (!hydratedRef.current) return;
+
+    const currentHash = hashDb(db);
+    const manualSyncRequested = syncNonce !== lastHandledManualSyncRef.current;
+
+    if (!manualSyncRequested && lastSyncedHashRef.current === currentHash) {
+      return;
+    }
+
+    if (manualSyncRequested) {
+      lastHandledManualSyncRef.current = syncNonce;
+    }
+
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
@@ -176,21 +220,21 @@ export default function GameIdeasPage() {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            data: db,
+            data: dbRef.current,
             expectedVersion: serverVersionRef.current,
           }),
         });
 
         if (response.status === 409) {
-          const conflictPayload = (await response.json()) as { data?: unknown; version?: number; error?: string };
+          const conflictPayload = (await response.json()) as { data?: unknown; version?: number };
           const remote = sanitizeGameIdeaDatabase(conflictPayload.data);
-          const merged = mergeGameIdeaDatabases(db, remote);
+          const merged = mergeGameIdeaDatabases(dbRef.current, remote);
+
           serverVersionRef.current = typeof conflictPayload.version === 'number' ? conflictPayload.version : serverVersionRef.current;
           setDb(merged);
           localStorage.setItem(GAME_IDEA_STORAGE_KEY, JSON.stringify(merged));
-          setSaveState('saving');
           setError('Conflict detected. Merging local and server data...');
-          setSyncNonce((prev) => prev + 1);
+          setSaveState('saving');
           return;
         }
 
@@ -203,6 +247,8 @@ export default function GameIdeasPage() {
         if (typeof payload.version === 'number') {
           serverVersionRef.current = payload.version;
         }
+
+        lastSyncedHashRef.current = hashDb(dbRef.current);
         setSaveState('saved');
       } catch (err) {
         setSaveState('error');
@@ -224,22 +270,46 @@ export default function GameIdeasPage() {
     };
   }, [db, syncNonce]);
 
-  useEffect(() => () => {
-    if (retryTimerRef.current) {
-      clearTimeout(retryTimerRef.current);
-      retryTimerRef.current = null;
-    }
-  }, []);
+  useEffect(
+    () => () => {
+      if (retryTimerRef.current) {
+        clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
+    },
+    []
+  );
 
   const triggerSyncNow = useCallback(() => {
     setSyncNonce((prev) => prev + 1);
   }, []);
 
-  const saveItem = useCallback(() => {
-    const name = itemDraft.name.trim();
-    if (!name || !currentCategory) {
+  const requestEnableAdminMode = useCallback(() => {
+    if (adminMode) {
+      setAdminMode(false);
       return;
     }
+
+    setAccessCodeInput('');
+    setAccessCodeError('');
+    setShowAccessModal(true);
+  }, [adminMode]);
+
+  const confirmEnableAdminMode = useCallback(() => {
+    if (accessCodeInput.trim() !== ADMIN_ACCESS_CODE) {
+      setAccessCodeError('Kode akses salah.');
+      return;
+    }
+
+    setAdminMode(true);
+    setShowAccessModal(false);
+    setAccessCodeInput('');
+    setAccessCodeError('');
+  }, [accessCodeInput]);
+
+  const saveItem = useCallback(() => {
+    const name = itemDraft.name.trim();
+    if (!name || !currentCategory) return;
 
     const nextItem: GameIdeaItem = {
       name: name.slice(0, 120),
@@ -269,40 +339,13 @@ export default function GameIdeasPage() {
     setOpenCardIndex(null);
   }, [currentCategory, itemDraft, nav]);
 
-  const deleteItem = useCallback(
-    (index: number) => {
-      setDb((prev) => {
-        const section = prev[nav];
-        const oldItems = section.data[currentCategory] ?? [];
-        if (index < 0 || index >= oldItems.length) return prev;
-        const next = oldItems.filter((_, i) => i !== index);
-
-        return {
-          ...prev,
-          [nav]: {
-            ...section,
-            data: {
-              ...section.data,
-              [currentCategory]: next,
-            },
-          },
-        };
-      });
-
-      setOpenCardIndex(null);
-    },
-    [currentCategory, nav]
-  );
-
   const saveCategory = useCallback(() => {
-    const categoryName = categoryDraft.trim().toUpperCase();
+    const categoryName = normalizeCategoryName(categoryDraft);
     if (!categoryName) return;
 
     setDb((prev) => {
       const section = prev[nav];
-      if (section.categories.includes(categoryName)) {
-        return prev;
-      }
+      if (section.categories.includes(categoryName)) return prev;
 
       return {
         ...prev,
@@ -322,6 +365,81 @@ export default function GameIdeasPage() {
     setShowCategoryModal(false);
   }, [categoryDraft, nav]);
 
+  const requestDeleteItem = useCallback(
+    (index: number) => {
+      const item = items[index];
+      if (!item) return;
+
+      setConfirmDeleteAction({
+        type: 'item',
+        index,
+        label: `Hapus item "${item.name}"?`,
+      });
+    },
+    [items]
+  );
+
+  const requestDeleteCategory = useCallback(() => {
+    if (!currentCategory) return;
+    if (categoryList.length <= 1) {
+      setError('Minimal harus ada 1 kategori.');
+      return;
+    }
+
+    setConfirmDeleteAction({
+      type: 'category',
+      category: currentCategory,
+      label: `Hapus kategori "${currentCategory}" beserta semua item?`,
+    });
+  }, [categoryList.length, currentCategory]);
+
+  const confirmDelete = useCallback(() => {
+    if (!confirmDeleteAction) return;
+
+    if (confirmDeleteAction.type === 'item') {
+      setDb((prev) => {
+        const section = prev[nav];
+        const oldItems = section.data[currentCategory] ?? [];
+        if (confirmDeleteAction.index < 0 || confirmDeleteAction.index >= oldItems.length) return prev;
+
+        return {
+          ...prev,
+          [nav]: {
+            ...section,
+            data: {
+              ...section.data,
+              [currentCategory]: oldItems.filter((_, i) => i !== confirmDeleteAction.index),
+            },
+          },
+        };
+      });
+      setOpenCardIndex(null);
+    }
+
+    if (confirmDeleteAction.type === 'category') {
+      const target = confirmDeleteAction.category;
+      setDb((prev) => {
+        const section = prev[nav];
+        if (!section.categories.includes(target) || section.categories.length <= 1) return prev;
+
+        const categories = section.categories.filter((cat) => cat !== target);
+        const data = { ...section.data };
+        delete data[target];
+
+        return {
+          ...prev,
+          [nav]: {
+            ...section,
+            categories,
+            data,
+          },
+        };
+      });
+    }
+
+    setConfirmDeleteAction(null);
+  }, [confirmDeleteAction, currentCategory, nav]);
+
   const statusLabel = useMemo(() => {
     if (saveState === 'saving') return 'SYNCING...';
     if (saveState === 'saved') return 'SYNCED';
@@ -335,8 +453,10 @@ export default function GameIdeasPage() {
         <h1>CODEX : ARCHITECT</h1>
         <div className="header-actions">
           <span className={`sync-state ${saveState}`}>{statusLabel}</span>
-          <button type="button" className="sync-now" onClick={triggerSyncNow}>SYNC NOW</button>
-          <button type="button" className="admin-toggle" onClick={() => setAdminMode((prev) => !prev)}>
+          <button type="button" className="sync-now" onClick={triggerSyncNow}>
+            SYNC NOW
+          </button>
+          <button type="button" className="admin-toggle" onClick={requestEnableAdminMode}>
             ADMIN MODE: {adminMode ? 'ON' : 'OFF'}
           </button>
         </div>
@@ -356,11 +476,6 @@ export default function GameIdeasPage() {
               </button>
             ))}
           </nav>
-          {adminMode && (
-            <button type="button" className="add-category" onClick={() => setShowCategoryModal(true)}>
-              + CATEGORY
-            </button>
-          )}
         </aside>
 
         <section className="content-area">
@@ -368,12 +483,16 @@ export default function GameIdeasPage() {
             <article key={`${item.name}-${index}`} className={`card ${openCardIndex === index ? 'open' : ''}`}>
               {adminMode && (
                 <div className="admin-tools">
-                  <button type="button" className="btn-icon del" onClick={() => deleteItem(index)}>
+                  <button type="button" className="btn-icon del" onClick={() => requestDeleteItem(index)}>
                     DELETE
                   </button>
                 </div>
               )}
-              <button type="button" className="card-head" onClick={() => setOpenCardIndex((prev) => (prev === index ? null : index))}>
+              <button
+                type="button"
+                className="card-head"
+                onClick={() => setOpenCardIndex((prev) => (prev === index ? null : index))}
+              >
                 <h3>{item.name}</h3>
                 <span className="tag">{item.tag || 'UNTAGGED'}</span>
               </button>
@@ -397,16 +516,24 @@ export default function GameIdeasPage() {
             </article>
           ))}
 
-          {adminMode && (
-            <button type="button" className="add-btn-main" onClick={() => setShowItemModal(true)}>
-              [+] UPLOAD_NEW_RECORD
-            </button>
-          )}
-
-          {!loading && items.length === 0 && !adminMode && <p className="empty-hint">Belum ada ide di kategori ini.</p>}
+          {!loading && items.length === 0 && <p className="empty-hint">Belum ada ide di kategori ini.</p>}
           {error && <p className="error-hint">{error}</p>}
         </section>
       </div>
+
+      {adminMode && (
+        <section className="admin-panel">
+          <button type="button" className="admin-action add" onClick={() => setShowItemModal(true)}>
+            + ITEM
+          </button>
+          <button type="button" className="admin-action add" onClick={() => setShowCategoryModal(true)}>
+            + CATEGORY
+          </button>
+          <button type="button" className="admin-action del" onClick={requestDeleteCategory}>
+            DELETE CATEGORY
+          </button>
+        </section>
+      )}
 
       <footer className="footer">
         {GAME_IDEA_NAV_ORDER.map((key) => (
@@ -415,6 +542,35 @@ export default function GameIdeasPage() {
           </button>
         ))}
       </footer>
+
+      {showAccessModal && (
+        <div className="modal-overlay" role="dialog" aria-modal="true">
+          <div className="modal">
+            <h2>AKSES ADMIN</h2>
+            <div className="input-group">
+              <label>KODE AKSES</label>
+              <input
+                type="password"
+                value={accessCodeInput}
+                onChange={(e) => {
+                  setAccessCodeInput(e.target.value);
+                  setAccessCodeError('');
+                }}
+                placeholder="Masukkan kode akses"
+              />
+            </div>
+            {accessCodeError && <p className="error-hint">{accessCodeError}</p>}
+            <div className="modal-btns">
+              <button type="button" className="btn-abort" onClick={() => setShowAccessModal(false)}>
+                CANCEL
+              </button>
+              <button type="button" className="btn-confirm" onClick={confirmEnableAdminMode}>
+                CONFIRM
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showItemModal && (
         <div className="modal-overlay" role="dialog" aria-modal="true">
@@ -437,8 +593,12 @@ export default function GameIdeasPage() {
               <input value={itemDraft.stats} onChange={(e) => setItemDraft((prev) => ({ ...prev, stats: e.target.value }))} />
             </div>
             <div className="modal-btns">
-              <button type="button" className="btn-abort" onClick={() => setShowItemModal(false)}>ABORT</button>
-              <button type="button" className="btn-confirm" onClick={saveItem}>EXECUTE_SAVE</button>
+              <button type="button" className="btn-abort" onClick={() => setShowItemModal(false)}>
+                ABORT
+              </button>
+              <button type="button" className="btn-confirm" onClick={saveItem}>
+                EXECUTE_SAVE
+              </button>
             </div>
           </div>
         </div>
@@ -453,8 +613,29 @@ export default function GameIdeasPage() {
               <input value={categoryDraft} onChange={(e) => setCategoryDraft(e.target.value)} />
             </div>
             <div className="modal-btns">
-              <button type="button" className="btn-abort" onClick={() => setShowCategoryModal(false)}>ABORT</button>
-              <button type="button" className="btn-confirm" onClick={saveCategory}>INITIATE</button>
+              <button type="button" className="btn-abort" onClick={() => setShowCategoryModal(false)}>
+                ABORT
+              </button>
+              <button type="button" className="btn-confirm" onClick={saveCategory}>
+                INITIATE
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDeleteAction && (
+        <div className="modal-overlay" role="dialog" aria-modal="true">
+          <div className="modal danger">
+            <h2>KONFIRMASI HAPUS</h2>
+            <p className="desc">{confirmDeleteAction.label}</p>
+            <div className="modal-btns">
+              <button type="button" className="btn-abort" onClick={() => setConfirmDeleteAction(null)}>
+                CANCEL
+              </button>
+              <button type="button" className="btn-confirm danger" onClick={confirmDelete}>
+                DELETE
+              </button>
             </div>
           </div>
         </div>
@@ -475,14 +656,17 @@ export default function GameIdeasPage() {
           display: flex;
           flex-direction: column;
           background-color: var(--bg);
-          background-image: linear-gradient(rgba(0, 242, 255, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 242, 255, 0.03) 1px, transparent 1px), radial-gradient(circle at 50% 50%, rgba(188, 19, 254, 0.05) 0%, transparent 70%);
+          background-image:
+            linear-gradient(rgba(0, 242, 255, 0.03) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(0, 242, 255, 0.03) 1px, transparent 1px),
+            radial-gradient(circle at 50% 50%, rgba(188, 19, 254, 0.05) 0%, transparent 70%);
           background-size: 40px 40px, 40px 40px, 100% 100%;
           color: var(--text);
-          font-size: 13px;
+          font-size: 12px;
           overflow: hidden;
         }
         .architect-header {
-          padding: 12px 16px;
+          padding: 10px 14px;
           border-bottom: 1px solid var(--border);
           background: rgba(0, 0, 0, 0.85);
           display: flex;
@@ -490,37 +674,39 @@ export default function GameIdeasPage() {
           justify-content: space-between;
           gap: 8px;
         }
-        .architect-header h1 { font-size: 1rem; letter-spacing: 4px; color: #fff; text-shadow: var(--neon-intense); }
-        .header-actions { display: flex; gap: 8px; align-items: center; }
+        .architect-header h1 { font-size: 0.95rem; letter-spacing: 3px; color: #fff; text-shadow: var(--neon-intense); }
+        .header-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
         .sync-state { font-size: 10px; letter-spacing: 1px; color: #75f7ff; }
         .sync-state.error { color: #fb7185; }
-        .admin-toggle, .add-category, .nav-item, .tab-btn, .add-btn-main, .card-head, .btn-icon, .btn-abort, .btn-confirm {
-          font-family: inherit;
-        }
-        .admin-toggle {
-          padding: 8px 12px;
-          border: 1px solid var(--dim);
-          color: var(--dim);
-          background: transparent;
-          cursor: pointer;
-        }
+        .admin-toggle,
+        .nav-item,
+        .tab-btn,
+        .btn-abort,
+        .btn-confirm,
+        .admin-action,
+        .btn-icon,
+        .sync-now { font-family: inherit; }
+        .admin-toggle,
         .sync-now {
-          padding: 8px 12px;
+          padding: 6px 10px;
           border: 1px solid var(--accent);
           color: var(--accent);
           background: rgba(0, 242, 255, 0.08);
           cursor: pointer;
+          font-size: 10px;
         }
-        .layout { flex: 1; display: flex; gap: 12px; padding: 12px; min-height: 0; }
-        .sidebar { width: 180px; flex-shrink: 0; display: flex; flex-direction: column; gap: 8px; }
-        .sub-tabs { display: flex; flex-direction: column; gap: 6px; overflow: auto; }
+        .layout { flex: 1; display: flex; gap: 10px; padding: 10px; min-height: 0; }
+        .sidebar { width: 170px; flex-shrink: 0; }
+        .sub-tabs { display: flex; flex-direction: column; gap: 4px; overflow: auto; max-height: 100%; }
         .tab-btn {
-          padding: 12px;
+          padding: 7px 9px;
           text-align: left;
-          border: 1px solid rgba(255,255,255,0.08);
+          border: 1px solid rgba(255, 255, 255, 0.08);
           background: var(--surface);
           color: var(--dim);
           cursor: pointer;
+          font-size: 10px;
+          line-height: 1.2;
         }
         .tab-btn.active {
           color: var(--accent);
@@ -528,84 +714,135 @@ export default function GameIdeasPage() {
           background: linear-gradient(90deg, rgba(0, 242, 255, 0.15), transparent);
           text-shadow: var(--neon);
         }
-        .add-category {
-          padding: 10px;
-          border: 1px dashed var(--accent2);
-          background: rgba(188, 19, 254, 0.08);
-          color: var(--accent2);
-          cursor: pointer;
+        .content-area {
+          flex: 1;
+          min-height: 0;
+          overflow: auto;
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+          gap: 8px;
+          align-content: start;
+          padding-right: 2px;
         }
-        .content-area { flex: 1; min-height: 0; overflow: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; align-content: start; padding-right: 4px; }
         .card {
           position: relative;
           background: var(--surface);
-          border: 1px solid rgba(255,255,255,0.08);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          overflow: hidden;
         }
-        .admin-tools { position: absolute; right: 8px; top: 8px; z-index: 2; }
-        .btn-icon.del { background: rgba(255, 42, 95, 0.2); color: #ff2a5f; border: 1px solid #ff2a5f; padding: 4px 8px; cursor: pointer; }
+        .admin-tools { position: absolute; right: 6px; top: 6px; z-index: 3; }
+        .btn-icon.del {
+          background: rgba(255, 42, 95, 0.15);
+          color: #ff2a5f;
+          border: 1px solid rgba(255, 42, 95, 0.9);
+          padding: 3px 6px;
+          cursor: pointer;
+          font-size: 10px;
+        }
         .card-head {
           width: 100%;
           border: 0;
           background: transparent;
           color: inherit;
-          padding: 16px;
+          padding: 10px 12px;
           display: flex;
           align-items: center;
           justify-content: space-between;
           cursor: pointer;
+          gap: 8px;
         }
-        .card-head h3 { text-align: left; font-size: 13px; color: #fff; }
-        .tag { font-size: 9px; color: var(--accent2); border: 1px solid var(--accent2); padding: 2px 5px; }
+        .card-head h3 { text-align: left; font-size: 12px; color: #fff; line-height: 1.2; margin-right: auto; }
+        .tag {
+          font-size: 9px;
+          color: var(--accent2);
+          border: 1px solid var(--accent2);
+          padding: 1px 4px;
+          white-space: nowrap;
+        }
         .card-body-wrapper { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 180ms ease; }
         .card.open .card-body-wrapper { grid-template-rows: 1fr; }
         .card-body { overflow: hidden; }
-        .inner { padding: 0 16px 14px; border-top: 1px solid rgba(0, 242, 255, 0.1); }
-        .desc { color: #9ca3af; margin: 10px 0; font-size: 11px; line-height: 1.5; }
-        .stat { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 11px; }
+        .inner { padding: 0 12px 10px; border-top: 1px solid rgba(0, 242, 255, 0.1); }
+        .desc { color: #9ca3af; margin: 7px 0; font-size: 11px; line-height: 1.4; }
+        .stat { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.04); font-size: 10px; }
         .stat span:first-child { color: var(--dim); }
         .stat span:last-child { color: var(--accent); font-weight: 700; }
-        .add-btn-main { min-height: 80px; border: 2px dashed var(--border); color: var(--accent); background: transparent; cursor: pointer; }
-        .footer { display: flex; justify-content: space-around; border-top: 1px solid var(--border); padding: 12px; background: #000; }
-        .nav-item { border: 0; background: transparent; color: var(--dim); padding: 8px 12px; cursor: pointer; font-size: 10px; font-weight: 700; }
+        .admin-panel {
+          display: flex;
+          gap: 6px;
+          border-top: 1px solid var(--border);
+          padding: 6px 10px;
+          background: rgba(0, 0, 0, 0.92);
+          flex-wrap: wrap;
+        }
+        .admin-action {
+          border: 1px solid #334155;
+          background: rgba(255, 255, 255, 0.02);
+          color: #cbd5e1;
+          cursor: pointer;
+          font-size: 10px;
+          padding: 5px 8px;
+        }
+        .admin-action.add { border-color: rgba(0, 242, 255, 0.7); color: var(--accent); }
+        .admin-action.del { border-color: rgba(255, 42, 95, 0.8); color: #ff2a5f; }
+        .footer {
+          display: flex;
+          justify-content: space-around;
+          border-top: 1px solid var(--border);
+          padding: 8px;
+          background: #000;
+        }
+        .nav-item { border: 0; background: transparent; color: var(--dim); padding: 6px 10px; cursor: pointer; font-size: 10px; font-weight: 700; }
         .nav-item.active { color: var(--accent); text-shadow: var(--neon); }
-        .empty-hint, .error-hint { font-size: 12px; color: #9ca3af; }
+        .empty-hint,
+        .error-hint { font-size: 12px; color: #9ca3af; }
         .error-hint { color: #fb7185; }
         .modal-overlay {
           position: fixed;
           inset: 0;
-          background: rgba(0,0,0,0.82);
+          background: rgba(0, 0, 0, 0.82);
           display: flex;
           align-items: center;
           justify-content: center;
           z-index: 1000;
           padding: 16px;
         }
-        .modal { width: min(540px, 100%); background: #0a0a0f; border: 1px solid var(--accent2); padding: 20px; }
-        .modal h2 { color: var(--accent2); margin-bottom: 14px; font-size: 16px; }
+        .modal { width: min(540px, 100%); background: #0a0a0f; border: 1px solid var(--accent2); padding: 18px; }
+        .modal.danger { border-color: rgba(255, 42, 95, 0.9); }
+        .modal h2 { color: var(--accent2); margin-bottom: 12px; font-size: 15px; }
         .input-group { margin-bottom: 10px; }
-        .input-group label { display: block; color: #64748b; font-size: 10px; margin-bottom: 6px; }
-        .input-group input, .input-group textarea {
+        .input-group label { display: block; color: #64748b; font-size: 10px; margin-bottom: 5px; }
+        .input-group input,
+        .input-group textarea {
           width: 100%;
-          padding: 10px;
+          padding: 9px;
           border: 1px solid #334155;
-          background: rgba(255,255,255,0.03);
+          background: rgba(255, 255, 255, 0.03);
           color: #e2e8f0;
           outline: 0;
+          font-size: 12px;
         }
-        .input-group input:focus, .input-group textarea:focus { border-color: var(--accent); }
-        .modal-btns { display: flex; gap: 8px; }
-        .btn-abort, .btn-confirm { flex: 1; padding: 10px; cursor: pointer; }
+        .input-group input:focus,
+        .input-group textarea:focus { border-color: var(--accent); }
+        .modal-btns { display: flex; gap: 8px; margin-top: 8px; }
+        .btn-abort,
+        .btn-confirm { flex: 1; padding: 9px; cursor: pointer; }
         .btn-abort { border: 1px solid #475569; background: transparent; color: #94a3b8; }
         .btn-confirm { border: 0; background: var(--accent); color: #020617; font-weight: 800; }
+        .btn-confirm.danger { background: #ff2a5f; color: #fff; }
 
         @media (max-width: 768px) {
-          .architect-header { padding: 10px; }
-          .architect-header h1 { font-size: 0.88rem; letter-spacing: 2px; }
-          .layout { flex-direction: column; padding: 10px; }
+          .architect-header { padding: 8px 10px; }
+          .architect-header h1 { font-size: 0.8rem; letter-spacing: 2px; }
+          .layout { flex-direction: column; padding: 8px; gap: 8px; }
           .sidebar { width: 100%; }
-          .sub-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: 132px; }
-          .tab-btn { text-align: center; padding: 10px 8px; }
-          .content-area { grid-template-columns: 1fr; }
+          .sub-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: 116px; gap: 5px; }
+          .tab-btn { text-align: center; padding: 7px 6px; }
+          .content-area { grid-template-columns: 1fr; gap: 7px; }
+          .card-head { padding: 8px 10px; }
+          .admin-panel { padding: 6px 8px; }
+          .footer { padding: 7px 6px; }
+          .nav-item { padding: 6px 6px; }
         }
       `}</style>
     </main>
