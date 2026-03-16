@@ -489,7 +489,7 @@ export default function GameIdeasPage() {
     const nextItem: GameIdeaItem = {
       name: name.slice(0, 120),
       tag: itemDraft.tag.trim().slice(0, 32),
-      desc: itemDraft.desc.trim().slice(0, 1200),
+      desc: itemDraft.desc.trim(),
       stats: parseStats(itemDraft.stats),
     };
 
@@ -616,7 +616,7 @@ export default function GameIdeasPage() {
                 ...item,
                 name: nextName,
                 tag: itemRenameDraft.tag.trim().slice(0, 32),
-                desc: itemRenameDraft.desc.trim().slice(0, 1200),
+                desc: itemRenameDraft.desc.trim(),
                 stats: parseStats(itemRenameDraft.stats),
               }
             : item

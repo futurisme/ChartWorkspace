@@ -70,7 +70,7 @@ function sanitizeItem(value: unknown): GameIdeaItem | null {
   if (!name) return null;
 
   const tag = typeof value.tag === 'string' ? value.tag.trim().slice(0, 32) : '';
-  const desc = typeof value.desc === 'string' ? value.desc.trim().slice(0, 1200) : '';
+  const desc = typeof value.desc === 'string' ? value.desc.trim() : '';
 
   const rawStats = isRecord(value.stats) ? value.stats : {};
   const stats: Record<string, string> = {};
