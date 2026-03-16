@@ -60,7 +60,7 @@ function fromBase64Url(value: string): Uint8Array {
   return output;
 }
 
-function encodeAlienBase8192(bytes: Uint8Array): string {
+function encodeAlienSymbols(bytes: Uint8Array): string {
   let bits = 0;
   let bitCount = 0;
   let out = '';
@@ -85,7 +85,7 @@ function encodeAlienBase8192(bytes: Uint8Array): string {
   return out;
 }
 
-function decodeAlienBase8192(text: string): Uint8Array {
+function decodeAlienSymbols(text: string): Uint8Array {
   let bits = 0;
   let bitCount = 0;
   const out: number[] = [];
@@ -107,6 +107,43 @@ function decodeAlienBase8192(text: string): Uint8Array {
   }
 
   return new Uint8Array(out);
+}
+
+function encodeAlienBase8192(bytes: Uint8Array): string {
+  return `${bytes.length.toString(36)}~${encodeAlienSymbols(bytes)}`;
+}
+
+function decodeAlienBase8192Candidates(text: string, expectedLength?: number): Uint8Array[] {
+  const sep = text.indexOf('~');
+  if (sep > 0) {
+    const rawLen = text.slice(0, sep);
+    const expected = Number.parseInt(rawLen, 36);
+    if (!Number.isFinite(expected) || expected < 0) {
+      throw new Error('Header panjang simbol alien .fAdHiL tidak valid.');
+    }
+
+    const decoded = decodeAlienSymbols(text.slice(sep + 1));
+    if (decoded.length < expected) {
+      throw new Error('Data simbol alien .fAdHiL terpotong.');
+    }
+
+    return [decoded.slice(0, expected)];
+  }
+
+  const decoded = decodeAlienSymbols(text);
+  const candidates: Uint8Array[] = [decoded];
+  if (decoded.length > 0) {
+    candidates.push(decoded.slice(0, decoded.length - 1));
+  }
+
+  if (typeof expectedLength === 'number') {
+    const exact = candidates.find((bytes) => bytes.length === expectedLength);
+    if (exact) {
+      return [exact];
+    }
+  }
+
+  return candidates;
 }
 
 async function maybeDeflate(bytes: Uint8Array): Promise<{ bytes: Uint8Array; compressed: boolean }> {
@@ -222,14 +259,40 @@ export async function decodeFadhilArchive(text: string): Promise<{ payload: unkn
   }
 
   const key = await getKey(isLegacy ? 'legacy' : 'current');
-  const cipherBytes = isLegacy ? fromBase64Url(parsed.data) : decodeAlienBase8192(parsed.data);
-  const iv = isLegacy ? fromBase64Url(parsed.iv) : decodeAlienBase8192(parsed.iv);
-  const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: toArrayBuffer(iv) }, key, toArrayBuffer(cipherBytes));
-  const unpacked = await inflate(new Uint8Array(plain), isLegacy ? 'gzip' : 'deflate-raw', Boolean(parsed.compressed));
-  const payload = JSON.parse(new TextDecoder().decode(unpacked));
+  if (isLegacy) {
+    const cipherBytes = fromBase64Url(parsed.data);
+    const iv = fromBase64Url(parsed.iv);
+    const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: toArrayBuffer(iv) }, key, toArrayBuffer(cipherBytes));
+    const unpacked = await inflate(new Uint8Array(plain), 'gzip', Boolean(parsed.compressed));
+    const payload = JSON.parse(new TextDecoder().decode(unpacked));
 
-  return {
-    payload,
-    contentType: parsed.contentType,
-  };
+    return {
+      payload,
+      contentType: parsed.contentType,
+    };
+  }
+
+  const ivCandidates = decodeAlienBase8192Candidates(parsed.iv, 12);
+  const cipherCandidates = decodeAlienBase8192Candidates(parsed.data);
+  let lastError: unknown = null;
+
+  for (const iv of ivCandidates) {
+    for (const cipherBytes of cipherCandidates) {
+      try {
+        const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: toArrayBuffer(iv) }, key, toArrayBuffer(cipherBytes));
+        const unpacked = await inflate(new Uint8Array(plain), 'deflate-raw', Boolean(parsed.compressed));
+        const payload = JSON.parse(new TextDecoder().decode(unpacked));
+
+        return {
+          payload,
+          contentType: parsed.contentType,
+        };
+      } catch (error) {
+        lastError = error;
+      }
+    }
+  }
+
+  const detail = lastError instanceof Error ? lastError.message : String(lastError ?? 'unknown');
+  throw new Error(`Dekripsi .fAdHiL gagal: ${detail}`);
 }
