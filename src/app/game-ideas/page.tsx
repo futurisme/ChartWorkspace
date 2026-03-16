@@ -1965,11 +1965,11 @@ export default function GameIdeasPage() {
         .folder-head h3 { margin: 0; font-size: 11px; color: #0f172a; line-height: 1.15; }
         .folder-expand-indicator {
           color: #000000;
-          border-color: rgba(0, 0, 0, 0.65);
-          box-shadow: 0 0 10px rgba(15, 23, 42, 0.18);
+          border-color: rgba(0, 0, 0, 0.88);
+          box-shadow: 0 0 10px rgba(2, 6, 23, 0.28);
           font-size: 10px;
           padding: 2px 8px;
-          font-weight: 700;
+          font-weight: 800;
         }
         .folder-tag {
           color: #0369a1;
@@ -1982,18 +1982,23 @@ export default function GameIdeasPage() {
         .folder-item-card {
           border-radius: 8px;
           overflow: hidden;
+          background: var(--surface);
+          border: 1px solid rgba(0, 242, 255, 0.42);
+          box-shadow: 0 0 18px rgba(0, 242, 255, 0.2), inset 0 0 0 1px rgba(0, 242, 255, 0.14);
         }
-        .folder-item-card.open { border-color: rgba(0, 242, 255, 0.72); box-shadow: 0 0 16px rgba(0, 242, 255, 0.22), inset 0 0 0 1px rgba(0, 242, 255, 0.16); }
+        .folder-item-card.open {
+          border-color: rgba(0, 242, 255, 0.72);
+          box-shadow: 0 0 24px rgba(0, 242, 255, 0.34), inset 0 0 0 1px rgba(0, 242, 255, 0.26);
+        }
         .folder-item-head { width: 100%; border: 0; background: transparent; color: inherit; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px; text-align: left; cursor: pointer; }
         .folder-item-head h4 { margin: 0; font-size: 11px; color: #ffffff; }
         .folder-item-body-wrapper { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 150ms ease; }
         .folder-item-card.open .folder-item-body-wrapper { grid-template-rows: 1fr; }
-        .folder-item-inner { padding: 0 8px 8px; border-top: 1px solid rgba(14, 116, 144, 0.18); }
-        .folder-desc { color: #1e293b; }
+        .folder-item-inner { padding: 0 8px 8px; border-top: 1px solid rgba(0, 242, 255, 0.14); }
         .transfer-list { display: grid; gap: 8px; max-height: 280px; overflow: auto; }
         .transfer-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 1px solid rgba(0, 242, 255, 0.32); padding: 8px 10px; }
         .inner { padding: 0 10px 8px; border-top: 1px solid rgba(0, 242, 255, 0.14); }
-        .desc { color: #d5dee9; margin: 6px 0; font-size: 11px; line-height: 1.5; font-weight: 500; letter-spacing: 0.01em; }
+        .desc { color: #ff8c1a; margin: 6px 0; font-size: 11px; line-height: 1.5; font-weight: 500; letter-spacing: 0.01em; font-family: 'Orbitron', 'Rajdhani', 'Inter', 'Segoe UI', sans-serif; text-shadow: 0 0 8px rgba(255, 140, 26, 0.22); }
         .desc-content { white-space: pre-wrap; word-break: break-word; }
         .stat { display: inline-flex; align-items: baseline; gap: 2px; padding: 2px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.04); font-size: 10px; }
         .stat-label { color: #94a3b8; }
