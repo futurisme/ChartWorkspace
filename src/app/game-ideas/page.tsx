@@ -1403,7 +1403,9 @@ export default function GameIdeasPage() {
         }
         .architect-shell.with-admin-panel {
           --admin-h: 56px;
-          padding-bottom: calc(var(--admin-h) + env(safe-area-inset-bottom));
+        }
+        .architect-shell.with-admin-panel .layout {
+          height: calc(100dvh - var(--header-h) - var(--footer-h) - var(--admin-h) - env(safe-area-inset-bottom));
         }
         .architect-header {
           padding: 7px 10px;
@@ -1654,7 +1656,12 @@ export default function GameIdeasPage() {
           background: #000;
         }
         .architect-shell.with-admin-panel .footer {
-          margin-bottom: calc(var(--admin-h) + env(safe-area-inset-bottom));
+          position: fixed;
+          left: 0;
+          right: 0;
+          bottom: calc(var(--admin-h) + env(safe-area-inset-bottom));
+          z-index: 850;
+          margin-bottom: 0;
         }
         .nav-item { border: 0; background: transparent; color: #ddf7ff; padding: 6px 10px; cursor: pointer; font-size: 10px; font-weight: 800; max-width: 24vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: none; touch-action: pan-y; }
         .nav-item.active { color: var(--accent); text-shadow: var(--neon); }
