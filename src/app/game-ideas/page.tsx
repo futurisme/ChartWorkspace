@@ -29,10 +29,21 @@ type RenameAction =
   | { type: 'nav'; navKey: GameIdeaNav; currentName: string }
   | null;
 
+type DragKind = 'category' | 'item' | 'nav';
+
+type ActiveDrag = {
+  kind: DragKind;
+  fromIndex: number;
+  overIndex: number;
+  pointerId: number;
+};
+
 const SAVE_DEBOUNCE_MS = 420;
 const ADMIN_ACCESS_CODE = 'IzinEditKhususGG123';
 const UNIVERSAL_RENAME_CLICKS = 3;
 const UNIVERSAL_RENAME_WINDOW_MS = 3000;
+const DRAG_HOLD_MS = 260;
+const NAV_ORDER_STORAGE_KEY = `${GAME_IDEA_STORAGE_KEY}_NAV_ORDER`;
 
 
 const EMPTY_GAME_IDEA_DATA: GameIdeaDatabase = {
@@ -99,6 +110,39 @@ function mergeGameIdeaDatabases(_local: GameIdeaDatabase | null, remote: GameIde
   return sanitizeGameIdeaDatabase(remote);
 }
 
+
+function reorderArray<T>(values: T[], fromIndex: number, toIndex: number) {
+  if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= values.length || toIndex >= values.length) {
+    return values;
+  }
+
+  const next = [...values];
+  const [picked] = next.splice(fromIndex, 1);
+  next.splice(toIndex, 0, picked);
+  return next;
+}
+
+function parseStoredNavOrder(value: string | null): GameIdeaNav[] {
+  if (!value) return [...GAME_IDEA_NAV_ORDER];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) return [...GAME_IDEA_NAV_ORDER];
+
+    const normalized = parsed.filter((entry): entry is GameIdeaNav => (
+      typeof entry === 'string' && GAME_IDEA_NAV_ORDER.includes(entry as GameIdeaNav)
+    ));
+
+    const merged = [...normalized];
+    GAME_IDEA_NAV_ORDER.forEach((entry) => {
+      if (!merged.includes(entry)) merged.push(entry);
+    });
+
+    return merged;
+  } catch {
+    return [...GAME_IDEA_NAV_ORDER];
+  }
+}
+
 export default function GameIdeasPage() {
   const [db, setDb] = useState<GameIdeaDatabase>(EMPTY_GAME_IDEA_DATA);
   const [nav, setNav] = useState<GameIdeaNav>('govt');
@@ -123,6 +167,8 @@ export default function GameIdeasPage() {
   const [renameDraft, setRenameDraft] = useState('');
   const [itemRenameDraft, setItemRenameDraft] = useState<ItemDraft>(emptyDraft());
   const [selectedItemIndex, setSelectedItemIndex] = useState<number | null>(null);
+  const [navOrder, setNavOrder] = useState<GameIdeaNav[]>([...GAME_IDEA_NAV_ORDER]);
+  const [activeDrag, setActiveDrag] = useState<ActiveDrag | null>(null);
 
   const hydratedRef = useRef(false);
   const dbRef = useRef(DEFAULT_GAME_IDEA_DATA);
@@ -133,6 +179,8 @@ export default function GameIdeasPage() {
   const lastLocalCacheHashRef = useRef<string | null>(null);
   const lastHandledManualSyncRef = useRef(0);
   const renameClickTrackerRef = useRef<{ key: string; count: number; startedAt: number } | null>(null);
+  const dragHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pointerByKindRef = useRef<Partial<Record<DragKind, number>>>({});
 
   const dbHash = useMemo(() => hashDb(db), [db]);
   const currentSection = useMemo(() => db[nav], [db, nav]);
@@ -158,6 +206,8 @@ export default function GameIdeasPage() {
         localStorage.removeItem(GAME_IDEA_STORAGE_KEY);
       }
     }
+
+    setNavOrder(parseStoredNavOrder(localStorage.getItem(NAV_ORDER_STORAGE_KEY)));
 
     const controller = new AbortController();
 
@@ -211,6 +261,11 @@ export default function GameIdeasPage() {
     localStorage.setItem(GAME_IDEA_STORAGE_KEY, JSON.stringify(db));
     lastLocalCacheHashRef.current = dbHash;
   }, [db, dbHash]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(NAV_ORDER_STORAGE_KEY, JSON.stringify(navOrder));
+  }, [navOrder]);
 
   useEffect(() => {
     if (!hydratedRef.current) return;
@@ -302,6 +357,16 @@ export default function GameIdeasPage() {
     },
     []
   );
+
+  useEffect(() => {
+    if (adminMode) return;
+    if (dragHoldTimerRef.current) {
+      clearTimeout(dragHoldTimerRef.current);
+      dragHoldTimerRef.current = null;
+    }
+    pointerByKindRef.current = {};
+    setActiveDrag(null);
+  }, [adminMode]);
 
   const triggerSyncNow = useCallback(() => {
     setSyncNonce((prev) => prev + 1);
@@ -681,6 +746,112 @@ export default function GameIdeasPage() {
     setConfirmDeleteAction(null);
   }, [confirmDeleteAction, currentCategory, nav]);
 
+  const handlePointerDown = useCallback((kind: DragKind, index: number, pointerId: number) => {
+    if (!adminMode) return;
+
+    if (dragHoldTimerRef.current) {
+      clearTimeout(dragHoldTimerRef.current);
+    }
+
+    pointerByKindRef.current[kind] = pointerId;
+    dragHoldTimerRef.current = setTimeout(() => {
+      setActiveDrag({ kind, fromIndex: index, overIndex: index, pointerId });
+      dragHoldTimerRef.current = null;
+    }, DRAG_HOLD_MS);
+  }, [adminMode]);
+
+  const handlePointerEnter = useCallback((kind: DragKind, index: number) => {
+    setActiveDrag((prev) => {
+      if (!prev || prev.kind !== kind || prev.overIndex === index) return prev;
+      return { ...prev, overIndex: index };
+    });
+  }, []);
+
+  const commitDrag = useCallback(() => {
+    setActiveDrag((drag) => {
+      if (!drag || drag.fromIndex === drag.overIndex) {
+        return null;
+      }
+
+      if (drag.kind === 'category') {
+        const fromCategory = categoryList[drag.fromIndex];
+        const toCategory = categoryList[drag.overIndex];
+
+        if (!fromCategory || !toCategory) {
+          return null;
+        }
+
+        setDb((prev) => {
+          const section = prev[nav];
+          if (section.categories.length < 2) return prev;
+          return {
+            ...prev,
+            [nav]: {
+              ...section,
+              categories: reorderArray(section.categories, drag.fromIndex, drag.overIndex),
+            },
+          };
+        });
+
+        if (currentCategory === fromCategory) {
+          setCategory(toCategory);
+        }
+      }
+
+      if (drag.kind === 'item') {
+        setDb((prev) => {
+          const section = prev[nav];
+          const existing = section.data[currentCategory] ?? [];
+          if (existing.length < 2) return prev;
+          return {
+            ...prev,
+            [nav]: {
+              ...section,
+              data: {
+                ...section.data,
+                [currentCategory]: reorderArray(existing, drag.fromIndex, drag.overIndex),
+              },
+            },
+          };
+        });
+
+        setSelectedItemIndex(drag.overIndex);
+        setOpenCardIndex((prev) => {
+          if (prev === null) return prev;
+          if (prev === drag.fromIndex) return drag.overIndex;
+          if (drag.fromIndex < drag.overIndex && prev > drag.fromIndex && prev <= drag.overIndex) return prev - 1;
+          if (drag.fromIndex > drag.overIndex && prev >= drag.overIndex && prev < drag.fromIndex) return prev + 1;
+          return prev;
+        });
+      }
+
+      if (drag.kind === 'nav') {
+        setNavOrder((prev) => reorderArray(prev, drag.fromIndex, drag.overIndex));
+      }
+
+      return null;
+    });
+  }, [categoryList, currentCategory, nav]);
+
+  const handlePointerEnd = useCallback((kind: DragKind, pointerId: number) => {
+    if (pointerByKindRef.current[kind] !== pointerId) return;
+
+    if (dragHoldTimerRef.current) {
+      clearTimeout(dragHoldTimerRef.current);
+      dragHoldTimerRef.current = null;
+    }
+
+    pointerByKindRef.current[kind] = undefined;
+    commitDrag();
+  }, [commitDrag]);
+
+  useEffect(() => () => {
+    if (dragHoldTimerRef.current) {
+      clearTimeout(dragHoldTimerRef.current);
+      dragHoldTimerRef.current = null;
+    }
+  }, []);
+
   const statusLabel = useMemo(() => {
     if (saveState === 'saving') return 'SYNCING...';
     if (saveState === 'saved') return 'SYNCED';
@@ -706,13 +877,24 @@ export default function GameIdeasPage() {
       <div className="layout">
         <aside className="sidebar">
           <nav className="sub-tabs">
-            {categoryList.map((cat) => (
+            {categoryList.map((cat, index) => (
               <button
                 key={cat}
                 type="button"
-                className={`tab-btn ${cat === currentCategory ? 'active' : ''}`}
+                className={`tab-btn ${cat === currentCategory ? 'active' : ''} ${activeDrag?.kind === 'category' && activeDrag.overIndex === index ? 'drag-target' : ''}`}
                 style={currentSection.categoryGradients?.[cat] ? { backgroundImage: currentSection.categoryGradients[cat] } : undefined}
+                onPointerDown={(event) => handlePointerDown('category', index, event.pointerId)}
+                onPointerEnter={() => handlePointerEnter('category', index)}
+                onPointerUp={(event) => handlePointerEnd('category', event.pointerId)}
+                onPointerCancel={(event) => handlePointerEnd('category', event.pointerId)}
+                onPointerLeave={(event) => {
+                  if (dragHoldTimerRef.current && pointerByKindRef.current.category === event.pointerId) {
+                    clearTimeout(dragHoldTimerRef.current);
+                    dragHoldTimerRef.current = null;
+                  }
+                }}
                 onClick={() => {
+                  if (activeDrag) return;
                   setCategory(cat);
                   registerUniversalRenameClick(`category:${nav}:${cat}`, () => requestRenameCategory(cat));
                 }}
@@ -727,8 +909,12 @@ export default function GameIdeasPage() {
           {items.map((item, index) => (
             <article
               key={`${item.name}-${index}`}
-              className={`card ${openCardIndex === index ? 'open' : ''}`}
+              className={`card ${openCardIndex === index ? 'open' : ''} ${activeDrag?.kind === 'item' && activeDrag.overIndex === index ? 'drag-target' : ''}`}
               style={item.colorGradient ? { backgroundImage: item.colorGradient } : undefined}
+              onPointerDown={(event) => handlePointerDown('item', index, event.pointerId)}
+              onPointerEnter={() => handlePointerEnter('item', index)}
+              onPointerUp={(event) => handlePointerEnd('item', event.pointerId)}
+              onPointerCancel={(event) => handlePointerEnd('item', event.pointerId)}
             >
               {adminMode && (
                 <div className="admin-tools">
@@ -741,6 +927,7 @@ export default function GameIdeasPage() {
                 type="button"
                 className="card-head"
                 onClick={() => {
+                  if (activeDrag) return;
                   setSelectedItemIndex(index);
                   setOpenCardIndex((prev) => (prev === index ? null : index));
                   registerUniversalRenameClick(`item:${nav}:${currentCategory}:${index}`, () => requestRenameItem(index));
@@ -779,14 +966,21 @@ export default function GameIdeasPage() {
         </section>
       </div>
 
+      {activeDrag && <div className="drag-indicator">DRAG MODE ACTIVE</div>}
+
       <footer className="footer">
-        {GAME_IDEA_NAV_ORDER.map((key) => (
+        {navOrder.map((key, index) => (
           <button
             key={key}
             type="button"
-            className={`nav-item ${nav === key ? 'active' : ''}`}
+            className={`nav-item ${nav === key ? 'active' : ''} ${activeDrag?.kind === 'nav' && activeDrag.overIndex === index ? 'drag-target' : ''}`}
             style={db[key].navGradient ? { backgroundImage: db[key].navGradient } : undefined}
+            onPointerDown={(event) => handlePointerDown('nav', index, event.pointerId)}
+            onPointerEnter={() => handlePointerEnter('nav', index)}
+            onPointerUp={(event) => handlePointerEnd('nav', event.pointerId)}
+            onPointerCancel={(event) => handlePointerEnd('nav', event.pointerId)}
             onClick={() => {
+              if (activeDrag) return;
               setNav(key);
               registerUniversalRenameClick(`nav:${key}`, () => requestRenameNav(key));
             }}
@@ -1044,6 +1238,8 @@ export default function GameIdeasPage() {
         .tab-btn {
           padding: 6px 8px;
           text-align: left;
+          user-select: none;
+          touch-action: none;
           border: 1px solid rgba(0, 242, 255, 0.48);
           box-shadow: inset 0 0 0 1px rgba(0, 242, 255, 0.18), 0 0 12px rgba(0, 242, 255, 0.18);
           background: var(--surface);
@@ -1077,6 +1273,8 @@ export default function GameIdeasPage() {
         }
         .card {
           position: relative;
+          user-select: none;
+          touch-action: none;
           background: var(--surface);
           background-size: 180% 180%;
           border: 1px solid rgba(0, 242, 255, 0.42);
@@ -1173,6 +1371,27 @@ export default function GameIdeasPage() {
         .admin-action:disabled { opacity: 0.35; cursor: not-allowed; }
         .admin-action.add { border-color: rgba(0, 242, 255, 0.7); color: var(--accent); }
         .admin-action.del { border-color: rgba(255, 42, 95, 0.8); color: #ff2a5f; }
+
+        .drag-target {
+          outline: 2px dashed rgba(0, 242, 255, 0.9);
+          outline-offset: -2px;
+          box-shadow: 0 0 20px rgba(0, 242, 255, 0.55), inset 0 0 0 1px rgba(0, 242, 255, 0.4);
+        }
+        .drag-indicator {
+          position: fixed;
+          left: 50%;
+          top: 12px;
+          transform: translateX(-50%);
+          z-index: 1200;
+          border: 1px solid rgba(0, 242, 255, 0.95);
+          border-radius: 999px;
+          background: rgba(0, 0, 0, 0.86);
+          color: #67f6ff;
+          box-shadow: 0 0 26px rgba(0, 242, 255, 0.5);
+          padding: 6px 12px;
+          font-size: 11px;
+          letter-spacing: 0.08em;
+        }
         .footer {
           display: flex;
           justify-content: space-around;
@@ -1180,7 +1399,7 @@ export default function GameIdeasPage() {
           padding: 8px;
           background: #000;
         }
-        .nav-item { border: 0; background: transparent; color: #ddf7ff; padding: 6px 10px; cursor: pointer; font-size: 10px; font-weight: 800; max-width: 24vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .nav-item { border: 0; background: transparent; color: #ddf7ff; padding: 6px 10px; cursor: pointer; font-size: 10px; font-weight: 800; max-width: 24vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: none; touch-action: none; }
         .nav-item.active { color: var(--accent); text-shadow: var(--neon); }
         .empty-hint,
         .error-hint { font-size: 12px; color: #9ca3af; }
