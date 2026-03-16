@@ -329,18 +329,18 @@ export default function GameIdeasPage() {
         });
 
         if (response.status === 409) {
-          const conflictPayload = (await response.json()) as { data?: unknown; version?: number };
-          const remote = sanitizeGameIdeaDatabase(conflictPayload.data);
-          const resolved = mergeGameIdeaDatabases(null, remote);
-
-          serverVersionRef.current = typeof conflictPayload.version === 'number' ? conflictPayload.version : serverVersionRef.current;
-          const resolvedHash = hashDb(resolved);
-          lastSyncedHashRef.current = resolvedHash;
-          lastLocalCacheHashRef.current = resolvedHash;
-          setDb(resolved);
-          localStorage.setItem(GAME_IDEA_STORAGE_KEY, JSON.stringify(resolved));
-          setError('Conflict detected. Server version applied to prevent data resurrection.');
-          setSaveState('saved');
+          const conflictPayload = (await response.json()) as { version?: number };
+          if (typeof conflictPayload.version === 'number') {
+            serverVersionRef.current = conflictPayload.version;
+          }
+          setError('Server changed remotely. Keeping your local edits and retrying sync safely.');
+          setSaveState('saving');
+          if (retryTimerRef.current) {
+            clearTimeout(retryTimerRef.current);
+          }
+          retryTimerRef.current = setTimeout(() => {
+            setRetryNonce((prev) => prev + 1);
+          }, 320);
           return;
         }
 
@@ -988,14 +988,40 @@ export default function GameIdeasPage() {
 
   useEffect(() => {
     if (openCardIndex === null || typeof window === 'undefined') return;
-    const raf = window.requestAnimationFrame(() => {
+
+    const syncIntoView = () => {
+      const container = document.querySelector<HTMLElement>('.content-area');
       const card = document.querySelector<HTMLElement>(`[data-item-index="${openCardIndex}"]`);
-      if (!card) return;
-      card.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      if (!container || !card) return;
+
+      const cRect = container.getBoundingClientRect();
+      const r = card.getBoundingClientRect();
+      const cardTop = container.scrollTop + (r.top - cRect.top);
+      const cardBottom = container.scrollTop + (r.bottom - cRect.top);
+
+      const padTop = 10;
+      const padBottom = 16;
+      const viewportTop = container.scrollTop;
+      const viewportBottom = container.scrollTop + container.clientHeight;
+
+      if (cardTop - padTop < viewportTop) {
+        container.scrollTo({ top: Math.max(0, cardTop - padTop), behavior: 'smooth' });
+        return;
+      }
+
+      if (cardBottom + padBottom > viewportBottom) {
+        container.scrollTo({ top: Math.min(container.scrollHeight, cardBottom + padBottom - container.clientHeight), behavior: 'smooth' });
+      }
+    };
+
+    const rafA = window.requestAnimationFrame(syncIntoView);
+    const rafB = window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(syncIntoView);
     });
 
     return () => {
-      window.cancelAnimationFrame(raf);
+      window.cancelAnimationFrame(rafA);
+      window.cancelAnimationFrame(rafB);
     };
   }, [openCardIndex, nav, currentCategory, items.length]);
 
