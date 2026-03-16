@@ -45,8 +45,9 @@ function validatePayload(payload: RunPayload): string | null {
   if (payload.compressionMode && payload.compressionMode.length < 4) return 'compression mode invalid';
   if (payload.compressionParams && (!Number.isFinite(payload.compressionParams.quantization) || payload.compressionParams.quantization < 1000)) return 'compression params invalid';
   if (payload.baselineDataset) {
-    if (!Number.isFinite(payload.baselineDataset.samples) || payload.baselineDataset.samples < 3000) return 'baseline dataset too small';
-    if (!Number.isFinite(payload.baselineDataset.targetParameters) || payload.baselineDataset.targetParameters < 80000) return 'target parameters too small';
+    const { samples, targetParameters } = payload.baselineDataset;
+    if (!Number.isFinite(samples) || samples < 3000) return 'baseline dataset too small';
+    if (!Number.isFinite(targetParameters) || (targetParameters ?? 0) < 80000) return 'target parameters too small';
   }
   if (payload.learningMemory) {
     if (!Number.isFinite(payload.learningMemory.positivePatterns) || payload.learningMemory.positivePatterns < 0) return 'learning memory invalid';

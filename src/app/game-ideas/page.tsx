@@ -21,7 +21,7 @@ type ItemDraft = {
 
 type ConfirmDeleteAction =
   | { type: 'item'; index: number; label: string }
-  | { type: 'category'; category: string; label: string }
+  | { type: 'category'; category: string; label: string; codeInput: string; codeError: string }
   | null;
 
 type RenameAction =
@@ -43,8 +43,9 @@ type ActiveDrag = {
   currentY: number;
 };
 
-const SAVE_DEBOUNCE_MS = 420;
+const SAVE_DEBOUNCE_MS = 120;
 const ADMIN_ACCESS_CODE = 'IzinEditKhususGG123';
+const CATEGORY_DELETE_CODE = 'DeleteCategoryByCode';
 const UNIVERSAL_RENAME_CLICKS = 3;
 const UNIVERSAL_RENAME_WINDOW_MS = 3000;
 const DRAG_HOLD_MS = 420;
@@ -212,6 +213,7 @@ export default function GameIdeasPage() {
   const dragHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dragPointerRef = useRef<{ kind: DragKind; pointerId: number; startX: number; startY: number } | null>(null);
   const importFileRef = useRef<HTMLInputElement | null>(null);
+  const liveSyncInFlightRef = useRef(false);
 
   const dbHash = useMemo(() => hashDb(db), [db]);
   const currentSection = useMemo(() => db[nav], [db, nav]);
@@ -653,6 +655,8 @@ export default function GameIdeasPage() {
       type: 'category',
       category: currentCategory,
       label: `Hapus kategori "${currentCategory}" beserta semua item?`,
+      codeInput: '',
+      codeError: '',
     });
   }, [categoryList.length, currentCategory]);
 
@@ -680,6 +684,10 @@ export default function GameIdeasPage() {
     }
 
     if (confirmDeleteAction.type === 'category') {
+      if (confirmDeleteAction.codeInput !== CATEGORY_DELETE_CODE) {
+        setConfirmDeleteAction((prev) => (prev && prev.type === 'category' ? { ...prev, codeError: 'Kode hapus kategori salah.' } : prev));
+        return;
+      }
       const target = confirmDeleteAction.category;
       setDb((prev) => {
         const section = prev[nav];
@@ -913,7 +921,7 @@ export default function GameIdeasPage() {
     lastLocalCacheHashRef.current = importedHash;
     localStorage.setItem(GAME_IDEA_STORAGE_KEY, JSON.stringify(nextDb));
     localStorage.setItem(NAV_ORDER_STORAGE_KEY, JSON.stringify(nextNavOrder));
-    setSyncNonce((prev) => prev + 1);
+    setRetryNonce((prev) => prev + 1);
     setError('');
     setSaveState('saved');
   }, []);
@@ -935,6 +943,48 @@ export default function GameIdeasPage() {
     if (saveState === 'error') return 'SYNC ERROR';
     return loading ? 'BOOTING...' : 'READY';
   }, [loading, saveState]);
+
+
+  useEffect(() => {
+    if (!hydratedRef.current || typeof window === 'undefined') return;
+
+    let cancelled = false;
+    const poll = window.setInterval(async () => {
+      if (cancelled || liveSyncInFlightRef.current || document.visibilityState !== 'visible') return;
+      liveSyncInFlightRef.current = true;
+      try {
+        const res = await fetch('/api/game-ideas', { cache: 'no-store' });
+        if (!res.ok) return;
+        const payload = (await res.json()) as { data?: unknown; version?: number };
+        const remoteVersion = typeof payload.version === 'number' ? payload.version : null;
+        if (remoteVersion === null) return;
+
+        const hasRemoteUpdate = serverVersionRef.current === null || remoteVersion > serverVersionRef.current;
+        if (!hasRemoteUpdate) return;
+
+        const remote = sanitizeGameIdeaDatabase(payload.data);
+        const remoteHash = hashDb(remote);
+        const localUnsynced = lastSyncedHashRef.current !== dbHash;
+
+        if (!localUnsynced) {
+          serverVersionRef.current = remoteVersion;
+          lastSyncedHashRef.current = remoteHash;
+          lastLocalCacheHashRef.current = remoteHash;
+          setDb(remote);
+          localStorage.setItem(GAME_IDEA_STORAGE_KEY, JSON.stringify(remote));
+        }
+      } catch {
+        // silent: polling should never block local operations
+      } finally {
+        liveSyncInFlightRef.current = false;
+      }
+    }, 1200);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(poll);
+    };
+  }, [dbHash]);
 
   useEffect(() => {
     if (openCardIndex === null || typeof window === 'undefined') return;
@@ -1212,6 +1262,19 @@ export default function GameIdeasPage() {
           <div className="modal danger">
             <h2>KONFIRMASI HAPUS</h2>
             <p className="desc">{confirmDeleteAction.label}</p>
+            {confirmDeleteAction.type === 'category' ? (
+              <div className="input-group">
+                <label>MASUKKAN CODE UNTUK DELETE CATEGORY</label>
+                <input
+                  value={confirmDeleteAction.codeInput}
+                  onChange={(e) => setConfirmDeleteAction((prev) => (prev && prev.type === 'category'
+                    ? { ...prev, codeInput: e.target.value, codeError: '' }
+                    : prev))}
+                  placeholder="DeleteCategoryByCode"
+                />
+                {confirmDeleteAction.codeError ? <p className="error-hint">{confirmDeleteAction.codeError}</p> : null}
+              </div>
+            ) : null}
             <div className="modal-btns">
               <button type="button" className="btn-abort" onClick={() => setConfirmDeleteAction(null)}>
                 CANCEL
