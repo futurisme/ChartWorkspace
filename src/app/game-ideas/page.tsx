@@ -1496,9 +1496,6 @@ export default function GameIdeasPage() {
         .architect-shell.with-admin-panel {
           --admin-h: 56px;
         }
-        .architect-shell.with-admin-panel .layout {
-          height: calc(100dvh - var(--header-h) - var(--footer-h) - var(--admin-h) - env(safe-area-inset-bottom));
-        }
         .architect-header {
           padding: 7px 10px;
           border-bottom: 1px solid var(--border);
@@ -1531,7 +1528,7 @@ export default function GameIdeasPage() {
           white-space: nowrap;
           font-weight: 800;
         }
-        .layout { position: relative; flex: 1; display: flex; gap: 10px; padding: 10px; min-height: 0; overflow: hidden; }
+        .layout { position: relative; flex: 1; display: flex; gap: 10px; padding: 10px; min-height: 0; height: calc(100dvh - var(--header-h) - var(--footer-h) - var(--admin-h) - env(safe-area-inset-bottom)); overflow: hidden; }
         .sidebar { width: 170px; flex-shrink: 0; }
         .sub-tabs { display: flex; flex-direction: column; gap: 4px; overflow: hidden; max-height: 100%; }
         .slot-shell {
@@ -1576,12 +1573,13 @@ export default function GameIdeasPage() {
         .content-area {
           flex: 1;
           min-height: 0;
-          overflow-y: auto;
+          overflow-y: scroll;
           overflow-x: hidden;
           overscroll-behavior: contain;
           -webkit-overflow-scrolling: touch;
           touch-action: pan-y;
           scroll-behavior: smooth;
+          scrollbar-gutter: stable both-edges;
           display: grid;
           grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
           gap: 8px;
