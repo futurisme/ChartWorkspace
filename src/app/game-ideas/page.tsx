@@ -128,8 +128,10 @@ export default function GameIdeasPage() {
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const serverVersionRef = useRef<number | null>(null);
   const lastSyncedHashRef = useRef<string | null>(null);
+  const lastLocalCacheHashRef = useRef<string | null>(null);
   const lastHandledManualSyncRef = useRef(0);
 
+  const dbHash = useMemo(() => hashDb(db), [db]);
   const currentSection = useMemo(() => db[nav], [db, nav]);
   const categoryList = currentSection.categories;
   const currentCategory = category || categoryList[0] || '';
@@ -169,11 +171,15 @@ export default function GameIdeasPage() {
         const merged = mergeGameIdeaDatabases(localDb, remote);
 
         serverVersionRef.current = typeof payload.version === 'number' ? payload.version : null;
-        lastSyncedHashRef.current = hashDb(merged);
+        const mergedHash = hashDb(merged);
+        lastSyncedHashRef.current = mergedHash;
+        lastLocalCacheHashRef.current = mergedHash;
         setDb(merged);
         localStorage.setItem(GAME_IDEA_STORAGE_KEY, JSON.stringify(merged));
       } catch (err) {
-        lastSyncedHashRef.current = hashDb(localDb);
+        const localHash = hashDb(localDb);
+        lastSyncedHashRef.current = localHash;
+        lastLocalCacheHashRef.current = localHash;
         if ((err as Error).name !== 'AbortError') {
           setError(err instanceof Error ? err.message : 'Gagal memuat data server.');
         }
@@ -196,13 +202,15 @@ export default function GameIdeasPage() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    if (lastLocalCacheHashRef.current === dbHash) return;
     localStorage.setItem(GAME_IDEA_STORAGE_KEY, JSON.stringify(db));
-  }, [db]);
+    lastLocalCacheHashRef.current = dbHash;
+  }, [db, dbHash]);
 
   useEffect(() => {
     if (!hydratedRef.current) return;
 
-    const currentHash = hashDb(db);
+    const currentHash = dbHash;
     const manualSyncRequested = syncNonce !== lastHandledManualSyncRef.current;
 
     if (!manualSyncRequested && lastSyncedHashRef.current === currentHash) {
@@ -275,7 +283,7 @@ export default function GameIdeasPage() {
         saveTimerRef.current = null;
       }
     };
-  }, [db, syncNonce]);
+  }, [db, dbHash, syncNonce]);
 
   useEffect(
     () => () => {
@@ -536,7 +544,7 @@ export default function GameIdeasPage() {
   return (
     <main className="architect-shell">
       <header className="architect-header">
-        <h1>CODEX : ARCHITECT</h1>
+        <h1>Created by Fadhil Akbar</h1>
         <div className="header-actions">
           <span className={`sync-state ${saveState}`}>{statusLabel}</span>
           <button type="button" className="sync-now" onClick={triggerSyncNow}>
@@ -591,7 +599,7 @@ export default function GameIdeasPage() {
                 <div className="card-meta">
                   <span className="tag">{item.tag || 'UNTAGGED'}</span>
                   <span className="expand-indicator" aria-hidden="true">
-                    {openCardIndex === index ? '▲ collapse' : '▼ expand'}
+                    {openCardIndex === index ? '▲ Collapse detail' : '▼ Expand detail'}
                   </span>
                 </div>
               </button>
@@ -796,17 +804,17 @@ export default function GameIdeasPage() {
           overflow: hidden;
         }
         .architect-header {
-          padding: 10px 14px;
+          padding: 7px 10px;
           border-bottom: 1px solid var(--border);
-          background: rgba(0, 0, 0, 0.85);
+          background: rgba(0, 0, 0, 0.88);
           display: flex;
           align-items: center;
           justify-content: space-between;
           gap: 8px;
         }
-        .architect-header h1 { font-size: 0.95rem; letter-spacing: 3px; color: #fff; text-shadow: var(--neon-intense); }
-        .header-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
-        .sync-state { font-size: 10px; letter-spacing: 1px; color: #75f7ff; }
+        .architect-header h1 { font-size: 0.82rem; letter-spacing: 0.6px; color: #fff; text-shadow: var(--neon-intense); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .header-actions { display: inline-flex; gap: 5px; align-items: center; flex-wrap: nowrap; justify-content: flex-end; min-width: 0; }
+        .sync-state { font-size: 9px; letter-spacing: 0.5px; color: #75f7ff; white-space: nowrap; }
         .sync-state.error { color: #fb7185; }
         .admin-toggle,
         .nav-item,
@@ -818,12 +826,14 @@ export default function GameIdeasPage() {
         .sync-now { font-family: inherit; }
         .admin-toggle,
         .sync-now {
-          padding: 6px 10px;
+          padding: 4px 8px;
           border: 1px solid var(--accent);
           color: var(--accent);
           background: rgba(0, 242, 255, 0.08);
           cursor: pointer;
-          font-size: 10px;
+          font-size: 9px;
+          line-height: 1.1;
+          white-space: nowrap;
         }
         .layout { flex: 1; display: flex; gap: 10px; padding: 10px; min-height: 0; }
         .sidebar { width: 170px; flex-shrink: 0; }
@@ -924,13 +934,15 @@ export default function GameIdeasPage() {
         .stat-label { color: #94a3b8; }
         .stat-value { color: var(--accent); font-weight: 700; }
         .expand-indicator {
-          font-size: 8px;
-          color: #8beeff;
-          border: 1px solid rgba(0, 242, 255, 0.38);
+          font-size: 9px;
+          color: #b9f9ff;
+          border: 1px solid rgba(0, 242, 255, 0.62);
           border-radius: 999px;
-          padding: 0 4px;
-          line-height: 1.4;
+          padding: 1px 6px;
+          line-height: 1.45;
+          letter-spacing: 0.01em;
           white-space: nowrap;
+          box-shadow: 0 0 10px rgba(0, 242, 255, 0.25);
         }
         .admin-panel {
           display: flex;
@@ -998,6 +1010,11 @@ export default function GameIdeasPage() {
         .btn-confirm.danger { background: #ff2a5f; color: #fff; }
 
         @media (min-width: 1024px) {
+          .architect-header { padding: 9px 14px; }
+          .architect-header h1 { font-size: 0.98rem; letter-spacing: 1.2px; }
+          .header-actions { gap: 7px; }
+          .sync-state { font-size: 10px; }
+          .admin-toggle, .sync-now { font-size: 10px; padding: 5px 9px; }
           .layout { gap: 14px; padding: 12px; }
           .sidebar { width: 220px; }
           .sub-tabs { gap: 6px; }
@@ -1011,8 +1028,11 @@ export default function GameIdeasPage() {
         }
 
         @media (max-width: 768px) {
-          .architect-header { padding: 8px 10px; }
-          .architect-header h1 { font-size: 0.8rem; letter-spacing: 2px; }
+          .architect-header { padding: 6px 8px; gap: 6px; }
+          .architect-header h1 { font-size: 0.72rem; letter-spacing: 0.2px; max-width: 42vw; }
+          .header-actions { gap: 4px; }
+          .sync-state { font-size: 8px; }
+          .admin-toggle, .sync-now { font-size: 8px; padding: 4px 6px; }
           .layout { flex-direction: column; padding: 8px; gap: 8px; }
           .sidebar { width: 100%; }
           .sub-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: 116px; gap: 5px; }
