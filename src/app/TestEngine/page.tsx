@@ -47,6 +47,7 @@ const initialFace: FaceParams = {
   gaze_x: 0,
   gaze_y: 0,
   mouth_open: 0.08,
+  mouth_smile: 0.28,
   jaw_rotation: 0.04,
   lip_width: 0.75,
   lip_height: 0.24,
@@ -296,13 +297,15 @@ export default function TestEnginePage() {
     }
   }, []);
 
-  const eyeScaleY = Math.max(0.04, face.eye_open);
+  const eyeScaleY = Math.max(0.03, face.eye_open);
+  const eyelidDrop = Math.max(0, 1 - face.eye_open);
   const browOffset = Math.round(face.brow_height * 22);
   const mouthHeight = 8 + face.mouth_open * 34;
   const mouthWidth = 26 + face.lip_width * 34;
+  const smileLift = face.mouth_smile * 9;
   const jawY = 128 + face.jaw_rotation * 10;
   const cheekGlow = 0.15 + face.breath * 0.22;
-  const headTiltDeg = face.head_tilt * 18;
+  const headTiltDeg = face.head_tilt * 22;
   const headShiftX = face.head_shift_x;
   const headShiftY = face.head_shift_y + face.breath;
 
@@ -328,38 +331,41 @@ export default function TestEnginePage() {
             <svg viewBox="0 0 280 200" className="w-full" role="img" aria-label="FadhilAiEngine expressive face">
               <defs>
                 <radialGradient id="faceCore" cx="50%" cy="35%" r="70%">
-                  <stop offset="0%" stopColor="#67e8f9" stopOpacity={0.58 + face.mouth_open * 0.22} />
-                  <stop offset="100%" stopColor="#0f172a" stopOpacity="1" />
+                  <stop offset="0%" stopColor="#fde68a" stopOpacity={0.68 + face.mouth_open * 0.22} />
+                  <stop offset="100%" stopColor="#f59e0b" stopOpacity="0.92" />
                 </radialGradient>
               </defs>
 
               <g transform={`translate(${headShiftX} ${headShiftY}) rotate(${headTiltDeg} 140 100)`}>
-                <ellipse cx="140" cy="100" rx="92" ry={82 + face.breath * 1.7} fill="url(#faceCore)" stroke="#22d3ee" strokeOpacity="0.55" />
+                <path d="M66,84 C76,38 204,34 214,84 L214,90 C204,70 76,70 66,90 Z" fill="#111827" opacity="0.92" />
+                <ellipse cx="140" cy="100" rx="92" ry={82 + face.breath * 1.7} fill="url(#faceCore)" stroke="#92400e" strokeOpacity="0.62" />
 
-                <circle cx="94" cy="120" r="18" fill="#22d3ee" opacity={cheekGlow} />
-                <circle cx="186" cy="120" r="18" fill="#22d3ee" opacity={cheekGlow} />
+                <circle cx="94" cy="120" r="18" fill="#f97316" opacity={cheekGlow} />
+                <circle cx="186" cy="120" r="18" fill="#f97316" opacity={cheekGlow} />
 
                 <g transform={`translate(86 ${72 + browOffset})`}>
-                  <rect x="-22" y="0" width="44" height="4" rx="2" fill="#a5f3fc" opacity="0.9" />
+                  <rect x="-22" y="0" width="44" height="4" rx="2" fill="#1f2937" opacity="0.9" />
                 </g>
                 <g transform={`translate(194 ${72 + browOffset})`}>
-                  <rect x="-22" y="0" width="44" height="4" rx="2" fill="#a5f3fc" opacity="0.9" />
+                  <rect x="-22" y="0" width="44" height="4" rx="2" fill="#1f2937" opacity="0.9" />
                 </g>
 
                 <g transform={`translate(86 90) scale(1 ${eyeScaleY})`}>
-                  <ellipse cx="0" cy="0" rx="15" ry="11" fill="#e0f2fe" />
-                  <circle cx={face.gaze_x} cy={face.gaze_y} r={4.8 + face.eye_squint * 4.2} fill="#0e7490" />
+                  <ellipse cx="0" cy="0" rx="15" ry="11" fill="#fff7ed" />
+                  <rect x={-15} y={-11} width={30} height={22 * eyelidDrop} fill="#f59e0b" opacity={0.92} />
+                  <circle cx={face.gaze_x} cy={face.gaze_y} r={4.8 + face.eye_squint * 4.2} fill="#1f2937" />
                 </g>
 
                 <g transform={`translate(194 90) scale(1 ${eyeScaleY})`}>
-                  <ellipse cx="0" cy="0" rx="15" ry="11" fill="#e0f2fe" />
-                  <circle cx={face.gaze_x * 0.94} cy={face.gaze_y * 0.88} r={4.8 + face.eye_squint * 4.2} fill="#0e7490" />
+                  <ellipse cx="0" cy="0" rx="15" ry="11" fill="#fff7ed" />
+                  <rect x={-15} y={-11} width={30} height={22 * eyelidDrop} fill="#f59e0b" opacity={0.92} />
+                  <circle cx={face.gaze_x * 0.94} cy={face.gaze_y * 0.88} r={4.8 + face.eye_squint * 4.2} fill="#1f2937" />
                 </g>
 
                 <g transform={`translate(140 ${jawY})`}>
-                  <rect x={-mouthWidth / 2} y={-mouthHeight / 2} width={mouthWidth} height={mouthHeight} rx={mouthHeight / 2} fill="#082f49" stroke="#38bdf8" />
+                  <rect x={-mouthWidth / 2} y={-mouthHeight / 2} width={mouthWidth} height={mouthHeight} rx={mouthHeight / 2} fill="#7c2d12" stroke="#fbbf24" />
                   <ellipse cx="0" cy={Math.max(0, mouthHeight * 0.14)} rx={Math.max(6, mouthWidth * 0.2)} ry={Math.max(2, mouthHeight * 0.18)} fill="#fb923c" opacity={0.56 + face.mouth_open * 0.25} />
-                  <rect x={-(mouthWidth * 0.35)} y={-2} width={mouthWidth * 0.7} height={4} rx="2" fill="#67e8f9" opacity={0.48 + face.mouth_open * 0.35} />
+                  <path d={`M ${-mouthWidth * 0.34} ${2 - smileLift} Q 0 ${8 - smileLift - face.mouth_open * 2} ${mouthWidth * 0.34} ${2 - smileLift}`} stroke="#fde68a" strokeWidth="3" fill="none" strokeLinecap="round" />
                 </g>
               </g>
             </svg>

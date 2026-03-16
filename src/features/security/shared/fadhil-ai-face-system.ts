@@ -15,6 +15,7 @@ export type FaceParams = {
   gaze_x: number;
   gaze_y: number;
   mouth_open: number;
+  mouth_smile: number;
   jaw_rotation: number;
   lip_width: number;
   lip_height: number;
@@ -57,9 +58,11 @@ class DetectionEngine {
       ? 'Thinking'
       : /!/.test(normalized)
         ? 'Surprised'
-        : tokens.length > 24
-          ? 'Reading'
-          : 'Listening';
+        : /great|success|good|clear/.test(normalized.toLowerCase())
+          ? 'Happy'
+          : tokens.length > 24
+            ? 'Reading'
+            : 'Listening';
 
     return { normalized, tokens, mode };
   }
@@ -73,12 +76,12 @@ class EmotionAnalyzer {
     const longness = clamp01(text.length / 520);
 
     return {
-      joy: clamp01((/good|great|success|pass|clear/.test(l) ? 0.45 : 0.1) + exclaim * 0.05),
-      focus: clamp01(0.35 + longness * 0.5 + (mode === 'Reading' ? 0.1 : 0)),
-      curiosity: clamp01(0.2 + query * 0.07),
-      confusion: clamp01(/error|fail|warn|unknown|blocked/.test(l) ? 0.55 : 0.08),
-      thinking: clamp01(mode === 'Thinking' ? 0.65 : 0.2 + query * 0.04),
-      surprise: clamp01(exclaim * 0.12 + (mode === 'Surprised' ? 0.3 : 0)),
+      joy: clamp01((/good|great|success|pass|clear|safe/.test(l) ? 0.5 : 0.12) + exclaim * 0.05),
+      focus: clamp01(0.35 + longness * 0.5 + (mode === 'Reading' ? 0.12 : 0)),
+      curiosity: clamp01(0.2 + query * 0.08),
+      confusion: clamp01(/error|fail|warn|unknown|blocked/.test(l) ? 0.6 : 0.06),
+      thinking: clamp01(mode === 'Thinking' ? 0.68 : 0.2 + query * 0.04),
+      surprise: clamp01(exclaim * 0.12 + (mode === 'Surprised' ? 0.28 : 0)),
     };
   }
 }
@@ -109,7 +112,7 @@ class LipSyncEngine {
       case 'A': return { open: 0.92, jaw: 0.8, width: 0.84, height: 0.95 };
       case 'O': return { open: 0.78, jaw: 0.7, width: 0.58, height: 0.98 };
       case 'E': return { open: 0.58, jaw: 0.5, width: 0.96, height: 0.45 };
-      case 'M': return { open: 0.05, jaw: 0.02, width: 0.52, height: 0.16 };
+      case 'M': return { open: 0.05, jaw: 0.03, width: 0.52, height: 0.16 };
       case 'F': return { open: 0.24, jaw: 0.15, width: 0.72, height: 0.24 };
       default: return { open: 0.32, jaw: 0.24, width: 0.72, height: 0.38 };
     }
@@ -121,25 +124,27 @@ class EyeMovementEngine {
   private blinkPhase = 0;
   private driftX = 0;
   private driftY = 0;
-  private focusX = 0;
+  private glanceTargetX = 0;
 
   step(nowMs: number, mode: FaceMode, emotion: EmotionVector) {
-    if (this.nextBlinkAt <= 0) this.nextBlinkAt = nowMs + 900 + Math.random() * 2200;
+    if (this.nextBlinkAt <= 0) this.nextBlinkAt = nowMs + 800 + Math.random() * 1500;
     if (nowMs >= this.nextBlinkAt) {
       this.blinkPhase = 1;
-      this.nextBlinkAt = nowMs + 1100 + Math.random() * 2500 - emotion.focus * 600;
+      this.nextBlinkAt = nowMs + 850 + Math.random() * 1650 - emotion.focus * 350;
     }
 
-    const attentionBias = mode === 'Reading' ? 0.9 : mode === 'Thinking' ? -0.6 : 0;
-    this.focusX = lerp(this.focusX, attentionBias + (Math.random() - 0.5) * 0.7, 0.05);
-    this.driftX = lerp(this.driftX, this.focusX * 2.6 + (Math.random() - 0.5) * 2.2, 0.08);
-    this.driftY = lerp(this.driftY, (Math.random() - 0.5) * 1.3, 0.08);
+    const scanWave = Math.sin(nowMs * 0.0045) * (mode === 'Reading' ? 1.5 : 0.7);
+    this.glanceTargetX = lerp(this.glanceTargetX, scanWave + (Math.random() - 0.5) * 1.3, 0.12);
+    this.driftX = lerp(this.driftX, this.glanceTargetX * 2.8, 0.18);
+    this.driftY = lerp(this.driftY, Math.sin(nowMs * 0.0032) * 0.9 + (Math.random() - 0.5) * 0.6, 0.14);
 
-    if (this.blinkPhase > 0) this.blinkPhase = Math.max(0, this.blinkPhase - 0.22);
+    if (this.blinkPhase > 0) {
+      this.blinkPhase = Math.max(0, this.blinkPhase - 0.32);
+    }
 
     const speakingBias = mode === 'Speaking' ? 0.12 : 0;
-    const squint = clamp01(emotion.focus * 0.45 + emotion.confusion * 0.2 + speakingBias);
-    const open = clamp01(1 - this.blinkPhase - squint * 0.55);
+    const squint = clamp01(emotion.focus * 0.42 + emotion.confusion * 0.23 + speakingBias);
+    const open = clamp01(1 - this.blinkPhase - squint * 0.52);
 
     return {
       eye_open: open,
@@ -152,14 +157,18 @@ class EyeMovementEngine {
 }
 
 class ExpressionController {
-  compose(mode: FaceMode, emotion: EmotionVector) {
-    const baseBrow = mode === 'Surprised' ? -0.28 : mode === 'Confused' ? 0.12 : -0.08;
-    const brow_height = baseBrow - emotion.surprise * 0.25 + emotion.confusion * 0.16;
-    const speakingSwing = mode === 'Speaking' ? Math.sin((emotion.focus + emotion.curiosity) * Math.PI * 3) * 0.06 : 0;
-    const head_tilt = (emotion.curiosity - emotion.focus) * 0.22 + speakingSwing;
-    const head_shift_x = (emotion.joy - emotion.confusion) * 8 + (mode === 'Speaking' ? 6 : 2);
-    const head_shift_y = (emotion.thinking - emotion.surprise) * 2;
-    return { brow_height, head_tilt, head_shift_x, head_shift_y };
+  compose(nowMs: number, mode: FaceMode, emotion: EmotionVector) {
+    const baseBrow = mode === 'Surprised' ? -0.28 : mode === 'Confused' ? 0.14 : -0.08;
+    const brow_height = baseBrow - emotion.surprise * 0.24 + emotion.confusion * 0.18;
+
+    const shakeRate = mode === 'Speaking' ? 0.018 : 0.012;
+    const shake = Math.sin(nowMs * shakeRate) * (mode === 'Speaking' ? 1 : 0.55);
+    const head_tilt = (emotion.curiosity - emotion.focus) * 0.18 + shake * 0.22;
+    const head_shift_x = shake * 8.8 + (emotion.joy - emotion.confusion) * 4.5;
+    const head_shift_y = (emotion.thinking - emotion.surprise) * 2 + Math.cos(nowMs * 0.004) * 0.8;
+    const mouth_smile = clamp01(emotion.joy * 0.95 - emotion.confusion * 0.3 + (mode === 'Happy' ? 0.2 : 0));
+
+    return { brow_height, head_tilt, head_shift_x, head_shift_y, mouth_smile };
   }
 }
 
@@ -170,6 +179,7 @@ class FaceAnimationCore {
     gaze_x: 0,
     gaze_y: 0,
     mouth_open: 0.1,
+    mouth_smile: 0.28,
     jaw_rotation: 0.05,
     lip_width: 0.75,
     lip_height: 0.25,
@@ -182,7 +192,7 @@ class FaceAnimationCore {
   };
 
   update(target: Partial<FaceParams>, dt: number) {
-    const smooth = clamp01(dt * 11);
+    const smooth = clamp01(dt * 11.5);
     (Object.keys(this.params) as Array<keyof FaceParams>).forEach((key) => {
       const next = target[key];
       if (typeof next === 'number') this.params[key] = lerp(this.params[key], next, smooth);
@@ -238,7 +248,7 @@ export class FadhilAiFaceSystem {
     const emotion = packet?.emotion ?? this.emotion.analyze('', 'Idle');
 
     const eye = this.eye.step(nowMs, mode, emotion);
-    const expr = this.expression.compose(mode, emotion);
+    const expr = this.expression.compose(nowMs, mode, emotion);
 
     const speechFrame = this.speechFrames.length > 0 ? this.speechFrames[this.speechCursor % this.speechFrames.length] : null;
     const lipTarget = this.lips.targetFor(speaking && speechFrame ? speechFrame.phoneme : 'M');
