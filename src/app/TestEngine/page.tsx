@@ -5,57 +5,120 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 type EngineState = 'idle' | 'speaking' | 'paused' | 'unsupported';
 
 function splitIntoChunks(text: string): string[] {
-  return text
-    .replace(/\s+/g, ' ')
+  const compact = text.replace(/\s+/g, ' ').trim();
+  if (!compact) return [];
+
+  const sentenceChunks = compact
     .split(/(?<=[.!?])\s+/)
     .map((line) => line.trim())
     .filter(Boolean);
+
+  const output: string[] = [];
+  for (const part of sentenceChunks) {
+    if (part.length <= 220) {
+      output.push(part);
+      continue;
+    }
+
+    const words = part.split(' ');
+    let buffer = '';
+    for (const word of words) {
+      const candidate = buffer ? `${buffer} ${word}` : word;
+      if (candidate.length > 200) {
+        if (buffer) output.push(buffer);
+        buffer = word;
+      } else {
+        buffer = candidate;
+      }
+    }
+    if (buffer) output.push(buffer);
+  }
+
+  return output;
 }
 
 function pickBestVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null {
   if (voices.length === 0) return null;
-  const preferred = voices.find((voice) => /en|id/i.test(voice.lang) && /Google|Microsoft|Samantha|Natural/i.test(voice.name));
-  return preferred ?? voices[0];
+
+  const preferredNames = ['Google', 'Microsoft', 'Samantha', 'Natural', 'Enhanced', 'Premium'];
+  const preferredLang = voices.find((voice) =>
+    /en|id/i.test(voice.lang)
+    && preferredNames.some((name) => voice.name.toLowerCase().includes(name.toLowerCase()))
+  );
+
+  return preferredLang ?? voices.find((voice) => /en|id/i.test(voice.lang)) ?? voices[0];
 }
 
 export default function TestEnginePage() {
   const scriptRef = useRef<HTMLDivElement | null>(null);
   const queueRef = useRef<string[]>([]);
   const utteranceIndexRef = useRef(0);
+  const watchdogRef = useRef<number | null>(null);
   const [state, setState] = useState<EngineState>('idle');
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [status, setStatus] = useState('Ready');
+
+  const syncVoices = useCallback(() => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+      setState('unsupported');
+      return;
+    }
+
+    const list = window.speechSynthesis.getVoices();
+    setVoices(list);
+    setStatus(list.length > 0 ? `Voice engine ready (${list.length} voices)` : 'Voice engine detected, waiting for voices...');
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
       setState('unsupported');
+      setStatus('Speech engine unsupported in this browser.');
       return;
     }
 
-    const syncVoices = () => {
-      const list = window.speechSynthesis.getVoices();
-      setVoices(list);
-    };
-
     syncVoices();
     window.speechSynthesis.onvoiceschanged = syncVoices;
+
+    const voiceRetry = window.setInterval(() => {
+      if (window.speechSynthesis.getVoices().length > 0) {
+        syncVoices();
+        window.clearInterval(voiceRetry);
+      }
+    }, 400);
+
     return () => {
+      window.clearInterval(voiceRetry);
       window.speechSynthesis.onvoiceschanged = null;
       window.speechSynthesis.cancel();
+      if (watchdogRef.current) {
+        window.clearTimeout(watchdogRef.current);
+      }
     };
-  }, []);
+  }, [syncVoices]);
 
   const bestVoice = useMemo(() => pickBestVoice(voices), [voices]);
+
+  const clearWatchdog = () => {
+    if (watchdogRef.current && typeof window !== 'undefined') {
+      window.clearTimeout(watchdogRef.current);
+      watchdogRef.current = null;
+    }
+  };
 
   const speakNext = useCallback(() => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
       setState('unsupported');
+      setStatus('Speech engine unsupported in this browser.');
       return;
     }
+
+    clearWatchdog();
 
     const index = utteranceIndexRef.current;
     const next = queueRef.current[index];
     if (!next) {
       setState('idle');
+      setStatus('Reading complete.');
       return;
     }
 
@@ -67,10 +130,14 @@ export default function TestEnginePage() {
       utterance.lang = 'en-US';
     }
 
-    // expressive but clear profile
-    utterance.rate = 0.97;
-    utterance.pitch = 1.02;
+    utterance.rate = 0.95;
+    utterance.pitch = 1.04;
     utterance.volume = 1;
+
+    utterance.onstart = () => {
+      setState('speaking');
+      setStatus(`Speaking ${index + 1}/${queueRef.current.length}`);
+    };
 
     utterance.onend = () => {
       utteranceIndexRef.current += 1;
@@ -82,52 +149,82 @@ export default function TestEnginePage() {
       speakNext();
     };
 
-    setState('speaking');
     window.speechSynthesis.speak(utterance);
-  }, [bestVoice]);
+
+    watchdogRef.current = window.setTimeout(() => {
+      if (!window.speechSynthesis.speaking && state !== 'paused') {
+        utteranceIndexRef.current += 1;
+        speakNext();
+      }
+    }, 5500);
+  }, [bestVoice, state]);
 
   const handleStart = useCallback(() => {
     if (!scriptRef.current || typeof window === 'undefined' || !('speechSynthesis' in window)) {
       setState('unsupported');
+      setStatus('Speech engine unsupported in this browser.');
       return;
     }
 
+    // hard reset and warm-up utterance to unlock speech on strict browsers
     window.speechSynthesis.cancel();
+    const warm = new SpeechSynthesisUtterance(' ');
+    warm.volume = 0;
+    warm.rate = 1;
+    warm.pitch = 1;
+    window.speechSynthesis.speak(warm);
+
     utteranceIndexRef.current = 0;
     queueRef.current = splitIntoChunks(scriptRef.current.innerText);
+
     if (queueRef.current.length === 0) {
       setState('idle');
+      setStatus('No readable text found.');
       return;
     }
 
-    speakNext();
+    setStatus('Initializing live voice...');
+    window.setTimeout(() => {
+      speakNext();
+    }, 40);
   }, [speakNext]);
 
   const handlePauseResume = useCallback(() => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
       setState('unsupported');
+      setStatus('Speech engine unsupported in this browser.');
       return;
     }
 
     if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
       window.speechSynthesis.pause();
       setState('paused');
+      setStatus('Paused');
       return;
     }
 
     if (window.speechSynthesis.paused) {
       window.speechSynthesis.resume();
       setState('speaking');
+      setStatus('Resumed');
+      return;
     }
-  }, []);
+
+    if (!window.speechSynthesis.speaking && queueRef.current.length > 0) {
+      speakNext();
+    }
+  }, [speakNext]);
 
   const handleStop = useCallback(() => {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
+
+    clearWatchdog();
     utteranceIndexRef.current = 0;
     queueRef.current = [];
     setState('idle');
+    setStatus('Stopped');
   }, []);
 
   return (
@@ -142,6 +239,8 @@ export default function TestEnginePage() {
             </button>
             <button type="button" onClick={handleStop} className="rounded border border-red-300 bg-red-600 px-3 py-1 text-xs font-semibold text-white hover:bg-red-500" disabled={state === 'unsupported' || state === 'idle'}>Stop</button>
           </div>
+          <p className="mt-2 text-[11px] text-cyan-100/90">Status: {status}</p>
+          <p className="text-[11px] text-slate-300">Voice: {bestVoice ? `${bestVoice.name} (${bestVoice.lang})` : 'Auto / pending'}</p>
         </header>
 
         <article
