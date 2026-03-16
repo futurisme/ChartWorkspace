@@ -1796,7 +1796,19 @@ export default function GameIdeasPage() {
           border-color: rgba(0, 242, 255, 0.72);
           box-shadow: 0 0 24px rgba(0, 242, 255, 0.34), inset 0 0 0 1px rgba(0, 242, 255, 0.26);
         }
-        .admin-tools { position: absolute; right: 6px; top: 5px; z-index: 3; }
+        .admin-tools { position: absolute; right: 6px; top: 5px; z-index: 3; display: inline-flex; gap: 4px; }
+        .btn-icon.folder {
+          background: rgba(14, 165, 233, 0.14);
+          color: #7dd3fc;
+          border: 1px solid rgba(56, 189, 248, 0.72);
+          border-radius: 3px;
+          padding: 1px 3px;
+          min-width: 0;
+          line-height: 1.1;
+          cursor: pointer;
+          font-size: 8px;
+          letter-spacing: 0.02em;
+        }
         .btn-icon.del {
           background: rgba(255, 42, 95, 0.12);
           color: #ff6a8f;
