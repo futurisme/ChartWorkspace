@@ -978,7 +978,7 @@ export default function GameIdeasPage() {
       } finally {
         liveSyncInFlightRef.current = false;
       }
-    }, 1200);
+    }, 2000);
 
     return () => {
       cancelled = true;
@@ -1368,7 +1368,9 @@ export default function GameIdeasPage() {
           font-size: 12px;
           font-family: 'Orbitron', 'Rajdhani', 'Inter', 'Segoe UI', sans-serif;
           font-weight: 700;
-          overflow: hidden;
+          overflow: auto;
+          overscroll-behavior-y: contain;
+          scrollbar-gutter: stable both-edges;
         }
         .architect-shell.with-admin-panel {
           --admin-h: 56px;
@@ -1405,9 +1407,9 @@ export default function GameIdeasPage() {
           white-space: nowrap;
           font-weight: 800;
         }
-        .layout { flex: 1; display: flex; gap: 10px; padding: 10px; min-height: 0; }
+        .layout { flex: 1; display: flex; gap: 10px; padding: 10px; min-height: 0; overflow: hidden; }
         .sidebar { width: 170px; flex-shrink: 0; }
-        .sub-tabs { display: flex; flex-direction: column; gap: 4px; overflow: auto; max-height: 100%; }
+        .sub-tabs { display: flex; flex-direction: column; gap: 4px; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; max-height: 100%; }
         .slot-shell {
           position: relative;
           outline: 1px solid rgba(148, 163, 184, 0.35);
@@ -1450,7 +1452,10 @@ export default function GameIdeasPage() {
         .content-area {
           flex: 1;
           min-height: 0;
-          overflow: auto;
+          overflow-y: auto;
+          overflow-x: hidden;
+          overscroll-behavior: contain;
+          -webkit-overflow-scrolling: touch;
           display: grid;
           grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
           gap: 8px;
@@ -1465,7 +1470,9 @@ export default function GameIdeasPage() {
           background-size: 180% 180%;
           border: 1px solid rgba(0, 242, 255, 0.42);
           box-shadow: 0 0 18px rgba(0, 242, 255, 0.2), inset 0 0 0 1px rgba(0, 242, 255, 0.14);
-          overflow: hidden;
+          overflow: auto;
+          overscroll-behavior-y: contain;
+          scrollbar-gutter: stable both-edges;
           transition: border-color 140ms ease, box-shadow 140ms ease;
         }
         .card:hover {
@@ -1516,7 +1523,7 @@ export default function GameIdeasPage() {
         .card.open .card-body-wrapper { grid-template-rows: 1fr; }
         .card-body { overflow: hidden; contain: content; }
         .inner { padding: 0 10px 8px; border-top: 1px solid rgba(0, 242, 255, 0.14); }
-        .desc { color: #9ca3af; margin: 5px 0; font-size: 10px; line-height: 1.35; }
+        .desc { color: #d5dee9; margin: 6px 0; font-size: 11px; line-height: 1.5; font-weight: 500; letter-spacing: 0.01em; }
         .desc-content { white-space: pre-wrap; word-break: break-word; }
         .stat { display: inline-flex; align-items: baseline; gap: 2px; padding: 2px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.04); font-size: 10px; }
         .stat-label { color: #94a3b8; }
@@ -1701,9 +1708,10 @@ export default function GameIdeasPage() {
             gap: 8px;
             height: calc(100dvh - var(--header-h) - var(--footer-h) - var(--admin-h) - env(safe-area-inset-bottom));
             min-height: 0;
+            overflow: hidden;
           }
           .sidebar { width: 100%; }
-          .sub-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: min(42dvh, 320px); gap: 5px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+          .sub-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: min(38dvh, 300px); gap: 5px; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
           .tab-btn { text-align: center; padding: 6px 5px; }
           .content-area {
             grid-template-columns: 1fr;
@@ -1714,7 +1722,8 @@ export default function GameIdeasPage() {
             overflow-y: auto;
             overscroll-behavior: contain;
             -webkit-overflow-scrolling: touch;
-            padding-bottom: max(16px, env(safe-area-inset-bottom));
+            scroll-behavior: smooth;
+            padding-bottom: max(20px, env(safe-area-inset-bottom));
           }
           .card-head { padding: 7px 40px 7px 9px; }
           
