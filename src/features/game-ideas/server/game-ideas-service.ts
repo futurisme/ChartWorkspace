@@ -153,12 +153,39 @@ export async function saveGameIdeas(rawData: unknown, expectedVersion?: number |
     };
   }
 
-  if (typeof expectedVersion === 'number' && Number.isFinite(expectedVersion) && expectedVersion !== existing.version) {
-    throw new GameIdeasConflictError(
-      sanitizeGameIdeaDatabase(existing.snapshot),
-      existing.version,
-      existing.updatedAt
+  if (typeof expectedVersion === 'number' && Number.isFinite(expectedVersion)) {
+    const updatedAt = new Date();
+    const updateResult = await withDatabaseRecovery(() =>
+      prisma.map.updateMany({
+        where: {
+          id: existing.id,
+          version: expectedVersion,
+        },
+        data: {
+          snapshot: toInputJson(sanitized),
+          version: { increment: 1 },
+          updatedAt,
+        },
+      })
     );
+
+    if (updateResult.count === 0) {
+      const latest = await findSystemRecord();
+      if (latest) {
+        throw new GameIdeasConflictError(
+          sanitizeGameIdeaDatabase(latest.snapshot),
+          latest.version,
+          latest.updatedAt
+        );
+      }
+      throw new GameIdeasServiceError('Record game ideas tidak ditemukan saat menyimpan.', 409);
+    }
+
+    return {
+      data: sanitized,
+      version: expectedVersion + 1,
+      updatedAt,
+    };
   }
 
   const updated = await withDatabaseRecovery(() =>

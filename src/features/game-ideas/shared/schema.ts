@@ -25,34 +25,26 @@ export const GAME_IDEA_NAV_ORDER: GameIdeaNav[] = ['govt', 'units', 'tech', 'eco
 export const DEFAULT_GAME_IDEA_DATA: GameIdeaDatabase = {
   govt: {
     title: 'CODEX: GOVT',
-    categories: ['FEUDAL', 'MODERN'],
-    data: {
-      FEUDAL: [{ name: 'TRIBAL', tag: 'BASE', desc: 'Primitive structure.', stats: { Stability: '60%' } }],
-      MODERN: [],
-    },
+    categories: [],
+    data: {},
   },
   units: {
     title: 'CODEX: UNITS',
-    categories: ['CYBER'],
-    data: {
-      CYBER: [],
-    },
+    categories: [],
+    data: {},
   },
   tech: {
     title: 'CODEX: TECH',
-    categories: ['BIO'],
-    data: {
-      BIO: [],
-    },
+    categories: [],
+    data: {},
   },
   econ: {
     title: 'CODEX: ECON',
-    categories: ['TRADE'],
-    data: {
-      TRADE: [],
-    },
+    categories: [],
+    data: {},
   },
 };
+
 
 const ALLOWED_GRADIENTS = new Set([
   'linear-gradient(135deg,#00f5ff 0%,#0066ff 100%)',

@@ -106,6 +106,8 @@ export default function GameIdeasPage() {
   const [syncNonce, setSyncNonce] = useState(0);
   const [showItemModal, setShowItemModal] = useState(false);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [showAddChooser, setShowAddChooser] = useState(false);
+  const [addTarget, setAddTarget] = useState<'item' | 'category'>('item');
   const [itemDraft, setItemDraft] = useState<ItemDraft>(emptyDraft());
   const [categoryDraft, setCategoryDraft] = useState('');
   const [confirmDeleteAction, setConfirmDeleteAction] = useState<ConfirmDeleteAction>(null);
@@ -294,6 +296,20 @@ export default function GameIdeasPage() {
   const triggerSyncNow = useCallback(() => {
     setSyncNonce((prev) => prev + 1);
   }, []);
+
+  const openAddChooser = useCallback(() => {
+    setAddTarget('item');
+    setShowAddChooser(true);
+  }, []);
+
+  const confirmAddChoice = useCallback(() => {
+    setShowAddChooser(false);
+    if (addTarget === 'category') {
+      setShowCategoryModal(true);
+      return;
+    }
+    setShowItemModal(true);
+  }, [addTarget]);
 
   const requestEnableAdminMode = useCallback(() => {
     if (adminMode) {
@@ -713,20 +729,6 @@ export default function GameIdeasPage() {
         </section>
       </div>
 
-      {adminMode && (
-        <section className="admin-panel">
-          <button type="button" className="admin-action add" onClick={() => setShowItemModal(true)}>+I</button>
-          <button type="button" className="admin-action add" onClick={() => setShowCategoryModal(true)}>+C</button>
-          <button type="button" className="admin-action" onClick={() => requestRenameCategory(currentCategory)}>RC</button>
-          <button type="button" className="admin-action" onClick={() => recolorCategory(currentCategory)}>CC</button>
-          <button type="button" className="admin-action" onClick={() => requestRenameItem(selectedItemIndex ?? 0)} disabled={selectedItemIndex === null}>RI</button>
-          <button type="button" className="admin-action" onClick={() => recolorItem(selectedItemIndex ?? 0)} disabled={selectedItemIndex === null}>CI</button>
-          <button type="button" className="admin-action" onClick={() => requestRenameNav(nav)}>RN</button>
-          <button type="button" className="admin-action" onClick={() => recolorNav(nav)}>CN</button>
-          <button type="button" className="admin-action del" onClick={requestDeleteCategory}>DC</button>
-        </section>
-      )}
-
       <footer className="footer">
         {GAME_IDEA_NAV_ORDER.map((key) => (
           <button
@@ -740,6 +742,41 @@ export default function GameIdeasPage() {
           </button>
         ))}
       </footer>
+
+      {adminMode && (
+        <section className="admin-panel" aria-label="FeatureLib admin actions">
+          <button type="button" className="admin-action add" onClick={openAddChooser}>ADD</button>
+          <button type="button" className="admin-action" onClick={() => requestRenameCategory(currentCategory)} disabled={!currentCategory}>RENAME CATEGORY</button>
+          <button type="button" className="admin-action" onClick={() => recolorCategory(currentCategory)} disabled={!currentCategory}>RECOLOR CATEGORY</button>
+          <button type="button" className="admin-action" onClick={() => requestRenameItem(selectedItemIndex ?? 0)} disabled={selectedItemIndex === null}>RENAME ITEM</button>
+          <button type="button" className="admin-action" onClick={() => recolorItem(selectedItemIndex ?? 0)} disabled={selectedItemIndex === null}>RECOLOR ITEM</button>
+          <button type="button" className="admin-action" onClick={() => requestRenameNav(nav)}>RENAME SECTION</button>
+          <button type="button" className="admin-action" onClick={() => recolorNav(nav)}>RECOLOR SECTION</button>
+          <button type="button" className="admin-action del" onClick={requestDeleteCategory} disabled={!currentCategory}>DELETE CATEGORY</button>
+        </section>
+      )}
+
+      {showAddChooser && (
+        <div className="modal-overlay" role="dialog" aria-modal="true">
+          <div className="modal">
+            <h2>PILIH TIPE ADD</h2>
+            <div className="add-choice-list">
+              <label className="add-choice">
+                <input type="checkbox" checked={addTarget === 'category'} onChange={() => setAddTarget('category')} />
+                <span>ADD CATEGORY</span>
+              </label>
+              <label className="add-choice">
+                <input type="checkbox" checked={addTarget === 'item'} onChange={() => setAddTarget('item')} />
+                <span>ADD ITEM</span>
+              </label>
+            </div>
+            <div className="modal-btns">
+              <button type="button" className="btn-abort" onClick={() => setShowAddChooser(false)}>CANCEL</button>
+              <button type="button" className="btn-confirm" onClick={confirmAddChoice}>CONTINUE</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showAccessModal && (
         <div className="modal-overlay" role="dialog" aria-modal="true">
@@ -1040,19 +1077,13 @@ export default function GameIdeasPage() {
           box-shadow: 0 0 10px rgba(0, 242, 255, 0.25);
         }
         .admin-panel {
-          position: fixed;
-          left: 6px;
-          top: 50%;
-          transform: translateY(-50%);
-          display: grid;
-          grid-template-columns: 1fr;
-          gap: 4px;
-          border: 1px solid rgba(0,242,255,0.45);
-          border-radius: 8px;
-          padding: 6px;
-          width: 48px;
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 6px;
+          border-top: 1px solid var(--border);
+          padding: 8px 10px;
           background: rgba(0, 0, 0, 0.9);
-          z-index: 20;
         }
         .admin-action {
           border: 1px solid #334155;
@@ -1060,12 +1091,12 @@ export default function GameIdeasPage() {
           background: rgba(255, 255, 255, 0.02);
           color: #cbd5e1;
           cursor: pointer;
-          font-size: 8px;
-          width: 34px;
-          height: 34px;
-          padding: 0;
+          font-size: 9px;
+          min-height: 30px;
+          padding: 4px 8px;
           border-radius: 6px;
           font-weight: 800;
+          white-space: nowrap;
         }
         .admin-action:disabled { opacity: 0.35; cursor: not-allowed; }
         .admin-action.add { border-color: rgba(0, 242, 255, 0.7); color: var(--accent); }
@@ -1109,6 +1140,26 @@ export default function GameIdeasPage() {
         }
         .input-group input:focus,
         .input-group textarea:focus { border-color: var(--accent); }
+        
+        .add-choice-list {
+          display: grid;
+          gap: 8px;
+          margin: 8px 0;
+        }
+        .add-choice {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          border: 1px solid rgba(0, 242, 255, 0.3);
+          padding: 8px;
+          border-radius: 6px;
+          color: #d9f7ff;
+        }
+        .add-choice input {
+          width: 14px;
+          height: 14px;
+          accent-color: #06b6d4;
+        }
         .modal-btns { display: flex; gap: 8px; margin-top: 8px; }
         .btn-abort,
         .btn-confirm { flex: 1; padding: 9px; cursor: pointer; }
@@ -1140,14 +1191,14 @@ export default function GameIdeasPage() {
           .header-actions { gap: 4px; }
           .sync-state { font-size: 8px; }
           .admin-toggle, .sync-now { font-size: 8px; padding: 4px 6px; }
-          .layout { flex-direction: column; padding: 8px 8px 8px 62px; gap: 8px; }
+          .layout { flex-direction: column; padding: 8px; gap: 8px; }
           .sidebar { width: 100%; }
           .sub-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: 116px; gap: 5px; }
           .tab-btn { text-align: center; padding: 6px 5px; }
           .content-area { grid-template-columns: 1fr; gap: 7px; }
           .card-head { padding: 7px 40px 7px 9px; }
-          .admin-panel { left: 8px; width: 52px; }
-          .footer { padding: 7px 6px 7px 62px; }
+          
+          .footer { padding: 7px 6px; }
           .nav-item { padding: 6px 6px; max-width: 22vw; }
         }
       `}</style>
