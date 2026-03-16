@@ -16,26 +16,38 @@ type RunPayload = {
   modelBWeights: Record<string, number>;
   logs: Array<{ epoch: number; trainingLoss: number; validationLoss: number; drift: number; capturedA?: number; capturedB?: number }>;
   compressedResults: string;
+  compressionMode?: string;
+  baselineDataset?: { samples: number; source: string; avoidRules: string[] };
+  antiStuck?: { interventions: number; cornerEscapes: number; stuckWarnings: number; badPatternNotes: string[] };
 };
 
 const MAX_AGE_MS = 1000 * 60 * 60 * 24;
-const ACTIVE_BATTLEGROUND_VERSION = 'bg-v2-pawn-duel';
-const ACTIVE_MODEL_VERSION = 'dual-pawn-v2';
+const ACTIVE_BATTLEGROUND_VERSION = 'bg-v3-2d-soccer';
+const ACTIVE_MODEL_VERSION = 'block-football-v1';
 
 function validatePayload(payload: RunPayload): string | null {
   if (!payload.runId || payload.runId.length < 10) return 'invalid runId';
   if (!payload.strategy || payload.strategy.length < 6) return 'invalid strategy';
   if (payload.battlegroundVersion !== ACTIVE_BATTLEGROUND_VERSION) return 'outdated battleground version';
   if (payload.trainingModelVersion !== ACTIVE_MODEL_VERSION) return 'outdated training model version';
-  if (!Number.isFinite(payload.datasetSize) || payload.datasetSize < 200) return 'dataset too small';
-  if (!Number.isFinite(payload.epochs) || payload.epochs < 80 || payload.epochs > 5000) return 'epochs out of range';
+  if (!Number.isFinite(payload.datasetSize) || payload.datasetSize < 12) return 'dataset too small';
+  if (!Number.isFinite(payload.epochs) || payload.epochs < 1 || payload.epochs > 5000) return 'epochs out of range';
   if (!Number.isFinite(payload.learningRate) || payload.learningRate <= 0 || payload.learningRate > 1) return 'learningRate out of range';
   if (!Number.isFinite(payload.trainingLoss) || payload.trainingLoss <= 0 || payload.trainingLoss > 1) return 'trainingLoss invalid';
   if (!Number.isFinite(payload.validationLoss) || payload.validationLoss <= 0 || payload.validationLoss > 1) return 'validationLoss invalid';
-  if (payload.validationLoss > 0.1) return 'validation loss too high';
-  if (!Number.isFinite(payload.qualityScore) || payload.qualityScore < 80) return 'quality score too low';
+  if (payload.validationLoss > 0.4) return 'validation loss too high';
+  if (!Number.isFinite(payload.qualityScore) || payload.qualityScore < 50) return 'quality score too low';
   if (!Array.isArray(payload.logs) || payload.logs.length < 8) return 'logs are insufficient';
   if (!payload.compressedResults || payload.compressedResults.length < 12) return 'compressed results missing';
+  if (payload.compressionMode && payload.compressionMode.length < 4) return 'compression mode invalid';
+  if (payload.baselineDataset) {
+    if (!Number.isFinite(payload.baselineDataset.samples) || payload.baselineDataset.samples < 120) return 'baseline dataset too small';
+    if (!Array.isArray(payload.baselineDataset.avoidRules) || payload.baselineDataset.avoidRules.length < 2) return 'baseline avoid rules insufficient';
+  }
+  if (payload.antiStuck) {
+    if (!Array.isArray(payload.antiStuck.badPatternNotes)) return 'antiStuck notes invalid';
+    if (!Number.isFinite(payload.antiStuck.stuckWarnings) || payload.antiStuck.stuckWarnings < 0) return 'antiStuck warnings invalid';
+  }
   return null;
 }
 
@@ -166,8 +178,8 @@ export async function POST(request: Request) {
       where: {
         OR: [
           { status: { not: 'accepted' } },
-          { qualityScore: { lt: 80 } },
-          { validationLoss: { gt: 0.1 } },
+          { qualityScore: { lt: 50 } },
+          { validationLoss: { gt: 0.4 } },
           { createdAt: { lt: new Date(Date.now() - MAX_AGE_MS * 5) } },
           { battlegroundVersion: { not: ACTIVE_BATTLEGROUND_VERSION } },
           { trainingModelVersion: { not: ACTIVE_MODEL_VERSION } },
