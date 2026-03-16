@@ -18,13 +18,13 @@ type RunPayload = {
   compressedResults: string;
   compressionMode?: string;
   compressionParams?: { quantization: number; radix: number; deltaEncoding: boolean; chunkSize: number };
-  baselineDataset?: { samples: number; source: string; avoidRules: string[] };
-  antiStuck?: { interventions: number; cornerEscapes: number; stuckWarnings: number; badPatternNotes: string[]; severeDropsAvoided: number };
+  baselineDataset?: { samples: number; source: string; targetParameters?: number; activeParameters?: number };
+  learningMemory?: { positivePatterns: number; negativePatterns: number };
 };
 
 const MAX_AGE_MS = 1000 * 60 * 60 * 24;
-const ACTIVE_BATTLEGROUND_VERSION = 'bg-v3-2d-soccer';
-const ACTIVE_MODEL_VERSION = 'block-football-v1';
+const ACTIVE_BATTLEGROUND_VERSION = 'bg-v4-shooter-arena';
+const ACTIVE_MODEL_VERSION = 'shooter-1v1-v1';
 
 let cachedRuns: { at: number; runs: unknown[] } | null = null;
 
@@ -33,7 +33,7 @@ function validatePayload(payload: RunPayload): string | null {
   if (!payload.strategy || payload.strategy.length < 6) return 'invalid strategy';
   if (payload.battlegroundVersion !== ACTIVE_BATTLEGROUND_VERSION) return 'outdated battleground version';
   if (payload.trainingModelVersion !== ACTIVE_MODEL_VERSION) return 'outdated training model version';
-  if (!Number.isFinite(payload.datasetSize) || payload.datasetSize < 24) return 'dataset too small';
+  if (!Number.isFinite(payload.datasetSize) || payload.datasetSize < 3000) return 'dataset too small';
   if (!Number.isFinite(payload.epochs) || payload.epochs < 1 || payload.epochs > 5000) return 'epochs out of range';
   if (!Number.isFinite(payload.learningRate) || payload.learningRate <= 0 || payload.learningRate > 1) return 'learningRate out of range';
   if (!Number.isFinite(payload.trainingLoss) || payload.trainingLoss <= 0 || payload.trainingLoss > 1) return 'trainingLoss invalid';
@@ -45,12 +45,12 @@ function validatePayload(payload: RunPayload): string | null {
   if (payload.compressionMode && payload.compressionMode.length < 4) return 'compression mode invalid';
   if (payload.compressionParams && (!Number.isFinite(payload.compressionParams.quantization) || payload.compressionParams.quantization < 1000)) return 'compression params invalid';
   if (payload.baselineDataset) {
-    if (!Number.isFinite(payload.baselineDataset.samples) || payload.baselineDataset.samples < 180) return 'baseline dataset too small';
-    if (!Array.isArray(payload.baselineDataset.avoidRules) || payload.baselineDataset.avoidRules.length < 3) return 'baseline avoid rules insufficient';
+    if (!Number.isFinite(payload.baselineDataset.samples) || payload.baselineDataset.samples < 3000) return 'baseline dataset too small';
+    if (!Number.isFinite(payload.baselineDataset.targetParameters) || payload.baselineDataset.targetParameters < 80000) return 'target parameters too small';
   }
-  if (payload.antiStuck) {
-    if (!Array.isArray(payload.antiStuck.badPatternNotes)) return 'antiStuck notes invalid';
-    if (!Number.isFinite(payload.antiStuck.stuckWarnings) || payload.antiStuck.stuckWarnings < 0) return 'antiStuck warnings invalid';
+  if (payload.learningMemory) {
+    if (!Number.isFinite(payload.learningMemory.positivePatterns) || payload.learningMemory.positivePatterns < 0) return 'learning memory invalid';
+    if (!Number.isFinite(payload.learningMemory.negativePatterns) || payload.learningMemory.negativePatterns < 0) return 'learning memory invalid';
   }
   return null;
 }

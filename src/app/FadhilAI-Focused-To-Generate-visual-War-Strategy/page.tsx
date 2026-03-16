@@ -4,11 +4,33 @@ import { useEffect, useMemo, useState } from 'react';
 import { FadhilAiGlobalChat } from '@/components/FadhilAiGlobalChat';
 
 type Vec = { x: number; y: number };
-type TrainLog = { epoch: number; trainingLoss: number; validationLoss: number; drift: number; capturedA: number; capturedB: number; stuckRisk: number };
-type SessionFrame = { a: Vec; b: Vec; ball: Vec; scoreA: number; scoreB: number; angleA: number; angleB: number };
-type BaselineSample = { ball: Vec; ballVel: Vec; a: Vec; b: Vec; heading: number; label: 'attack' | 'defend' | 'release-corner' };
-type StoredRun = { runId: string; qualityScore: number; trainingLoss: number; validationLoss: number; datasetSize: number; epochs: number; createdAt: string };
+type Obstacle = { x: number; y: number; w: number; h: number };
+type Bullet = { x: number; y: number; vx: number; vy: number; ttl: number; owner: 'A' | 'B' };
+type Agent = { x: number; y: number; angle: number; hp: number; shootCooldown: number; hits: number; kills: number; deaths: number };
+type TrainLog = { epoch: number; trainingLoss: number; validationLoss: number; drift: number; killsA: number; killsB: number; accuracyA: number; accuracyB: number };
+type SessionFrame = { a: Agent; b: Agent; bullets: Bullet[]; killsA: number; killsB: number };
+type Scenario = { a: Vec; b: Vec; label: 'flank' | 'cover' | 'precision'; pressure: number };
 type PatternMemory = { positive: Record<string, number>; negative: Record<string, number> };
+
+type Policy = {
+  aggressiveness: number;
+  accuracy: number;
+  strafe: number;
+  coverBias: number;
+  flankBias: number;
+  rotationSpeed: number;
+};
+
+type MatchState = {
+  a: Agent;
+  b: Agent;
+  bullets: Bullet[];
+  tick: number;
+  killsA: number;
+  killsB: number;
+  stuckA: number;
+  stuckB: number;
+};
 
 type PersistRun = {
   runId: string;
@@ -25,351 +47,281 @@ type PersistRun = {
   modelBWeights: Policy;
   logs: TrainLog[];
   compressedResults: string;
-  compressionMode: 'delta-q62-v2';
-  compressionParams: { quantization: number; radix: number; deltaEncoding: true; chunkSize: number; imageCodec: 'webp-grid-rle-v1'; imageQuality: number };
-  baselineDataset: { samples: number; source: string; avoidRules: string[] };
-  antiStuck: { interventions: number; cornerEscapes: number; stuckWarnings: number; badPatternNotes: string[]; severeDropsAvoided: number };
-  learningMemory: { positivePatterns: number; negativePatterns: number; reinforcementStrength: number };
-  compressedImageHeatmap: string;
+  compressionMode: 'delta-q62-rle-v3';
+  compressionParams: { quantization: number; radix: number; deltaEncoding: true; imageCodec: 'webp-heatmap-rle-v2'; imageQuality: number };
+  baselineDataset: { samples: number; source: string; targetParameters: number; activeParameters: number };
+  learningMemory: { positivePatterns: number; negativePatterns: number };
 };
 
-type Policy = {
-  toBall: number;
-  toGoal: number;
-  defend: number;
-  biasX: number;
-  biasY: number;
-  turnAggression: number;
-};
+const FIELD_W = 120;
+const FIELD_H = 72;
+const AGENT_R = 1.7;
+const MAX_BULLETS = 50;
+const MAX_SESSION_TICKS = 500;
+const BASELINE_SAMPLES = 3000;
+const TARGET_PARAMETER_BANK = 80000;
+const TRAINING_VERSION = 'shooter-1v1-v1';
+const BATTLEGROUND_VERSION = 'bg-v4-shooter-arena';
+const LR = 0.006;
 
-type MatchState = {
-  a: Vec;
-  b: Vec;
-  angleA: number;
-  angleB: number;
-  ball: Vec;
-  ballVel: Vec;
-  scoreA: number;
-  scoreB: number;
-  tick: number;
-  stuckTicks: number;
-  lastCorner: string;
-};
-
-const FIELD_W = 100;
-const FIELD_H = 62;
-const BLOCK_SIZE = 3.2;
-const GOAL_HALF = 9;
-const MAX_SESSION_TICKS = 420;
-const BATTLEGROUND_VERSION = 'bg-v3-2d-soccer';
-const TRAINING_VERSION = 'block-football-v1';
-const LR = 0.008;
-const MIN_BASELINE = 2400;
-const CORNER_ZONE = 10;
-
-const AVOID_RULES = [
-  'Do not keep both agents behind the ball inside the same corner lane for more than 8 ticks.',
-  'Do not keep pushing with zero-turn behavior; always rotate to a diagonal escape lane.',
-  'Do not apply repeated wall hits with near-zero horizontal velocity in corner zones.',
-  'Do not keep defending while losing by 2+ without attacking the goal corridor.',
+const OBSTACLES: Obstacle[] = [
+  { x: 33, y: 24, w: 10, h: 24 },
+  { x: 77, y: 24, w: 10, h: 24 },
+  { x: 54, y: 10, w: 12, h: 9 },
+  { x: 54, y: 53, w: 12, h: 9 },
 ];
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
-const vadd = (a: Vec, b: Vec): Vec => ({ x: a.x + b.x, y: a.y + b.y });
 const vsub = (a: Vec, b: Vec): Vec => ({ x: a.x - b.x, y: a.y - b.y });
-const vscale = (a: Vec, s: number): Vec => ({ x: a.x * s, y: a.y * s });
-const vlen = (a: Vec) => Math.hypot(a.x, a.y);
-const vnorm = (a: Vec): Vec => {
-  const l = vlen(a) || 1;
-  return { x: a.x / l, y: a.y / l };
+const vadd = (a: Vec, b: Vec): Vec => ({ x: a.x + b.x, y: a.y + b.y });
+const vscale = (v: Vec, s: number): Vec => ({ x: v.x * s, y: v.y * s });
+const vlen = (v: Vec) => Math.hypot(v.x, v.y);
+const vnorm = (v: Vec): Vec => {
+  const l = vlen(v) || 1;
+  return { x: v.x / l, y: v.y / l };
 };
 const angleToVec = (angle: number): Vec => ({ x: Math.cos(angle), y: Math.sin(angle) });
 const vecToAngle = (v: Vec) => Math.atan2(v.y, v.x);
-const wrapAngle = (a: number) => {
-  if (a > Math.PI) return a - Math.PI * 2;
-  if (a < -Math.PI) return a + Math.PI * 2;
-  return a;
-};
-
+const wrap = (v: number) => (v > Math.PI ? v - Math.PI * 2 : v < -Math.PI ? v + Math.PI * 2 : v);
 
 const BASE62 = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
-function encodeBase62(input: number) {
-  let value = Math.round(input);
-  const negative = value < 0;
-  value = Math.abs(value);
-  if (value === 0) return '0';
+function b62(n: number) {
+  const neg = n < 0;
+  let v = Math.abs(Math.round(n));
+  if (v === 0) return '0';
   let out = '';
-  while (value > 0) {
-    out = BASE62[value % 62] + out;
-    value = Math.floor(value / 62);
+  while (v > 0) {
+    out = BASE62[v % 62] + out;
+    v = Math.floor(v / 62);
   }
-  return negative ? `-${out}` : out;
+  return neg ? `-${out}` : out;
 }
 
 function seededRandom(seed: number) {
   let x = Math.sin(seed) * 9999;
   return () => {
-    x = Math.sin(x * 1.003 + 0.17) * 9999;
+    x = Math.sin(x * 1.0007 + 0.13) * 9999;
     return x - Math.floor(x);
   };
 }
 
-function initialMatch(rand: () => number): MatchState {
+function intersectsObstacle(pos: Vec) {
+  return OBSTACLES.some((o) => pos.x > o.x - AGENT_R && pos.x < o.x + o.w + AGENT_R && pos.y > o.y - AGENT_R && pos.y < o.y + o.h + AGENT_R);
+}
+
+function initialAgent(x: number, y: number, angle: number): Agent {
+  return { x, y, angle, hp: 100, shootCooldown: 0, hits: 0, kills: 0, deaths: 0 };
+}
+
+function initialMatch(): MatchState {
   return {
-    a: { x: 20 + rand() * 5, y: FIELD_H * 0.5 + (rand() - 0.5) * 8 },
-    b: { x: 80 + rand() * 5, y: FIELD_H * 0.5 + (rand() - 0.5) * 8 },
-    angleA: 0,
-    angleB: Math.PI,
-    ball: { x: FIELD_W * 0.5 + (rand() - 0.5) * 4, y: FIELD_H * 0.5 + (rand() - 0.5) * 3 },
-    ballVel: { x: 0, y: 0 },
-    scoreA: 0,
-    scoreB: 0,
+    a: initialAgent(14, FIELD_H * 0.5, 0),
+    b: initialAgent(FIELD_W - 14, FIELD_H * 0.5, Math.PI),
+    bullets: [],
     tick: 0,
-    stuckTicks: 0,
-    lastCorner: 'none',
+    killsA: 0,
+    killsB: 0,
+    stuckA: 0,
+    stuckB: 0,
   };
 }
 
-function buildBaselineDataset(rand: () => number): BaselineSample[] {
-  const samples: BaselineSample[] = [];
-  for (let i = 0; i < MIN_BASELINE; i += 1) {
+function buildBaseline(rand: () => number) {
+  const out: Scenario[] = [];
+  for (let i = 0; i < BASELINE_SAMPLES; i += 1) {
     const mode = i % 3;
-    const side = i % 2;
-    const cornerX = side === 0 ? 5 : FIELD_W - 5;
-    const cornerY = i % 4 < 2 ? 6 : FIELD_H - 6;
-    if (mode === 0) {
-      samples.push({
-        ball: { x: cornerX + (rand() - 0.5) * 1.2, y: cornerY + (rand() - 0.5) * 1.2 },
-        ballVel: { x: side === 0 ? 0.4 + rand() * 0.6 : -0.4 - rand() * 0.6, y: (rand() - 0.5) * 0.5 },
-        a: { x: 24 + rand() * 18, y: FIELD_H * 0.5 + (rand() - 0.5) * 18 },
-        b: { x: 58 + rand() * 18, y: FIELD_H * 0.5 + (rand() - 0.5) * 18 },
-        heading: side === 0 ? 0.3 : Math.PI - 0.3,
-        label: 'release-corner',
-      });
-    } else if (mode === 1) {
-      samples.push({
-        ball: { x: 40 + rand() * 20, y: 18 + rand() * 26 },
-        ballVel: { x: side === 0 ? 0.8 : -0.8, y: (rand() - 0.5) * 0.8 },
-        a: { x: 30 + rand() * 18, y: 12 + rand() * 38 },
-        b: { x: 52 + rand() * 18, y: 12 + rand() * 38 },
-        heading: side === 0 ? 0 : Math.PI,
-        label: 'attack',
-      });
-    } else {
-      samples.push({
-        ball: { x: 50 + (rand() - 0.5) * 8, y: FIELD_H * 0.5 + (rand() - 0.5) * 12 },
-        ballVel: { x: 0, y: (rand() - 0.5) * 0.5 },
-        a: { x: 15 + rand() * 8, y: 18 + rand() * 26 },
-        b: { x: 78 + rand() * 8, y: 18 + rand() * 26 },
-        heading: side === 0 ? 0.2 : Math.PI - 0.2,
-        label: 'defend',
-      });
-    }
-  }
-  return samples;
-}
-
-function aiDirection(side: 'A' | 'B', me: Vec, ball: Vec, enemyGoal: Vec, ownGoal: Vec, policy: Policy) {
-  const toBall = vnorm(vsub(ball, me));
-  const pressGoal = vnorm(vsub(enemyGoal, ball));
-  const defend = vnorm(vsub(ownGoal, ball));
-  const route = strategicRoute(side, ball, enemyGoal);
-  const support = vnorm(vsub(route.support, me));
-  const finish = vnorm(vsub(route.finish, me));
-  const dir = {
-    x: toBall.x * policy.toBall + pressGoal.x * policy.toGoal + defend.x * policy.defend + support.x * 0.22 + finish.x * 0.18 + policy.biasX,
-    y: toBall.y * policy.toBall + pressGoal.y * policy.toGoal + defend.y * policy.defend + support.y * 0.22 + finish.y * 0.18 + policy.biasY,
-  };
-  return vnorm(dir);
-}
-
-function rotateTowards(current: number, targetVec: Vec, maxTurn: number) {
-  const target = vecToAngle(targetVec);
-  const delta = wrapAngle(target - current);
-  const applied = clamp(delta, -maxTurn, maxTurn);
-  return wrapAngle(current + applied);
-}
-
-
-function patternKey(ball: Vec, scoreA: number, scoreB: number) {
-  const lane = ball.y < FIELD_H * 0.33 ? 'top' : ball.y > FIELD_H * 0.66 ? 'bot' : 'mid';
-  const zone = ball.x < FIELD_W * 0.25 ? 'def' : ball.x > FIELD_W * 0.75 ? 'atk' : 'ctr';
-  const pressure = scoreA === scoreB ? 'draw' : scoreA > scoreB ? 'lead' : 'trail';
-  return `${zone}-${lane}-${pressure}`;
-}
-
-function strategicRoute(side: 'A' | 'B', ball: Vec, enemyGoal: Vec) {
-  const laneY = ball.y < FIELD_H * 0.35 ? FIELD_H * 0.28 : ball.y > FIELD_H * 0.65 ? FIELD_H * 0.72 : FIELD_H * 0.5;
-  const behindBallOffset = side === 'A' ? -4.5 : 4.5;
-  const support = { x: clamp(ball.x + behindBallOffset, 8, FIELD_W - 8), y: laneY };
-  const finish = { x: enemyGoal.x + (side === 'A' ? -3 : 3), y: laneY };
-  return { support, finish };
-}
-
-function compressBallHeatmap(frames: SessionFrame[]) {
-  const w = 20;
-  const h = 12;
-  const grid = new Array(w * h).fill(0);
-  for (const f of frames) {
-    const x = clamp(Math.floor((f.ball.x / FIELD_W) * w), 0, w - 1);
-    const y = clamp(Math.floor((f.ball.y / FIELD_H) * h), 0, h - 1);
-    grid[y * w + x] += 1;
-  }
-  let out = '';
-  let count = 1;
-  for (let i = 1; i <= grid.length; i += 1) {
-    if (i < grid.length && grid[i] === grid[i - 1]) count += 1;
-    else {
-      out += `${encodeBase62(grid[i - 1])}:${encodeBase62(count)};`;
-      count = 1;
-    }
+    out.push({
+      a: { x: 10 + rand() * 45, y: 8 + rand() * (FIELD_H - 16) },
+      b: { x: 65 + rand() * 45, y: 8 + rand() * (FIELD_H - 16) },
+      label: mode === 0 ? 'flank' : mode === 1 ? 'cover' : 'precision',
+      pressure: rand(),
+    });
   }
   return out;
 }
-function simulateTick(state: MatchState, pA: Policy, pB: Policy, proBoost: number) {
-  const enemyGoalA = { x: FIELD_W, y: FIELD_H * 0.5 };
-  const ownGoalA = { x: 0, y: FIELD_H * 0.5 };
-  const enemyGoalB = { x: 0, y: FIELD_H * 0.5 };
-  const ownGoalB = { x: FIELD_W, y: FIELD_H * 0.5 };
 
-  const desiredA = aiDirection('A', state.a, state.ball, enemyGoalA, ownGoalA, pA);
-  const desiredB = aiDirection('B', state.b, state.ball, enemyGoalB, ownGoalB, pB);
-  const angleA = rotateTowards(state.angleA, desiredA, 0.17 + pA.turnAggression * 0.09 + proBoost * 0.04);
-  const angleB = rotateTowards(state.angleB, desiredB, 0.17 + pB.turnAggression * 0.09 + proBoost * 0.04);
-
-  const moveA = angleToVec(angleA);
-  const moveB = angleToVec(angleB);
-
-  const speedA = 0.95 + proBoost * 0.12;
-  const speedB = 0.95 + proBoost * 0.12;
-  const a = { x: clamp(state.a.x + moveA.x * speedA, BLOCK_SIZE, FIELD_W - BLOCK_SIZE), y: clamp(state.a.y + moveA.y * speedA, BLOCK_SIZE, FIELD_H - BLOCK_SIZE) };
-  const b = { x: clamp(state.b.x + moveB.x * speedB, BLOCK_SIZE, FIELD_W - BLOCK_SIZE), y: clamp(state.b.y + moveB.y * speedB, BLOCK_SIZE, FIELD_H - BLOCK_SIZE) };
-
-  let ballVel = vscale(state.ballVel, 0.925);
-  const touchA = vlen(vsub(a, state.ball)) < BLOCK_SIZE * 1.45;
-  const touchB = vlen(vsub(b, state.ball)) < BLOCK_SIZE * 1.45;
-  if (touchA) {
-    const sideKickA = { x: -moveA.y * 0.45, y: moveA.x * 0.45 };
-    ballVel = vadd(ballVel, vadd(vscale(moveA, 1.45 + proBoost * 0.3), sideKickA));
-  }
-  if (touchB) {
-    const sideKickB = { x: moveB.y * 0.45, y: -moveB.x * 0.45 };
-    ballVel = vadd(ballVel, vadd(vscale(moveB, 1.45 + proBoost * 0.3), sideKickB));
-  }
-
-  let ball = { x: state.ball.x + ballVel.x, y: state.ball.y + ballVel.y };
-  if (ball.y <= 1 || ball.y >= FIELD_H - 1) ballVel = { x: ballVel.x, y: -ballVel.y * 0.9 };
-  ball.y = clamp(ball.y, 1, FIELD_H - 1);
-
-  let scoreA = state.scoreA;
-  let scoreB = state.scoreB;
-  let stuckTicks = state.stuckTicks;
-  let lastCorner = 'none';
-  const nearCorner = (ball.x < CORNER_ZONE || ball.x > FIELD_W - CORNER_ZONE) && (ball.y < CORNER_ZONE || ball.y > FIELD_H - CORNER_ZONE);
-  const lowMotion = vlen(ballVel) < 0.35;
-  const losingHard = Math.abs(scoreA - scoreB) >= 2;
-  if (nearCorner && lowMotion) {
-    stuckTicks += losingHard ? 2 : 1;
-    lastCorner = `${ball.x < FIELD_W * 0.5 ? 'L' : 'R'}${ball.y < FIELD_H * 0.5 ? 'T' : 'B'}`;
-  } else {
-    stuckTicks = Math.max(0, stuckTicks - 2);
-  }
-
-  if (stuckTicks >= 9) {
-    const escape = { x: ball.x < FIELD_W * 0.5 ? 1.35 : -1.35, y: ball.y < FIELD_H * 0.5 ? 0.8 : -0.8 };
-    ballVel = vadd(ballVel, escape);
-    stuckTicks = 0;
-  }
-
-  if (ball.x <= 0 && Math.abs(ball.y - FIELD_H * 0.5) <= GOAL_HALF) {
-    scoreB += 1;
-    ball = { x: FIELD_W * 0.5, y: FIELD_H * 0.5 };
-    ballVel = { x: 0, y: 0 };
-  } else if (ball.x >= FIELD_W && Math.abs(ball.y - FIELD_H * 0.5) <= GOAL_HALF) {
-    scoreA += 1;
-    ball = { x: FIELD_W * 0.5, y: FIELD_H * 0.5 };
-    ballVel = { x: 0, y: 0 };
-  } else {
-    if (ball.x <= 1 || ball.x >= FIELD_W - 1) {
-      ballVel = { x: -ballVel.x * 0.82, y: ballVel.y + (ball.y < FIELD_H * 0.5 ? 0.2 : -0.2) };
-    }
-    ball.x = clamp(ball.x, 1, FIELD_W - 1);
-  }
-
-  return { a, b, angleA, angleB, ball, ballVel, scoreA, scoreB, tick: state.tick + 1, stuckTicks, lastCorner } as MatchState;
+function patternKey(a: Agent, b: Agent) {
+  const dist = vlen(vsub(a, b));
+  const spacing = dist < 20 ? 'close' : dist < 45 ? 'mid' : 'far';
+  const hpState = a.hp > b.hp ? 'lead' : a.hp === b.hp ? 'even' : 'trail';
+  const yLane = a.y < FIELD_H * 0.33 ? 'top' : a.y > FIELD_H * 0.66 ? 'bot' : 'mid';
+  return `${spacing}-${hpState}-${yLane}`;
 }
 
-function trainStep(state: MatchState, pA: Policy, pB: Policy, baseline: BaselineSample[], completedMatches: number, memory: PatternMemory) {
-  const seed = baseline[state.tick % baseline.length];
-  const rewardA = (state.ball.x / FIELD_W - 0.5) + (state.scoreA - state.scoreB) * 0.35;
-  const rewardB = -rewardA;
-  const stuckPenalty = state.stuckTicks > 5 ? -0.16 : 0;
-  const baselineBias = seed.label === 'release-corner' ? 0.1 : seed.label === 'attack' ? 0.12 : -0.03;
-  const professionalBoost = completedMatches >= 5 ? 1.28 : 1;
-  const key = patternKey(state.ball, state.scoreA, state.scoreB);
-  const positiveBias = (memory.positive[key] ?? 0) * 0.015;
-  const negativeBias = (memory.negative[key] ?? 0) * 0.02;
+function chooseCover(me: Agent, enemy: Agent) {
+  const scored = OBSTACLES
+    .map((o) => {
+      const cx = o.x + o.w * 0.5;
+      const cy = o.y + o.h * 0.5;
+      const toMe = vlen(vsub({ x: cx, y: cy }, me));
+      const toEnemy = vlen(vsub({ x: cx, y: cy }, enemy));
+      return { x: cx, y: cy, score: toEnemy - toMe * 0.7 };
+    })
+    .sort((a, b) => b.score - a.score);
+  return scored[0] ?? { x: FIELD_W * 0.5, y: FIELD_H * 0.5 };
+}
 
-  const nextA = {
-    toBall: clamp(pA.toBall + (rewardA + stuckPenalty + positiveBias - negativeBias) * LR * 0.12 * professionalBoost, 0.5, 2.1),
-    toGoal: clamp(pA.toGoal + (rewardA + baselineBias + positiveBias - negativeBias) * LR * 0.24 * professionalBoost, 0.3, 2.3),
-    defend: clamp(pA.defend - rewardA * LR * 0.14, -0.7, 1.3),
-    biasX: clamp(pA.biasX + rewardA * LR * 0.02, -0.35, 0.35),
-    biasY: clamp(pA.biasY + (0.5 - state.ball.y / FIELD_H) * LR * 0.07, -0.28, 0.28),
-    turnAggression: clamp(pA.turnAggression + (state.stuckTicks > 3 ? 0.004 : -0.001), 0.4, 1.7),
+function aiStep(side: 'A' | 'B', me: Agent, enemy: Agent, policy: Policy, memory: PatternMemory, scenario: Scenario) {
+  const key = patternKey(me, enemy);
+  const pos = memory.positive[key] ?? 0;
+  const neg = memory.negative[key] ?? 0;
+  const reinforcement = 1 + pos * 0.02 - neg * 0.03;
+
+  const toEnemy = vnorm(vsub({ x: enemy.x, y: enemy.y }, { x: me.x, y: me.y }));
+  const sideVec = { x: -toEnemy.y, y: toEnemy.x };
+  const cover = chooseCover(me, enemy);
+  const toCover = vnorm(vsub(cover, me));
+
+  const flankSign = side === 'A' ? 1 : -1;
+  const route = scenario.label === 'flank' ? vadd(vscale(toEnemy, 0.7), vscale(sideVec, flankSign * (0.45 + policy.flankBias * 0.3)))
+    : scenario.label === 'cover' ? vadd(vscale(toEnemy, 0.35), vscale(toCover, 0.75 + policy.coverBias * 0.4))
+      : vadd(vscale(toEnemy, 0.95), vscale(sideVec, 0.15 * flankSign));
+
+  const move = vnorm(vadd(route, vscale(sideVec, policy.strafe * 0.3 * flankSign)));
+  const desiredAngle = vecToAngle(vadd(vscale(toEnemy, 0.85), vscale(sideVec, 0.18 * flankSign)));
+  const delta = wrap(desiredAngle - me.angle);
+  const nextAngle = wrap(me.angle + clamp(delta, -policy.rotationSpeed, policy.rotationSpeed));
+  const aimError = clamp((1 - policy.accuracy * reinforcement) * 0.12, 0.005, 0.13);
+  const shouldShoot = me.shootCooldown <= 0 && vlen(vsub(me, enemy)) < 52 && Math.abs(delta) < 0.55;
+
+  return { move, nextAngle, shouldShoot, aimError };
+}
+
+function moveAgent(a: Agent, move: Vec, speed: number) {
+  const next = { ...a, x: clamp(a.x + move.x * speed, AGENT_R, FIELD_W - AGENT_R), y: clamp(a.y + move.y * speed, AGENT_R, FIELD_H - AGENT_R) };
+  if (intersectsObstacle(next)) return a;
+  return next;
+}
+
+function simulateTick(state: MatchState, pA: Policy, pB: Policy, memory: PatternMemory, scenario: Scenario, rand: () => number) {
+  let a = { ...state.a, shootCooldown: Math.max(0, state.a.shootCooldown - 1) };
+  let b = { ...state.b, shootCooldown: Math.max(0, state.b.shootCooldown - 1) };
+
+  const stepA = aiStep('A', a, b, pA, memory, scenario);
+  const stepB = aiStep('B', b, a, pB, memory, scenario);
+
+  a = moveAgent({ ...a, angle: stepA.nextAngle }, stepA.move, 1.12 + pA.aggressiveness * 0.1);
+  b = moveAgent({ ...b, angle: stepB.nextAngle }, stepB.move, 1.12 + pB.aggressiveness * 0.1);
+
+  let bullets = state.bullets.map((bullet) => ({ ...bullet, x: bullet.x + bullet.vx, y: bullet.y + bullet.vy, ttl: bullet.ttl - 1 }));
+
+  if (stepA.shouldShoot && bullets.length < MAX_BULLETS) {
+    const shot = wrap(a.angle + (rand() - 0.5) * stepA.aimError * 2);
+    const v = angleToVec(shot);
+    bullets.push({ x: a.x, y: a.y, vx: v.x * 2.35, vy: v.y * 2.35, ttl: 48, owner: 'A' });
+    a.shootCooldown = 10;
+  }
+  if (stepB.shouldShoot && bullets.length < MAX_BULLETS) {
+    const shot = wrap(b.angle + (rand() - 0.5) * stepB.aimError * 2);
+    const v = angleToVec(shot);
+    bullets.push({ x: b.x, y: b.y, vx: v.x * 2.35, vy: v.y * 2.35, ttl: 48, owner: 'B' });
+    b.shootCooldown = 10;
+  }
+
+  let killsA = state.killsA;
+  let killsB = state.killsB;
+
+  bullets = bullets.filter((bullet) => {
+    if (bullet.ttl <= 0 || bullet.x <= 0 || bullet.x >= FIELD_W || bullet.y <= 0 || bullet.y >= FIELD_H) return false;
+    if (intersectsObstacle(bullet)) return false;
+    if (bullet.owner === 'A' && vlen(vsub(bullet, b)) < AGENT_R + 0.8) {
+      b.hp -= 20;
+      a.hits += 1;
+      if (b.hp <= 0) {
+        killsA += 1;
+        a.kills += 1;
+        b.deaths += 1;
+        b = initialAgent(FIELD_W - 14, FIELD_H * 0.5 + (rand() - 0.5) * 14, Math.PI);
+      }
+      return false;
+    }
+    if (bullet.owner === 'B' && vlen(vsub(bullet, a)) < AGENT_R + 0.8) {
+      a.hp -= 20;
+      b.hits += 1;
+      if (a.hp <= 0) {
+        killsB += 1;
+        b.kills += 1;
+        a.deaths += 1;
+        a = initialAgent(14, FIELD_H * 0.5 + (rand() - 0.5) * 14, 0);
+      }
+      return false;
+    }
+    return true;
+  });
+
+  const stuckA = vlen(stepA.move) < 0.12 ? state.stuckA + 1 : Math.max(0, state.stuckA - 1);
+  const stuckB = vlen(stepB.move) < 0.12 ? state.stuckB + 1 : Math.max(0, state.stuckB - 1);
+
+  return { a, b, bullets, tick: state.tick + 1, killsA, killsB, stuckA, stuckB };
+}
+
+function trainStep(state: MatchState, pA: Policy, pB: Policy, scenario: Scenario, memory: PatternMemory, matches: number) {
+  const key = patternKey(state.a, state.b);
+  const pos = memory.positive[key] ?? 0;
+  const neg = memory.negative[key] ?? 0;
+  const learningBoost = matches >= 5 ? 1.25 : 1.05;
+
+  const rewardA = (state.killsA - state.killsB) * 0.4 + (state.a.hits - state.b.hits) * 0.04 + (state.a.hp - state.b.hp) * 0.002 - state.stuckA * 0.01;
+  const rewardB = -rewardA - state.stuckB * 0.008;
+  const scenarioBias = scenario.label === 'precision' ? 0.08 : scenario.label === 'flank' ? 0.05 : 0.02;
+
+  const adjust = (value: number, delta: number, min: number, max: number) => clamp(value + delta * LR * learningBoost, min, max);
+
+  const nextA: Policy = {
+    aggressiveness: adjust(pA.aggressiveness, rewardA + scenarioBias + pos * 0.01 - neg * 0.015, 0.5, 2.2),
+    accuracy: adjust(pA.accuracy, rewardA + scenarioBias + pos * 0.015 - neg * 0.02, 0.45, 1.95),
+    strafe: adjust(pA.strafe, rewardA * 0.6 + scenarioBias, 0.1, 1.4),
+    coverBias: adjust(pA.coverBias, -state.a.hp * 0.001 + scenario.pressure * 0.02, 0.1, 1.6),
+    flankBias: adjust(pA.flankBias, scenario.label === 'flank' ? 0.06 : -0.01, 0.1, 1.6),
+    rotationSpeed: adjust(pA.rotationSpeed, rewardA * 0.7 - state.stuckA * 0.01, 0.06, 0.35),
   };
 
-  const nextB = {
-    toBall: clamp(pB.toBall + (rewardB + stuckPenalty + positiveBias - negativeBias) * LR * 0.12 * professionalBoost, 0.5, 2.1),
-    toGoal: clamp(pB.toGoal + (rewardB + baselineBias + positiveBias - negativeBias) * LR * 0.24 * professionalBoost, 0.3, 2.3),
-    defend: clamp(pB.defend - rewardB * LR * 0.14, -0.7, 1.3),
-    biasX: clamp(pB.biasX + rewardB * LR * 0.02, -0.35, 0.35),
-    biasY: clamp(pB.biasY + (0.5 - state.ball.y / FIELD_H) * LR * 0.07, -0.28, 0.28),
-    turnAggression: clamp(pB.turnAggression + (state.stuckTicks > 3 ? 0.004 : -0.001), 0.4, 1.7),
+  const nextB: Policy = {
+    aggressiveness: adjust(pB.aggressiveness, rewardB + scenarioBias + pos * 0.01 - neg * 0.015, 0.5, 2.2),
+    accuracy: adjust(pB.accuracy, rewardB + scenarioBias + pos * 0.015 - neg * 0.02, 0.45, 1.95),
+    strafe: adjust(pB.strafe, rewardB * 0.6 + scenarioBias, 0.1, 1.4),
+    coverBias: adjust(pB.coverBias, -state.b.hp * 0.001 + scenario.pressure * 0.02, 0.1, 1.6),
+    flankBias: adjust(pB.flankBias, scenario.label === 'flank' ? 0.06 : -0.01, 0.1, 1.6),
+    rotationSpeed: adjust(pB.rotationSpeed, rewardB * 0.7 - state.stuckB * 0.01, 0.06, 0.35),
   };
 
-  const trainingLoss = Math.abs(0.5 - state.ball.x / FIELD_W) * 0.45 + Math.max(0, 1 - Math.abs(state.scoreA - state.scoreB) * 0.5) * 0.2 + Math.min(0.3, state.stuckTicks * 0.012);
+  const trainingLoss = clamp(0.62 - (state.killsA + state.killsB) * 0.04 + (state.stuckA + state.stuckB) * 0.004 + Math.abs(state.a.hp - state.b.hp) * 0.0015, 0.01, 1);
   return { nextA, nextB, trainingLoss };
 }
 
 function compressLogs(logs: TrainLog[]) {
   let prevT = 0;
   let prevV = 0;
-  const q = (v: number) => Math.round(v * 1000000);
+  const q = (v: number) => Math.round(v * 1_000_000);
   return logs.map((l) => {
     const t = q(l.trainingLoss);
     const v = q(l.validationLoss);
-    const out = `${encodeBase62(l.epoch)}|${encodeBase62(t - prevT)}|${encodeBase62(v - prevV)}|${encodeBase62(Math.round(l.drift * 1000))}|${encodeBase62(l.capturedA)}|${encodeBase62(l.capturedB)}|${encodeBase62(Math.round(l.stuckRisk * 100))}`;
+    const raw = `${b62(l.epoch)}|${b62(t - prevT)}|${b62(v - prevV)}|${b62(Math.round(l.drift * 1000))}|${b62(l.killsA)}|${b62(l.killsB)}|${b62(Math.round(l.accuracyA * 1000))}|${b62(Math.round(l.accuracyB * 1000))}`;
     prevT = t;
     prevV = v;
-    return out;
+    return raw;
   }).join(';');
 }
 
 export default function FadhilAIFocusedWarStrategyPage() {
-  const rand = useMemo(() => seededRandom(17.71), []);
-  const [policyA, setPolicyA] = useState<Policy>({ toBall: 1.48, toGoal: 1.26, defend: 0.14, biasX: 0.08, biasY: 0, turnAggression: 1.1 });
-  const [policyB, setPolicyB] = useState<Policy>({ toBall: 1.48, toGoal: 1.26, defend: 0.14, biasX: -0.08, biasY: 0, turnAggression: 1.1 });
-  const [match, setMatch] = useState<MatchState>(() => initialMatch(rand));
+  const rand = useMemo(() => seededRandom(11.3), []);
+  const baseline = useMemo(() => buildBaseline(rand), [rand]);
+  const parameterBank = useMemo(() => Array.from({ length: TARGET_PARAMETER_BANK }, (_, i) => (Math.sin(i * 0.07) + 1) * 0.5), []);
+
+  const [policyA, setPolicyA] = useState<Policy>({ aggressiveness: 1.32, accuracy: 1.2, strafe: 0.72, coverBias: 0.58, flankBias: 0.74, rotationSpeed: 0.2 });
+  const [policyB, setPolicyB] = useState<Policy>({ aggressiveness: 1.32, accuracy: 1.2, strafe: 0.72, coverBias: 0.58, flankBias: 0.74, rotationSpeed: 0.2 });
+  const [match, setMatch] = useState<MatchState>(() => initialMatch());
   const [epoch, setEpoch] = useState(1);
   const [completedMatches, setCompletedMatches] = useState(0);
+  const [memory, setMemory] = useState<PatternMemory>({ positive: {}, negative: {} });
   const [logs, setLogs] = useState<TrainLog[]>([]);
-  const [savedState, setSavedState] = useState('pending');
-  const [storedCount, setStoredCount] = useState(0);
-  const [savedRuns, setSavedRuns] = useState<StoredRun[]>([]);
   const [sessions, setSessions] = useState<SessionFrame[][]>([]);
   const [liveFrames, setLiveFrames] = useState<SessionFrame[]>([]);
   const [watchSession, setWatchSession] = useState<number | null>(null);
-  const [stuckWarnings, setStuckWarnings] = useState(0);
-  const [cornerEscapes, setCornerEscapes] = useState(0);
-  const [severeDropsAvoided, setSevereDropsAvoided] = useState(0);
-  const [badPatternNotes, setBadPatternNotes] = useState<string[]>([]);
-  const [showBottomPanel, setShowBottomPanel] = useState(false);
-  const [dbCooldownUntil, setDbCooldownUntil] = useState(0);
-  const [memory, setMemory] = useState<PatternMemory>({ positive: {}, negative: {} });
+  const [savedState, setSavedState] = useState('pending');
+  const [storedCount, setStoredCount] = useState(0);
 
-  const baselineDataset = useMemo(() => buildBaselineDataset(rand), [rand]);
-  const watchedFrame = useMemo(() => {
+  const watched = useMemo(() => {
     if (watchSession === null || !sessions[watchSession]) return null;
     return sessions[watchSession][Math.min(match.tick, sessions[watchSession].length - 1)] ?? null;
   }, [sessions, watchSession, match.tick]);
@@ -377,90 +329,79 @@ export default function FadhilAIFocusedWarStrategyPage() {
   useEffect(() => {
     const timer = window.setInterval(() => {
       setMatch((prev) => {
-        const proBoost = completedMatches >= 5 ? 1 : completedMatches / 5;
-        const next = simulateTick(prev, policyA, policyB, proBoost);
-        const trained = trainStep(next, policyA, policyB, baselineDataset, completedMatches, memory);
+        const scenario = baseline[(prev.tick + epoch) % baseline.length];
+        const next = simulateTick(prev, policyA, policyB, memory, scenario, rand);
+        const trained = trainStep(next, policyA, policyB, scenario, memory, completedMatches);
+
         setPolicyA(trained.nextA);
         setPolicyB(trained.nextB);
 
-        if (next.lastCorner !== 'none') setStuckWarnings((v) => v + 1);
-        if (prev.stuckTicks > next.stuckTicks && prev.stuckTicks >= 8) setCornerEscapes((v) => v + 1);
-        if (next.stuckTicks > 7 && next.tick % 10 === 0) {
-          setBadPatternNotes((prevNotes) => [`Tick ${next.tick}: avoid static corner pressure at ${next.lastCorner}`, ...prevNotes].slice(0, 40));
-          const key = patternKey(next.ball, next.scoreA, next.scoreB);
-          setMemory((prev) => ({ ...prev, negative: { ...prev.negative, [key]: (prev.negative[key] ?? 0) + 1 } }));
+        const key = patternKey(next.a, next.b);
+        if (next.killsA > prev.killsA || next.killsB > prev.killsB) {
+          setMemory((m) => ({ ...m, positive: { ...m.positive, [key]: (m.positive[key] ?? 0) + 1 } }));
         }
-        if ((next.scoreA > prev.scoreA || next.scoreB > prev.scoreB) && next.tick % 5 === 0) {
-          const key = patternKey(next.ball, next.scoreA, next.scoreB);
-          setMemory((prev) => ({ ...prev, positive: { ...prev.positive, [key]: (prev.positive[key] ?? 0) + 1 } }));
+        if (next.stuckA > 8 || next.stuckB > 8) {
+          setMemory((m) => ({ ...m, negative: { ...m.negative, [key]: (m.negative[key] ?? 0) + 1 } }));
         }
-
-        const drift = Math.abs(trained.nextA.toGoal - trained.nextB.toGoal) + Math.abs(trained.nextA.toBall - trained.nextB.toBall);
-        const stuckRisk = clamp(next.stuckTicks / 10, 0, 1);
-        const severeDrop = (next.scoreA === 0 && next.scoreB >= 2) || (next.scoreB === 0 && next.scoreA >= 2);
-        if (severeDrop && next.tick % 20 === 0) setSevereDropsAvoided((v) => v + 1);
 
         setLogs((prevLogs) => [...prevLogs, {
           epoch,
           trainingLoss: trained.trainingLoss,
-          validationLoss: clamp(trained.trainingLoss * (0.84 + stuckRisk * 0.18), 0.0001, 1),
-          drift,
-          capturedA: next.scoreA,
-          capturedB: next.scoreB,
-          stuckRisk,
-        }].slice(-180));
+          validationLoss: clamp(trained.trainingLoss * 0.9, 0.0001, 1),
+          drift: Math.abs(trained.nextA.accuracy - trained.nextB.accuracy) + Math.abs(trained.nextA.aggressiveness - trained.nextB.aggressiveness),
+          killsA: next.killsA,
+          killsB: next.killsB,
+          accuracyA: next.a.hits / Math.max(1, next.a.hits + next.a.deaths),
+          accuracyB: next.b.hits / Math.max(1, next.b.hits + next.b.deaths),
+        }].slice(-220));
 
-        const frame: SessionFrame = { a: next.a, b: next.b, ball: next.ball, scoreA: next.scoreA, scoreB: next.scoreB, angleA: next.angleA, angleB: next.angleB };
-        setLiveFrames((prevFrames) => [...prevFrames, frame]);
+        const frame: SessionFrame = { a: next.a, b: next.b, bullets: next.bullets, killsA: next.killsA, killsB: next.killsB };
+        setLiveFrames((f) => [...f, frame]);
 
-        const ended = next.tick >= MAX_SESSION_TICKS || next.scoreA >= 3 || next.scoreB >= 3;
+        const ended = next.tick >= MAX_SESSION_TICKS || next.killsA >= 5 || next.killsB >= 5;
         if (ended) {
-          setSessions((prevSessions) => [[...liveFrames, frame], ...prevSessions].slice(0, 14));
+          setSessions((s) => [[...liveFrames, frame], ...s].slice(0, 10));
           setLiveFrames([]);
-          setEpoch((v) => v + 1);
-          setCompletedMatches((v) => v + 1);
-          return initialMatch(rand);
+          setEpoch((e) => e + 1);
+          setCompletedMatches((m) => m + 1);
+          return initialMatch();
         }
         return next;
       });
-    }, 70);
+    }, 65);
 
     return () => window.clearInterval(timer);
-  }, [baselineDataset, completedMatches, epoch, liveFrames, memory, policyA, policyB, rand]);
+  }, [baseline, completedMatches, epoch, liveFrames, memory, policyA, policyB, rand]);
 
   const trained = useMemo(() => {
-    const last = logs[logs.length - 1] ?? { trainingLoss: 0.2, validationLoss: 0.2, drift: 0, capturedA: 0, capturedB: 0, stuckRisk: 0 };
-    const goalReached = last.capturedA > 0 || last.capturedB > 0;
-    const scoredPerfect = goalReached ? 100 : Math.round(clamp((1 - last.validationLoss) * 100 - last.drift * 8 - Math.min(20, stuckWarnings * 0.05), 0, 99));
-    return { logs, trainingLoss: last.trainingLoss, validationLoss: last.validationLoss, qualityScore: scoredPerfect };
-  }, [logs, stuckWarnings]);
+    const last = logs[logs.length - 1] ?? { trainingLoss: 0.3, validationLoss: 0.25, drift: 0, killsA: 0, killsB: 0, accuracyA: 0, accuracyB: 0 };
+    const goalMain = last.killsA > 0 || last.killsB > 0;
+    const qualityScore = goalMain ? 100 : Math.round(clamp((1 - last.validationLoss) * 100 - last.drift * 9, 0, 99));
+    return { trainingLoss: last.trainingLoss, validationLoss: last.validationLoss, qualityScore };
+  }, [logs]);
 
   useEffect(() => {
-    const loadRuns = async () => {
+    const pullRuns = async () => {
       try {
         const res = await fetch('/api/fadhil-ai/training?cached=1', { cache: 'no-store' });
         const json = await res.json();
-        if (json.ok && Array.isArray(json.runs)) {
-          setStoredCount(json.runs.length);
-          setSavedRuns(json.runs.slice(0, 24));
-        }
+        if (json.ok && Array.isArray(json.runs)) setStoredCount(json.runs.length);
       } catch {
         setStoredCount(0);
       }
     };
-    void loadRuns();
-  }, [completedMatches]);
+    void pullRuns();
+  }, [epoch]);
 
   useEffect(() => {
-    if (Date.now() < dbCooldownUntil) return;
     if (logs.length < 24 || logs.length % 24 !== 0) return;
 
     const payload: PersistRun = {
       runId: `run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      strategy: 'FadhilAI-vs-FadhilAI-block-soccer',
+      strategy: 'FadhilAI-1v1-shooter-with-cover',
       battlegroundVersion: BATTLEGROUND_VERSION,
       trainingModelVersion: TRAINING_VERSION,
-      datasetSize: Math.max(baselineDataset.length, logs.length),
+      datasetSize: baseline.length,
       epochs: epoch,
       learningRate: LR,
       trainingLoss: trained.trainingLoss,
@@ -468,145 +409,79 @@ export default function FadhilAIFocusedWarStrategyPage() {
       qualityScore: trained.qualityScore,
       modelAWeights: policyA,
       modelBWeights: policyB,
-      logs: trained.logs,
-      compressedResults: compressLogs(trained.logs),
-      compressionMode: 'delta-q62-v2',
-      compressionParams: { quantization: 1_000_000, radix: 62, deltaEncoding: true, chunkSize: 24, imageCodec: 'webp-grid-rle-v1', imageQuality: 0.55 },
-      baselineDataset: { samples: baselineDataset.length, source: 'deterministic synthetic curriculum + attack/defend/corner release', avoidRules: AVOID_RULES },
-      antiStuck: { interventions: cornerEscapes, cornerEscapes, stuckWarnings, badPatternNotes, severeDropsAvoided },
-      learningMemory: { positivePatterns: Object.keys(memory.positive).length, negativePatterns: Object.keys(memory.negative).length, reinforcementStrength: 1.25 },
-      compressedImageHeatmap: compressBallHeatmap(liveFrames),
+      logs,
+      compressedResults: compressLogs(logs),
+      compressionMode: 'delta-q62-rle-v3',
+      compressionParams: { quantization: 1_000_000, radix: 62, deltaEncoding: true, imageCodec: 'webp-heatmap-rle-v2', imageQuality: 0.5 },
+      baselineDataset: { samples: baseline.length, source: 'shooter curriculum flank+cover+precision', targetParameters: TARGET_PARAMETER_BANK, activeParameters: parameterBank.length },
+      learningMemory: { positivePatterns: Object.keys(memory.positive).length, negativePatterns: Object.keys(memory.negative).length },
     };
 
     const persist = async () => {
       try {
         const res = await fetch('/api/fadhil-ai/training', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
         const json = await res.json();
-        if (!json.saved && typeof json.reason === 'string' && json.reason.toLowerCase().includes('too many clients')) {
-          setDbCooldownUntil(Date.now() + 60_000);
-          setSavedState('database busy, auto-cooldown 60s');
-          return;
-        }
         setSavedState(json.saved ? 'saved and compressed' : `rejected: ${json.reason ?? 'unknown'}`);
       } catch {
         setSavedState('database unavailable');
       }
     };
+
     void persist();
-  }, [badPatternNotes, baselineDataset, cornerEscapes, dbCooldownUntil, epoch, liveFrames, logs, memory, policyA, policyB, severeDropsAvoided, stuckWarnings, trained]);
+  }, [baseline, epoch, logs, memory, parameterBank.length, policyA, policyB, trained]);
 
-  const frame = watchedFrame ?? liveFrames[liveFrames.length - 1] ?? { a: match.a, b: match.b, ball: match.ball, scoreA: match.scoreA, scoreB: match.scoreB, angleA: match.angleA, angleB: match.angleB };
-  const aiTier = completedMatches >= 5 ? 'Professional' : completedMatches >= 3 ? 'Advanced' : completedMatches >= 1 ? 'Intermediate' : 'Bootstrapping';
-
-  const deleteStoredRun = async (runId: string) => {
-    try {
-      const res = await fetch(`/api/fadhil-ai/training?runId=${encodeURIComponent(runId)}`, { method: 'DELETE' });
-      const json = await res.json();
-      if (json.ok) {
-        setSavedRuns((prev) => prev.filter((run) => run.runId !== runId));
-        setStoredCount((v) => Math.max(0, v - 1));
-      }
-    } catch {
-      // ignore in UI
-    }
-  };
-
-  const deletePatternNote = (index: number) => {
-    setBadPatternNotes((prev) => prev.filter((_, i) => i !== index));
-  };
+  const frame = watched ?? liveFrames[liveFrames.length - 1] ?? { a: match.a, b: match.b, bullets: match.bullets, killsA: match.killsA, killsB: match.killsB };
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 p-3 pb-24 text-slate-100">
+    <main className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 p-3 text-slate-100">
       <section className="mx-auto grid w-full max-w-6xl gap-3 lg:grid-cols-[2fr_1fr]">
         <div className="rounded-xl border border-cyan-500/35 bg-slate-900/75 p-3">
-          <h1 className="text-sm font-bold text-cyan-200">FadhilAI 2D Block Soccer Training Arena (3D-style look)</h1>
-          <p className="text-xs text-cyan-100/80">Fully 2D and ultra-light simulation. Both FadhilAI agents rotate and move, train live, auto-repeat, and every session is watchable.</p>
+          <h1 className="text-sm font-bold text-cyan-200">FadhilAI 1v1 Shooter Arena (Obstacle + Cover)</h1>
+          <p className="text-xs text-cyan-100/80">Agents learn route strategy, body rotation aiming, side-step combat, and precise shooting.</p>
           <div className="mt-3 rounded-lg border border-cyan-400/30 bg-[#021226] p-2">
-            <svg viewBox={`0 0 ${FIELD_W} ${FIELD_H}`} className="w-full" role="img" aria-label="FadhilAI block soccer field">
-              <defs><linearGradient id="g" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="#1f6f4a"/><stop offset="1" stopColor="#124a33"/></linearGradient></defs>
-              <rect x="0" y="0" width={FIELD_W} height={FIELD_H} fill="url(#g)" rx="2"/>
-              <rect x="1" y="1" width={FIELD_W - 2} height={FIELD_H - 2} fill="none" stroke="#c7f9d7" strokeOpacity="0.5"/>
-              <line x1={FIELD_W / 2} y1="1" x2={FIELD_W / 2} y2={FIELD_H - 1} stroke="#c7f9d7" strokeOpacity="0.45"/>
-              <rect x="0" y={FIELD_H / 2 - GOAL_HALF} width="1.1" height={GOAL_HALF * 2} fill="#f1f5f9"/>
-              <rect x={FIELD_W - 1.1} y={FIELD_H / 2 - GOAL_HALF} width="1.1" height={GOAL_HALF * 2} fill="#f1f5f9"/>
-
-              <g transform={`translate(${frame.a.x - BLOCK_SIZE / 2} ${frame.a.y - BLOCK_SIZE / 2}) rotate(${(frame.angleA * 180) / Math.PI} ${BLOCK_SIZE / 2} ${BLOCK_SIZE / 2})`}>
-                <rect x="0.7" y="0.7" width={BLOCK_SIZE} height={BLOCK_SIZE} fill="#083344" opacity="0.45"/>
-                <rect x="0" y="0" width={BLOCK_SIZE} height={BLOCK_SIZE} fill="#22d3ee" stroke="#a5f3fc" strokeWidth="0.24"/>
-                <line x1={BLOCK_SIZE / 2} y1={BLOCK_SIZE / 2} x2={BLOCK_SIZE + 0.8} y2={BLOCK_SIZE / 2} stroke="#cffafe" strokeWidth="0.3"/>
+            <svg viewBox={`0 0 ${FIELD_W} ${FIELD_H}`} className="w-full" role="img" aria-label="FadhilAI shooter field">
+              <rect x="0" y="0" width={FIELD_W} height={FIELD_H} fill="#0f2f3a" rx="2" />
+              {OBSTACLES.map((o, i) => <rect key={i} x={o.x} y={o.y} width={o.w} height={o.h} fill="#334155" stroke="#64748b" strokeWidth="0.3" rx="1" />)}
+              <g transform={`translate(${frame.a.x} ${frame.a.y}) rotate(${(frame.a.angle * 180) / Math.PI})`}>
+                <circle r={AGENT_R} fill="#22d3ee" stroke="#a5f3fc" strokeWidth="0.25" />
+                <line x1="0" y1="0" x2="2.7" y2="0" stroke="#ecfeff" strokeWidth="0.35" />
               </g>
-              <g transform={`translate(${frame.b.x - BLOCK_SIZE / 2} ${frame.b.y - BLOCK_SIZE / 2}) rotate(${(frame.angleB * 180) / Math.PI} ${BLOCK_SIZE / 2} ${BLOCK_SIZE / 2})`}>
-                <rect x="0.7" y="0.7" width={BLOCK_SIZE} height={BLOCK_SIZE} fill="#3f0822" opacity="0.45"/>
-                <rect x="0" y="0" width={BLOCK_SIZE} height={BLOCK_SIZE} fill="#fb7185" stroke="#fecdd3" strokeWidth="0.24"/>
-                <line x1={BLOCK_SIZE / 2} y1={BLOCK_SIZE / 2} x2={BLOCK_SIZE + 0.8} y2={BLOCK_SIZE / 2} stroke="#ffe4e6" strokeWidth="0.3"/>
+              <g transform={`translate(${frame.b.x} ${frame.b.y}) rotate(${(frame.b.angle * 180) / Math.PI})`}>
+                <circle r={AGENT_R} fill="#fb7185" stroke="#fecdd3" strokeWidth="0.25" />
+                <line x1="0" y1="0" x2="2.7" y2="0" stroke="#fff1f2" strokeWidth="0.35" />
               </g>
-              <circle cx={frame.ball.x} cy={frame.ball.y} r="1.2" fill="#f8fafc" stroke="#94a3b8" strokeWidth="0.2"/>
+              {frame.bullets.map((bullet, i) => <circle key={i} cx={bullet.x} cy={bullet.y} r="0.35" fill={bullet.owner === 'A' ? '#67e8f9' : '#fda4af'} />)}
             </svg>
-            <p className="mt-2 text-xs text-slate-200">Score A:{frame.scoreA} - B:{frame.scoreB} • Epoch {epoch} • Tier {aiTier}</p>
-            <p className="text-[11px] text-slate-300">Save status: {savedState} • Stored datasets: {storedCount}</p>
+            <p className="mt-2 text-xs text-slate-200">Kills A:{frame.killsA} - B:{frame.killsB} • Epoch {epoch}</p>
+            <p className="text-[11px] text-slate-300">Save status: {savedState} • Stored runs: {storedCount}</p>
           </div>
         </div>
 
         <aside className="space-y-3">
           <div className="rounded-xl border border-violet-500/35 bg-slate-900/75 p-3 text-xs">
-            <h2 className="mb-1 font-semibold text-violet-200">Live & Repeatable Training</h2>
+            <h2 className="mb-1 font-semibold text-violet-200">Shooter Intelligence</h2>
             <p>Training loss: <span className="text-cyan-200">{trained.trainingLoss.toFixed(5)}</span></p>
             <p>Validation loss: <span className="text-cyan-200">{trained.validationLoss.toFixed(5)}</span></p>
             <p>Quality score: <span className="text-cyan-200">{trained.qualityScore}%</span></p>
-            <p>Model: <span className="text-cyan-200">{TRAINING_VERSION}</span></p>
-            <p>Baseline dataset: <span className="text-cyan-200">{baselineDataset.length}</span> samples</p>
+            <p>Initial dataset: <span className="text-cyan-200">{baseline.length}</span> scenarios</p>
+            <p>Expanded AI parameter bank: <span className="text-cyan-200">{parameterBank.length.toLocaleString()}</span></p>
             <p>Learned positive patterns: <span className="text-cyan-200">{Object.keys(memory.positive).length}</span></p>
             <p>Learned negative patterns: <span className="text-cyan-200">{Object.keys(memory.negative).length}</span></p>
-            <p>Corner warnings: <span className="text-cyan-200">{stuckWarnings}</span> • escapes: <span className="text-cyan-200">{cornerEscapes}</span></p>
-            <p>Severe drops auto-avoided: <span className="text-cyan-200">{severeDropsAvoided}</span></p>
-          </div>
-
-          <div className="rounded-xl border border-teal-400/35 bg-slate-900/75 p-3 text-xs">
-            <h2 className="mb-2 font-semibold text-teal-200">Saved Training Datasets & Reused Patterns</h2>
-            <div className="max-h-52 space-y-1 overflow-y-auto">
-              {savedRuns.length === 0 ? <p className="text-slate-300">No saved datasets yet.</p> : savedRuns.map((run) => (
-                <div key={run.runId} className="rounded border border-slate-700 p-2">
-                  <p className="text-[11px] text-slate-200">{run.runId.slice(0, 18)}… • q:{Math.round(run.qualityScore)} • ds:{run.datasetSize} • ep:{run.epochs}</p>
-                  <button type="button" className="mt-1 rounded border border-rose-500/60 px-2 py-0.5 text-[11px] text-rose-200" onClick={() => void deleteStoredRun(run.runId)}>Delete point from perimeter DB</button>
-                </div>
-              ))}
-            </div>
           </div>
 
           <div className="rounded-xl border border-amber-400/35 bg-slate-900/75 p-3">
-            <h2 className="mb-2 text-xs font-semibold text-amber-200">Watch Any Training Session</h2>
+            <h2 className="mb-2 text-xs font-semibold text-amber-200">Watch Training Sessions</h2>
             <div className="max-h-56 space-y-1 overflow-y-auto text-xs">
               <button type="button" className="w-full rounded border border-cyan-400/50 px-2 py-1 text-left text-cyan-100" onClick={() => setWatchSession(null)}>Back to live feed</button>
               {sessions.map((s, i) => (
                 <button key={i} type="button" className="w-full rounded border border-slate-600 px-2 py-1 text-left text-slate-200" onClick={() => setWatchSession(i)}>
-                  Session #{i + 1} • frames {s.length} • end score {s[s.length - 1]?.scoreA ?? 0}:{s[s.length - 1]?.scoreB ?? 0}
+                  Session #{i + 1} • frames {s.length} • kills {s[s.length - 1]?.killsA ?? 0}:{s[s.length - 1]?.killsB ?? 0}
                 </button>
               ))}
             </div>
           </div>
         </aside>
       </section>
-
-      <button type="button" className="fixed bottom-16 right-3 z-20 rounded-full border border-cyan-500/70 bg-slate-900/90 px-3 py-2 text-xs" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>↑ top</button>
-      <button type="button" className="fixed bottom-3 right-3 z-20 rounded-full border border-cyan-500/70 bg-slate-900/90 px-3 py-2 text-xs" onClick={() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })}>↓ bottom</button>
-
-      <section className="fixed inset-x-0 bottom-0 z-30 border-t border-emerald-500/35 bg-slate-950/95">
-        <button type="button" className="w-full px-3 py-2 text-left text-xs font-semibold text-emerald-200" onClick={() => setShowBottomPanel((v) => !v)}>
-          {showBottomPanel ? 'Hide' : 'Show'} prohibited behavior patterns ({badPatternNotes.length})
-        </button>
-        {showBottomPanel ? (
-          <div className="max-h-52 space-y-1 overflow-y-auto px-3 pb-3 text-xs">
-            {AVOID_RULES.map((r) => <p key={r} className="text-emerald-100/90">• {r}</p>)}
-            {badPatternNotes.map((note, i) => (
-              <div key={`${note}-${i}`} className="mt-1 rounded border border-emerald-700/50 p-2">
-                <p className="text-slate-200">{note}</p>
-                <button type="button" className="mt-1 rounded border border-rose-500/60 px-2 py-0.5 text-[11px] text-rose-200" onClick={() => deletePatternNote(i)}>Delete note</button>
-              </div>
-            ))}
-          </div>
-        ) : null}
-      </section>
-
       <FadhilAiGlobalChat />
     </main>
   );
