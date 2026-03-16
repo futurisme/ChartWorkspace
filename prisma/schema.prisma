@@ -42,22 +42,26 @@ model PerfMetric {
 
 
 model AiTrainingRun {
-  id             Int      @id @default(autoincrement())
-  runId          String   @unique
-  strategy       String
-  datasetSize    Int
-  epochs         Int
-  learningRate   Float
-  trainingLoss   Float
-  validationLoss Float
-  qualityScore   Float
-  modelAWeights  Json
-  modelBWeights  Json
-  logs           Json
-  status         String   @default("accepted")
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                    Int      @id @default(autoincrement())
+  runId                 String   @unique
+  strategy              String
+  battlegroundVersion   String
+  trainingModelVersion  String
+  datasetSize           Int
+  epochs                Int
+  learningRate          Float
+  trainingLoss          Float
+  validationLoss        Float
+  qualityScore          Float
+  modelAWeights         Json
+  modelBWeights         Json
+  logs                  Json
+  compressedResults     String
+  status                String   @default("accepted")
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
   @@index([createdAt])
   @@index([status, createdAt])
+  @@index([battlegroundVersion, trainingModelVersion, createdAt])
 }
