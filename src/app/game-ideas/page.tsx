@@ -10,6 +10,7 @@ import {
   type GameIdeaItem,
   type GameIdeaNav,
 } from '@/features/game-ideas/shared/schema';
+import { decodeFadhilArchive, encodeFadhilArchive } from '@/features/maps/shared/fadhil-archive';
 
 type ItemDraft = {
   name: string;
@@ -211,6 +212,7 @@ export default function GameIdeasPage() {
   const renameClickTrackerRef = useRef<{ key: string; count: number; startedAt: number } | null>(null);
   const dragHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dragPointerRef = useRef<{ kind: DragKind; pointerId: number; startX: number; startY: number } | null>(null);
+  const importFileRef = useRef<HTMLInputElement | null>(null);
 
   const dbHash = useMemo(() => hashDb(db), [db]);
   const currentSection = useMemo(() => db[nav], [db, nav]);
@@ -865,6 +867,78 @@ export default function GameIdeasPage() {
     dragPointerRef.current = null;
   }, []);
 
+
+  const handleExportFadhil = useCallback(async () => {
+    try {
+      setError('');
+      const payload = {
+        magic: 'chartworkspace/archive',
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        sourceMapId: 'featurelib-game-ideas',
+        feature: 'game-ideas',
+        data: dbRef.current,
+        navOrder,
+      };
+      const encoded = await encodeFadhilArchive(payload, 'featurelib-gameideas');
+      const blob = new Blob([encoded], { type: 'application/x-fadhil-archive+json' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `featurelib-${Date.now()}.fAdHiL`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+      setSaveState('saved');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Gagal export .fAdHiL');
+    }
+  }, [navOrder]);
+
+  const handleImportFadhilFile = useCallback(async (file: File) => {
+    const text = await file.text();
+    const decoded = await decodeFadhilArchive(text);
+    if (decoded.contentType !== 'featurelib-gameideas') {
+      throw new Error('File .fAdHiL bukan untuk FeatureLib game ideas.');
+    }
+
+    const parsed = decoded.payload as {
+      feature?: string;
+      data?: unknown;
+      navOrder?: unknown;
+    };
+
+    if (parsed.feature !== 'game-ideas') {
+      throw new Error('Payload .fAdHiL bukan dataset game ideas.');
+    }
+
+    const nextDb = sanitizeGameIdeaDatabase(parsed.data);
+    const nextNavOrder = parseStoredNavOrder(JSON.stringify(parsed.navOrder ?? GAME_IDEA_NAV_ORDER));
+
+    setDb(nextDb);
+    setNavOrder(nextNavOrder);
+    const importedHash = hashDb(nextDb);
+    lastSyncedHashRef.current = importedHash;
+    lastLocalCacheHashRef.current = importedHash;
+    localStorage.setItem(GAME_IDEA_STORAGE_KEY, JSON.stringify(nextDb));
+    localStorage.setItem(NAV_ORDER_STORAGE_KEY, JSON.stringify(nextNavOrder));
+    setSyncNonce((prev) => prev + 1);
+    setError('');
+    setSaveState('saved');
+  }, []);
+
+  const handlePickImportFile = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    try {
+      const file = event.target.files?.[0];
+      event.target.value = '';
+      if (!file) return;
+      await handleImportFadhilFile(file);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Gagal import .fAdHiL');
+    }
+  }, [handleImportFadhilFile]);
+
   const statusLabel = useMemo(() => {
     if (saveState === 'saving') return 'SYNCING...';
     if (saveState === 'saved') return 'SYNCED';
@@ -894,11 +968,19 @@ export default function GameIdeasPage() {
           <button type="button" className="sync-now" onClick={triggerSyncNow}>
             SYNC NOW
           </button>
+          <button type="button" className="sync-now" onClick={() => { void handleExportFadhil(); }}>
+            EXPORT .fAdHiL
+          </button>
+          <button type="button" className="sync-now" onClick={() => importFileRef.current?.click()}>
+            IMPORT .fAdHiL
+          </button>
           <button type="button" className="admin-toggle" onClick={requestEnableAdminMode}>
             ADMIN MODE: {adminMode ? 'ON' : 'OFF'}
           </button>
         </div>
       </header>
+
+      <input ref={importFileRef} type="file" accept=".fAdHiL,application/json" className="hidden" onChange={handlePickImportFile} />
 
       <div className="layout">
         <aside className="sidebar">

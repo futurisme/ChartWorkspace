@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import * as Y from 'yjs';
 import { applyYjsSnapshot, getCurrentSnapshot } from '@/features/maps/shared/map-snapshot';
+import { decodeFadhilArchive, encodeFadhilArchive } from '@/features/maps/shared/fadhil-archive';
 
 type YRecordMap = Y.Map<unknown>;
 
@@ -169,7 +170,7 @@ export default function ArchiveLabPage() {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [archiveJson, setArchiveJson] = useState('');
   const [editorJson, setEditorJson] = useState('');
-  const [status, setStatus] = useState('Drop arsip .cws lalu decrypt untuk edit.');
+  const [status, setStatus] = useState('Drop arsip .cws / .fAdHiL lalu decrypt untuk edit.');
   const [error, setError] = useState('');
 
   const parsedCounts = useMemo(() => {
@@ -190,7 +191,15 @@ export default function ArchiveLabPage() {
   const handleLoadArchiveFile = useCallback(async (file: File) => {
     setError('');
     const raw = await file.text();
-    const parsed = JSON.parse(raw) as Partial<WorkspaceArchiveFile>;
+
+    let parsed = JSON.parse(raw) as Partial<WorkspaceArchiveFile>;
+    if (parsed.magic !== MAGIC && file.name.toLowerCase().endsWith('.fadhil')) {
+      const decoded = await decodeFadhilArchive(raw);
+      if (decoded.contentType !== 'workspace-archive') {
+        throw new Error('File .fAdHiL ini bukan arsip workspace editor.');
+      }
+      parsed = decoded.payload as Partial<WorkspaceArchiveFile>;
+    }
 
     if (parsed.magic !== MAGIC) {
       throw new Error('Format tidak valid. magic mismatch.');
@@ -269,13 +278,13 @@ export default function ArchiveLabPage() {
 
       const archive = editorJsonToArchive(parsed);
       setArchiveJson(JSON.stringify(archive, null, 2));
-      setStatus('Encrypt sukses. Unduh file .cws untuk dipakai di workspace lain.');
+      setStatus('Encrypt sukses. Unduh file .fAdHiL untuk dipakai di workspace lain.');
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
   }, [editorJson]);
 
-  const handleDownloadArchive = useCallback(() => {
+  const handleDownloadArchive = useCallback(async () => {
     try {
       setError('');
       const parsed = JSON.parse(archiveJson) as Partial<WorkspaceArchiveFile>;
@@ -284,25 +293,28 @@ export default function ArchiveLabPage() {
       }
 
       const sourceMapId = typeof parsed.sourceMapId === 'string' ? parsed.sourceMapId : '0000';
-      const blob = new Blob([JSON.stringify(parsed)], { type: 'application/x-chartworkspace+json' });
+      const encoded = await encodeFadhilArchive(parsed, 'workspace-archive');
+      const blob = new Blob([encoded], { type: 'application/x-fadhil-archive+json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `archive-lab-${sourceMapId}-${Date.now()}.cws`;
+      a.download = `archive-lab-${sourceMapId}-${Date.now()}.fAdHiL`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+      setStatus('Export .fAdHiL berhasil.');
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
   }, [archiveJson]);
 
+
   return (
     <main className="min-h-screen bg-slate-950 p-2 text-slate-100 sm:p-4">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-3 sm:gap-4">
         <header className="rounded-lg border border-cyan-500/30 bg-slate-900/70 p-3 sm:p-4">
-          <h1 className="text-base font-bold leading-tight text-cyan-200 sm:text-xl">Archive Lab (.cws) — Decrypt / Modify / Encrypt</h1>
+          <h1 className="text-base font-bold leading-tight text-cyan-200 sm:text-xl">Archive Lab (.cws / .fAdHiL) — Decrypt / Modify / Encrypt</h1>
           <p className="mt-1 text-xs leading-relaxed text-slate-300 sm:text-sm">
             Halaman terpisah untuk menerjemahkan arsip workspace ke JSON manusiawi (nama node, position, color, koneksi),
             lalu re-encrypt kembali agar bisa di-load ke editor.
@@ -313,7 +325,7 @@ export default function ArchiveLabPage() {
               onClick={() => fileRef.current?.click()}
               className="w-full rounded border border-cyan-300 bg-cyan-600 px-3 py-2 text-xs font-semibold text-white hover:bg-cyan-500 sm:w-auto sm:py-1 sm:text-sm"
             >
-              Upload .cws
+              Upload .cws / .fAdHiL
             </button>
             <button
               type="button"
@@ -331,13 +343,13 @@ export default function ArchiveLabPage() {
             </button>
             <button
               type="button"
-              onClick={handleDownloadArchive}
+              onClick={() => { void handleDownloadArchive(); }}
               className="w-full rounded border border-amber-300 bg-amber-500 px-3 py-2 text-xs font-semibold text-slate-950 hover:bg-amber-400 sm:w-auto sm:py-1 sm:text-sm"
             >
-              Download .cws
+              Download .fAdHiL
             </button>
           </div>
-          <input ref={fileRef} type="file" accept=".cws,application/json" className="hidden" onChange={handlePickFile} />
+          <input ref={fileRef} type="file" accept=".cws,.fAdHiL,application/json" className="hidden" onChange={handlePickFile} />
           <p className="mt-3 text-xs text-cyan-100">Status: {status}</p>
           {parsedCounts && <p className="text-xs text-cyan-100">Parsed nodes: {parsedCounts.nodes} • edges: {parsedCounts.edges}</p>}
           {error && <p className="mt-2 rounded bg-red-900/40 px-2 py-1 text-xs text-red-200">Error: {error}</p>}
