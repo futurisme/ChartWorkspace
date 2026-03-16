@@ -20,6 +20,8 @@ export type FaceParams = {
   lip_height: number;
   brow_height: number;
   head_tilt: number;
+  head_shift_x: number;
+  head_shift_y: number;
   breath: number;
   blink: number;
 };
@@ -119,6 +121,7 @@ class EyeMovementEngine {
   private blinkPhase = 0;
   private driftX = 0;
   private driftY = 0;
+  private focusX = 0;
 
   step(nowMs: number, mode: FaceMode, emotion: EmotionVector) {
     if (this.nextBlinkAt <= 0) this.nextBlinkAt = nowMs + 900 + Math.random() * 2200;
@@ -127,7 +130,9 @@ class EyeMovementEngine {
       this.nextBlinkAt = nowMs + 1100 + Math.random() * 2500 - emotion.focus * 600;
     }
 
-    this.driftX = lerp(this.driftX, (Math.random() - 0.5) * 2.2, 0.08);
+    const attentionBias = mode === 'Reading' ? 0.9 : mode === 'Thinking' ? -0.6 : 0;
+    this.focusX = lerp(this.focusX, attentionBias + (Math.random() - 0.5) * 0.7, 0.05);
+    this.driftX = lerp(this.driftX, this.focusX * 2.6 + (Math.random() - 0.5) * 2.2, 0.08);
     this.driftY = lerp(this.driftY, (Math.random() - 0.5) * 1.3, 0.08);
 
     if (this.blinkPhase > 0) this.blinkPhase = Math.max(0, this.blinkPhase - 0.22);
@@ -150,8 +155,11 @@ class ExpressionController {
   compose(mode: FaceMode, emotion: EmotionVector) {
     const baseBrow = mode === 'Surprised' ? -0.28 : mode === 'Confused' ? 0.12 : -0.08;
     const brow_height = baseBrow - emotion.surprise * 0.25 + emotion.confusion * 0.16;
-    const head_tilt = (emotion.curiosity - emotion.focus) * 0.15;
-    return { brow_height, head_tilt };
+    const speakingSwing = mode === 'Speaking' ? Math.sin((emotion.focus + emotion.curiosity) * Math.PI * 3) * 0.06 : 0;
+    const head_tilt = (emotion.curiosity - emotion.focus) * 0.22 + speakingSwing;
+    const head_shift_x = (emotion.joy - emotion.confusion) * 8 + (mode === 'Speaking' ? 6 : 2);
+    const head_shift_y = (emotion.thinking - emotion.surprise) * 2;
+    return { brow_height, head_tilt, head_shift_x, head_shift_y };
   }
 }
 
@@ -167,6 +175,8 @@ class FaceAnimationCore {
     lip_height: 0.25,
     brow_height: -0.08,
     head_tilt: 0,
+    head_shift_x: 0,
+    head_shift_y: 0,
     breath: 0,
     blink: 0,
   };

@@ -7,6 +7,8 @@ type EngineState = 'idle' | 'speaking' | 'paused' | 'unsupported';
 type ScanFinding = { severity: 'high' | 'medium' | 'low'; file: string; line: number; rule: string; snippet: string };
 type ScanReport = { ok: boolean; summary: string; scannedFiles: string[]; recentCommits: string[]; findings: ScanFinding[] };
 
+type ReferenceTab = 'architecture' | 'pipeline' | 'runtime';
+
 function splitIntoChunks(text: string): string[] {
   const compact = text.replace(/\s+/g, ' ').trim();
   if (!compact) return [];
@@ -50,6 +52,8 @@ const initialFace: FaceParams = {
   lip_height: 0.24,
   brow_height: -0.06,
   head_tilt: 0,
+  head_shift_x: 0,
+  head_shift_y: 0,
   breath: 0,
   blink: 0,
 };
@@ -69,6 +73,8 @@ export default function TestEnginePage() {
   const [scanReport, setScanReport] = useState<ScanReport | null>(null);
   const [scanState, setScanState] = useState<'idle' | 'running'>('idle');
   const [face, setFace] = useState<FaceParams>(initialFace);
+  const [referenceTab, setReferenceTab] = useState<ReferenceTab>('architecture');
+  const [isReferenceOpen, setIsReferenceOpen] = useState(true);
 
   const speakingRef = useRef(false);
 
@@ -296,12 +302,14 @@ export default function TestEnginePage() {
   const mouthWidth = 26 + face.lip_width * 34;
   const jawY = 128 + face.jaw_rotation * 10;
   const cheekGlow = 0.15 + face.breath * 0.22;
-  const headTiltDeg = face.head_tilt * 10;
+  const headTiltDeg = face.head_tilt * 18;
+  const headShiftX = face.head_shift_x;
+  const headShiftY = face.head_shift_y + face.breath;
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100">
-      <section className="mx-auto w-full max-w-6xl p-3 sm:p-4">
-        <header className="sticky top-2 z-10 mb-3 rounded-xl border border-cyan-400/30 bg-slate-900/90 p-3 backdrop-blur">
+    <main className="h-screen overflow-y-auto bg-slate-950 text-slate-100">
+      <section className="mx-auto flex w-full max-w-6xl flex-col gap-3 p-3 sm:p-4">
+        <header className="sticky top-2 z-20 rounded-xl border border-cyan-400/30 bg-slate-900/90 p-3 backdrop-blur">
           <div className="mb-2 text-[11px] uppercase tracking-[0.2em] text-cyan-200/80">FadhilAiEngine / TestEngine</div>
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={handleStart} className="rounded border border-cyan-300 bg-cyan-600 px-3 py-1 text-xs font-semibold text-white hover:bg-cyan-500" disabled={state === 'unsupported'}>Start</button>
@@ -314,7 +322,7 @@ export default function TestEnginePage() {
           <p className="text-[11px] font-semibold text-amber-200">Required policy: run FadhilAiEngine scan before every push.</p>
         </header>
 
-        <section className="mb-3 block rounded-2xl border border-cyan-500/20 bg-slate-900/70 p-3 sm:hidden">
+        <section className="rounded-2xl border border-cyan-500/20 bg-slate-900/70 p-3 sm:hidden">
           <div className="mb-2 text-[10px] uppercase tracking-[0.2em] text-cyan-200/80">Dynamic Face</div>
           <div className="mx-auto w-full max-w-[280px]">
             <svg viewBox="0 0 280 200" className="w-full" role="img" aria-label="FadhilAiEngine expressive face">
@@ -325,7 +333,7 @@ export default function TestEnginePage() {
                 </radialGradient>
               </defs>
 
-              <g transform={`rotate(${headTiltDeg} 140 100)`}>
+              <g transform={`translate(${headShiftX} ${headShiftY}) rotate(${headTiltDeg} 140 100)`}>
                 <ellipse cx="140" cy="100" rx="92" ry={82 + face.breath * 1.7} fill="url(#faceCore)" stroke="#22d3ee" strokeOpacity="0.55" />
 
                 <circle cx="94" cy="120" r="18" fill="#22d3ee" opacity={cheekGlow} />
@@ -358,6 +366,53 @@ export default function TestEnginePage() {
           </div>
         </section>
 
+        <section className="rounded-2xl border border-cyan-500/20 bg-slate-900/70">
+          <button
+            type="button"
+            onClick={() => setIsReferenceOpen((prev) => !prev)}
+            className="flex w-full items-center justify-between px-4 py-3 text-left"
+          >
+            <span className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-200">Reference Panels</span>
+            <span className="text-xs text-cyan-100">{isReferenceOpen ? 'Collapse' : 'Expand'}</span>
+          </button>
+
+          {isReferenceOpen && (
+            <div className="border-t border-cyan-500/20 px-3 pb-3 pt-2">
+              <div className="mb-3 flex flex-wrap gap-2">
+                {(['architecture', 'pipeline', 'runtime'] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => setReferenceTab(tab)}
+                    className={`rounded px-3 py-1 text-xs font-semibold ${referenceTab === tab ? 'bg-cyan-600 text-white' : 'bg-slate-800 text-cyan-100'}`}
+                  >
+                    {tab[0].toUpperCase() + tab.slice(1)}
+                  </button>
+                ))}
+              </div>
+
+              {referenceTab === 'architecture' && (
+                <div className="space-y-2 text-xs text-slate-300 sm:text-sm">
+                  <p>FadhilAiEngine modules: DetectionEngine → EmotionAnalyzer → SpeechAnalyzer → FaceAnimationCore.</p>
+                  <p>EyeMovementEngine, LipSyncEngine, and ExpressionController produce blended parameters for the render stage.</p>
+                </div>
+              )}
+              {referenceTab === 'pipeline' && (
+                <div className="space-y-2 text-xs text-slate-300 sm:text-sm">
+                  <p>Detection runs first, then scan summary narration is injected as first queue content.</p>
+                  <p>Event-driven speech state updates feed face motion at animation frame cadence with dirty-state gating.</p>
+                </div>
+              )}
+              {referenceTab === 'runtime' && (
+                <div className="space-y-2 text-xs text-slate-300 sm:text-sm">
+                  <p>Runtime is mobile-optimized: single SVG layer, parameter cache, and only-dirty redraw updates.</p>
+                  <p>Head translation + rotation, eye drift, blink variation, and phoneme mouth shaping remain native and dependency-free.</p>
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+
         <article ref={scriptRef} className="space-y-3 rounded-2xl border border-slate-700 bg-slate-900/70 p-4 text-sm leading-relaxed sm:text-base">
           <h1 className="text-lg font-bold text-cyan-200 sm:text-xl">FadhilAiEngine Live Voice Script</h1>
           <p>
@@ -373,7 +428,7 @@ export default function TestEnginePage() {
           </p>
         </article>
 
-        <section className="mt-3 rounded-2xl border border-amber-500/30 bg-slate-900/70 p-4 text-xs sm:text-sm">
+        <section className="rounded-2xl border border-amber-500/30 bg-slate-900/70 p-4 text-xs sm:text-sm">
           <h2 className="mb-2 font-bold text-amber-200">FadhilAiEngine Analysis & Verification</h2>
           {!scanReport && <p className="text-slate-300">No scan report yet. Press <strong>Run FadhilAiEngine Scan</strong> before push.</p>}
           {scanReport && (
