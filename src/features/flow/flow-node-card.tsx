@@ -54,11 +54,11 @@ function FlowNodeCardComponent({ id, data, selected }: NodeProps<ConceptNodeData
 
   return (
     <div className="relative nopan inline-flex flex-col items-start">
-      <div className="relative flex w-full items-stretch gap-1">
+      <div className="relative flex w-auto items-start gap-1">
         <div className="pointer-events-none absolute inset-0 z-30 rounded-lg" aria-hidden="true" />
 
         <div
-          className={`flow-node-drag-handle relative z-20 max-w-[168px] cursor-grab touch-none select-none rounded-md border px-2 py-0 shadow-sm active:cursor-grabbing sm:px-2 sm:py-0 ${
+          className={`flow-node-drag-handle relative z-20 max-w-[340px] cursor-grab touch-none select-none rounded border px-1.5 py-[1px] shadow-sm active:cursor-grabbing sm:px-2 sm:py-[1px] ${
             selected
               ? 'ring-2 ring-lime-400/80 shadow-[0_0_14px_rgba(132,204,22,0.55)]'
               : editedByOthers
@@ -93,7 +93,12 @@ function FlowNodeCardComponent({ id, data, selected }: NodeProps<ConceptNodeData
           <Handle type="source" position={Position.Left} id="s-left" className="pointer-events-none opacity-0" />
           <Handle type="source" position={Position.Right} id="s-right" className="pointer-events-none opacity-0" />
 
-          <div className="pointer-events-none break-words truncate whitespace-nowrap text-[9px] font-semibold leading-none sm:text-[10px]">{data.label}</div>
+          <div
+            className="pointer-events-none break-words whitespace-normal text-[9px] font-semibold leading-tight sm:text-[10px]"
+            title={data.label}
+          >
+            {data.label}
+          </div>
         </div>
 
         {hasDescriptionPanel && (
@@ -103,7 +108,7 @@ function FlowNodeCardComponent({ id, data, selected }: NodeProps<ConceptNodeData
               event.stopPropagation();
               toggleDescriptionPanel();
             }}
-            className="nodrag relative z-50 inline-flex h-5 w-4 shrink-0 items-center justify-center rounded-sm border border-slate-950 bg-white text-slate-900 shadow-sm transition hover:bg-slate-50"
+            className="nodrag relative z-50 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border border-slate-950 bg-white text-slate-900 shadow-sm transition hover:bg-slate-50"
             aria-label={isExpanded ? 'Collapse description' : 'Expand description'}
           >
               <span className="flex flex-col gap-px" aria-hidden="true">
