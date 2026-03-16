@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import * as Y from 'yjs';
 import { applyYjsSnapshot, getCurrentSnapshot } from '@/features/maps/shared/map-snapshot';
 import { decodeFadhilArchive, encodeFadhilArchive } from '@/features/maps/shared/fadhil-archive';
@@ -170,26 +170,9 @@ export default function ArchiveLabPage() {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [archiveJson, setArchiveJson] = useState('');
   const [editorJson, setEditorJson] = useState('');
-  const [status, setStatus] = useState('Drop arsip .fAdHiL lalu decrypt untuk edit.');
-  const [error, setError] = useState('');
 
-  const parsedCounts = useMemo(() => {
-    try {
-      if (!editorJson.trim()) {
-        return null;
-      }
-      const payload = JSON.parse(editorJson) as EditableWorkspace;
-      return {
-        nodes: Array.isArray(payload.nodes) ? payload.nodes.length : 0,
-        edges: Array.isArray(payload.edges) ? payload.edges.length : 0,
-      };
-    } catch {
-      return null;
-    }
-  }, [editorJson]);
 
   const handleLoadArchiveFile = useCallback(async (file: File) => {
-    setError('');
     const raw = await file.text();
 
     const decoded = await decodeFadhilArchive(raw);
@@ -224,7 +207,6 @@ export default function ArchiveLabPage() {
 
     setArchiveJson(raw);
     setEditorJson(JSON.stringify(editable, null, 2));
-    setStatus('Decrypt sukses. Silakan edit JSON manusiawi, lalu encrypt lagi.');
   }, []);
 
   const handlePickFile = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -236,14 +218,13 @@ export default function ArchiveLabPage() {
       }
       await handleLoadArchiveFile(file);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      console.error(err);
     }
   }, [handleLoadArchiveFile]);
 
   const handleDecryptFromTextarea = useCallback(async () => {
     try {
-      setError('');
-      const decoded = await decodeFadhilArchive(archiveJson.trim());
+        const decoded = await decodeFadhilArchive(archiveJson.trim());
       if (decoded.contentType !== 'workspace-archive') {
         throw new Error('Input bukan arsip workspace .fAdHiL.');
       }
@@ -266,16 +247,14 @@ export default function ArchiveLabPage() {
       applyYjsSnapshot(doc, archive.snapshot);
       setArchiveJson(archiveJson.trim());
       setEditorJson(JSON.stringify(workspaceToEditorJson(doc, archive), null, 2));
-      setStatus('Decrypt dari textarea berhasil.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      console.error(err);
     }
   }, [archiveJson]);
 
   const handleEncrypt = useCallback(async () => {
     try {
-      setError('');
-      const parsed = JSON.parse(editorJson) as EditableWorkspace;
+        const parsed = JSON.parse(editorJson) as EditableWorkspace;
       if (!Array.isArray(parsed.nodes) || !Array.isArray(parsed.edges) || !parsed.meta) {
         throw new Error('Editable JSON invalid.');
       }
@@ -283,16 +262,14 @@ export default function ArchiveLabPage() {
       const archive = editorJsonToArchive(parsed);
       const encoded = await encodeFadhilArchive(archive, 'workspace-archive');
       setArchiveJson(encoded);
-      setStatus('Encrypt sukses. String .fAdHiL siap diekspor.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      console.error(err);
     }
   }, [editorJson]);
 
   const handleDownloadArchive = useCallback(async () => {
     try {
-      setError('');
-      const decoded = await decodeFadhilArchive(archiveJson.trim());
+        const decoded = await decodeFadhilArchive(archiveJson.trim());
       if (decoded.contentType !== 'workspace-archive') {
         throw new Error('Data textarea bukan arsip workspace .fAdHiL.');
       }
@@ -311,9 +288,8 @@ export default function ArchiveLabPage() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      setStatus('Export .fAdHiL berhasil.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      console.error(err);
     }
   }, [archiveJson]);
 
@@ -322,10 +298,6 @@ export default function ArchiveLabPage() {
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,_#0b1120,_#020617_60%,_#02030a)] p-2 text-slate-100 sm:p-4">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-3 sm:gap-4">
         <header className="rounded-2xl border border-fuchsia-400/30 bg-slate-900/70 p-3 shadow-[0_0_32px_rgba(217,70,239,0.25)] sm:p-5">
-          <h1 className="text-base font-bold leading-tight text-cyan-200 sm:text-xl">FadhilLabEncrypt (BETA) — Futuristic .fAdHiL Forge</h1>
-          <p className="mt-1 text-xs leading-relaxed text-slate-300 sm:text-sm">
-            Laboratorium enkripsi generasi baru: decrypt arsip .fAdHiL, edit JSON manusiawi, lalu encrypt kembali dengan format simbol alien ultra-singkat.
-          </p>
           <div className="mt-3 grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
             <button
               type="button"
@@ -357,14 +329,10 @@ export default function ArchiveLabPage() {
             </button>
           </div>
           <input ref={fileRef} type="file" accept=".fAdHiL" className="hidden" onChange={handlePickFile} />
-          <p className="mt-3 text-xs text-cyan-100">Status: {status}</p>
-          {parsedCounts && <p className="text-xs text-cyan-100">Parsed nodes: {parsedCounts.nodes} • edges: {parsedCounts.edges}</p>}
-          {error && <p className="mt-2 rounded bg-red-900/40 px-2 py-1 text-xs text-red-200">Error: {error}</p>}
         </header>
 
         <section className="grid gap-3 lg:grid-cols-2 lg:gap-4">
           <div className="rounded-lg border border-slate-700 bg-slate-900/70 p-2 sm:p-3">
-            <h2 className="mb-2 text-xs font-semibold text-cyan-100 sm:text-sm">Encrypted .fAdHiL (alien symbols)</h2>
             <textarea
               value={archiveJson}
               onChange={(event) => setArchiveJson(event.target.value)}
@@ -373,7 +341,6 @@ export default function ArchiveLabPage() {
             />
           </div>
           <div className="rounded-lg border border-slate-700 bg-slate-900/70 p-2 sm:p-3">
-            <h2 className="mb-2 text-xs font-semibold text-emerald-100 sm:text-sm">Editable Workspace JSON (human-readable)</h2>
             <textarea
               value={editorJson}
               onChange={(event) => setEditorJson(event.target.value)}
