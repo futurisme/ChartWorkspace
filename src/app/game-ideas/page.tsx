@@ -22,6 +22,7 @@ type ItemDraft = {
 type ConfirmDeleteAction =
   | { type: 'item'; index: number; label: string }
   | { type: 'category'; category: string; label: string; codeInput: string; codeError: string }
+  | { type: 'folder'; folderIndex: number; folderName: string; label: string; codeInput: string; codeError: string }
   | null;
 
 type RenameAction =
@@ -46,6 +47,7 @@ type ActiveDrag = {
 const SAVE_DEBOUNCE_MS = 120;
 const ADMIN_ACCESS_CODE = 'IzinEditKhususGG123';
 const CATEGORY_DELETE_CODE = 'DeleteCategoryByCode';
+const FOLDER_DELETE_CODE = 'DeleteFolderByCode';
 const UNIVERSAL_RENAME_CLICKS = 3;
 const UNIVERSAL_RENAME_WINDOW_MS = 3000;
 const DRAG_HOLD_MS = 420;
@@ -751,6 +753,20 @@ export default function GameIdeasPage() {
     });
   }, [categoryList.length, currentCategory]);
 
+  const requestDeleteFolder = useCallback((folderIndex: number) => {
+    const folder = currentFolders[folderIndex];
+    if (!folder) return;
+
+    setConfirmDeleteAction({
+      type: 'folder',
+      folderIndex,
+      folderName: folder.name,
+      label: `Hapus folder "${folder.name}" beserta semua item di dalamnya?`,
+      codeInput: '',
+      codeError: '',
+    });
+  }, [currentFolders]);
+
   const confirmDelete = useCallback(() => {
     if (!confirmDeleteAction) return;
 
@@ -799,6 +815,37 @@ export default function GameIdeasPage() {
             folders,
           },
         };
+      });
+    }
+
+    if (confirmDeleteAction.type === 'folder') {
+      if (confirmDeleteAction.codeInput !== FOLDER_DELETE_CODE) {
+        setConfirmDeleteAction((prev) => (prev && prev.type === 'folder' ? { ...prev, codeError: 'Kode hapus folder salah.' } : prev));
+        return;
+      }
+
+      setDb((prev) => {
+        const section = prev[nav];
+        const folders = section.folders ?? {};
+        const categoryFolders = folders[currentCategory] ?? [];
+        if (confirmDeleteAction.folderIndex < 0 || confirmDeleteAction.folderIndex >= categoryFolders.length) return prev;
+
+        return {
+          ...prev,
+          [nav]: {
+            ...section,
+            folders: {
+              ...folders,
+              [currentCategory]: categoryFolders.filter((_, idx) => idx !== confirmDeleteAction.folderIndex),
+            },
+          },
+        };
+      });
+
+      setOpenFolderItemCards((prev) => {
+        const next = { ...prev };
+        delete next[`${nav}:${currentCategory}:${confirmDeleteAction.folderIndex}`];
+        return next;
       });
     }
 
@@ -1305,6 +1352,13 @@ export default function GameIdeasPage() {
             return (
               <div key={`folder-slot-${folder.name}-${folderIndex}`} className="slot-shell item-slot-shell folder-slot-shell">
                 <article className={`card folder-card ${isOpenFolder ? 'open' : ''}`}>
+                  {adminMode ? (
+                    <div className="folder-admin-tools">
+                      <button type="button" className="btn-icon del folder-del" onClick={() => requestDeleteFolder(folderIndex)}>
+                        DELETE FOLDER
+                      </button>
+                    </div>
+                  ) : null}
                   <button
                     type="button"
                     className="card-head folder-head"
@@ -1342,7 +1396,7 @@ export default function GameIdeasPage() {
                                     <h4>{item.name}</h4>
                                     <div className="card-meta">
                                       <span className="tag folder-tag">{item.tag || 'UNTAGGED'}</span>
-                                      <span className="expand-indicator folder-expand-indicator" aria-hidden="true">
+                                      <span className="expand-indicator" aria-hidden="true">
                                         {itemOpen ? '▲ Collapse detail' : '▼ Expand detail'}
                                       </span>
                                     </div>
@@ -1351,14 +1405,14 @@ export default function GameIdeasPage() {
                                     <div className="card-body">
                                       {itemOpen ? (
                                         <div className="inner folder-item-inner">
-                                          <p className="desc desc-content folder-desc">{item.desc || 'No description.'}</p>
+                                          <p className="desc desc-content">{item.desc || 'No description.'}</p>
                                           {Object.entries(item.stats).length === 0 ? (
-                                            <p className="desc folder-desc">No stats.</p>
+                                            <p className="desc">No stats.</p>
                                           ) : (
                                             Object.entries(item.stats).map(([key, value]) => (
-                                              <div key={`${folder.name}-${item.name}-${key}`} className="stat folder-stat">
+                                              <div key={`${folder.name}-${item.name}-${key}`} className="stat">
                                                 <span className="stat-label">{key}:</span>
-                                                <span className="stat-value folder-stat-value">{value}</span>
+                                                <span className="stat-value">{value}</span>
                                               </div>
                                             ))
                                           )}
@@ -1587,15 +1641,15 @@ export default function GameIdeasPage() {
           <div className="modal danger">
             <h2>KONFIRMASI HAPUS</h2>
             <p className="desc">{confirmDeleteAction.label}</p>
-            {confirmDeleteAction.type === 'category' ? (
+            {confirmDeleteAction.type === 'category' || confirmDeleteAction.type === 'folder' ? (
               <div className="input-group">
-                <label>MASUKKAN CODE UNTUK DELETE CATEGORY</label>
+                <label>{confirmDeleteAction.type === 'folder' ? 'MASUKKAN CODE UNTUK DELETE FOLDER' : 'MASUKKAN CODE UNTUK DELETE CATEGORY'}</label>
                 <input
                   value={confirmDeleteAction.codeInput}
-                  onChange={(e) => setConfirmDeleteAction((prev) => (prev && prev.type === 'category'
+                  onChange={(e) => setConfirmDeleteAction((prev) => (prev && (prev.type === 'category' || prev.type === 'folder')
                     ? { ...prev, codeInput: e.target.value, codeError: '' }
                     : prev))}
-                  placeholder="DeleteCategoryByCode"
+                  placeholder={confirmDeleteAction.type === 'folder' ? 'DeleteFolderByCode' : 'DeleteCategoryByCode'}
                 />
                 {confirmDeleteAction.codeError ? <p className="error-hint">{confirmDeleteAction.codeError}</p> : null}
               </div>
@@ -1841,6 +1895,8 @@ export default function GameIdeasPage() {
           box-shadow: 0 0 24px rgba(0, 242, 255, 0.34), inset 0 0 0 1px rgba(0, 242, 255, 0.26);
         }
         .admin-tools { position: absolute; right: 6px; top: 5px; z-index: 3; display: inline-flex; gap: 4px; }
+        .folder-admin-tools { position: absolute; right: 8px; top: 7px; z-index: 4; }
+        .folder-del { font-size: 7px; padding: 2px 5px; }
         .btn-icon.folder {
           background: rgba(14, 165, 233, 0.14);
           color: #7dd3fc;
@@ -1904,7 +1960,7 @@ export default function GameIdeasPage() {
         .folder-head {
           background: transparent;
           color: #0f172a;
-          padding-right: 10px;
+          padding-right: 120px;
         }
         .folder-head h3 { margin: 0; font-size: 11px; color: #0f172a; line-height: 1.15; }
         .folder-expand-indicator {
@@ -1924,20 +1980,16 @@ export default function GameIdeasPage() {
         .folder-body-wrapper { grid-template-rows: 1fr; }
         .folder-inner { padding: 0 10px 10px; border-top: 1px solid rgba(14, 116, 144, 0.2); display: grid; gap: 8px; }
         .folder-item-card {
-          border: 1px solid rgba(14, 116, 144, 0.24);
           border-radius: 8px;
-          background: rgba(248, 250, 252, 0.98);
           overflow: hidden;
         }
-        .folder-item-card.open { border-color: rgba(14, 116, 144, 0.52); box-shadow: inset 0 0 0 1px rgba(14, 116, 144, 0.12); }
+        .folder-item-card.open { border-color: rgba(0, 242, 255, 0.72); box-shadow: 0 0 16px rgba(0, 242, 255, 0.22), inset 0 0 0 1px rgba(0, 242, 255, 0.16); }
         .folder-item-head { width: 100%; border: 0; background: transparent; color: inherit; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px; text-align: left; cursor: pointer; }
-        .folder-item-head h4 { margin: 0; font-size: 11px; color: #0f172a; }
+        .folder-item-head h4 { margin: 0; font-size: 11px; color: #ffffff; }
         .folder-item-body-wrapper { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 150ms ease; }
         .folder-item-card.open .folder-item-body-wrapper { grid-template-rows: 1fr; }
         .folder-item-inner { padding: 0 8px 8px; border-top: 1px solid rgba(14, 116, 144, 0.18); }
         .folder-desc { color: #1e293b; }
-        .folder-stat { border-bottom-color: rgba(14, 116, 144, 0.18); }
-        .folder-stat-value { color: #0f172a; }
         .transfer-list { display: grid; gap: 8px; max-height: 280px; overflow: auto; }
         .transfer-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 1px solid rgba(0, 242, 255, 0.32); padding: 8px 10px; }
         .inner { padding: 0 10px 8px; border-top: 1px solid rgba(0, 242, 255, 0.14); }
