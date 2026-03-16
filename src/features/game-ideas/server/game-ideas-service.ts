@@ -17,6 +17,19 @@ class GameIdeasServiceError extends Error {
   }
 }
 
+class GameIdeasConflictError extends GameIdeasServiceError {
+  data: GameIdeaDatabase;
+  version: number;
+  updatedAt: Date;
+
+  constructor(data: GameIdeaDatabase, version: number, updatedAt: Date) {
+    super('Data conflict. Server has a newer version.', 409);
+    this.data = data;
+    this.version = version;
+    this.updatedAt = updatedAt;
+  }
+}
+
 function getPrismaErrorCode(error: unknown) {
   return error instanceof Prisma.PrismaClientKnownRequestError ? error.code : null;
 }
@@ -114,7 +127,7 @@ export async function loadGameIdeas() {
   };
 }
 
-export async function saveGameIdeas(rawData: unknown) {
+export async function saveGameIdeas(rawData: unknown, expectedVersion?: number | null) {
   const sanitized: GameIdeaDatabase = sanitizeGameIdeaDatabase(rawData);
   const existing = await findSystemRecord();
 
@@ -140,6 +153,14 @@ export async function saveGameIdeas(rawData: unknown) {
     };
   }
 
+  if (typeof expectedVersion === 'number' && Number.isFinite(expectedVersion) && expectedVersion !== existing.version) {
+    throw new GameIdeasConflictError(
+      sanitizeGameIdeaDatabase(existing.snapshot),
+      existing.version,
+      existing.updatedAt
+    );
+  }
+
   const updated = await withDatabaseRecovery(() =>
     prisma.map.update({
       where: { id: existing.id },
@@ -162,4 +183,4 @@ export async function saveGameIdeas(rawData: unknown) {
   };
 }
 
-export { GameIdeasServiceError };
+export { GameIdeasConflictError, GameIdeasServiceError };

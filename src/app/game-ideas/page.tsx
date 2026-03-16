@@ -42,6 +42,46 @@ function parseStats(input: string) {
   return stats;
 }
 
+
+function mergeGameIdeaItems(localItems: GameIdeaItem[], remoteItems: GameIdeaItem[]): GameIdeaItem[] {
+  const seen = new Set<string>();
+  const merged: GameIdeaItem[] = [];
+
+  [...remoteItems, ...localItems].forEach((item) => {
+    const key = `${item.name.trim().toLowerCase()}|${item.tag.trim().toLowerCase()}|${item.desc.trim().toLowerCase()}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    merged.push(item);
+  });
+
+  return merged;
+}
+
+function mergeGameIdeaDatabases(local: GameIdeaDatabase, remote: GameIdeaDatabase): GameIdeaDatabase {
+  const merged = sanitizeGameIdeaDatabase(remote);
+
+  GAME_IDEA_NAV_ORDER.forEach((navKey) => {
+    const localSection = local[navKey];
+    const remoteSection = merged[navKey];
+
+    const categories = Array.from(new Set([...remoteSection.categories, ...localSection.categories]));
+    const data: Record<string, GameIdeaItem[]> = {};
+
+    categories.forEach((category) => {
+      const remoteItems = remoteSection.data[category] ?? [];
+      const localItems = localSection.data[category] ?? [];
+      data[category] = mergeGameIdeaItems(localItems, remoteItems);
+    });
+
+    merged[navKey] = {
+      ...remoteSection,
+      categories,
+      data,
+    };
+  });
+
+  return sanitizeGameIdeaDatabase(merged);
+}
 export default function GameIdeasPage() {
   const [db, setDb] = useState<GameIdeaDatabase>(DEFAULT_GAME_IDEA_DATA);
   const [nav, setNav] = useState<GameIdeaNav>('govt');
@@ -51,6 +91,7 @@ export default function GameIdeasPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [syncNonce, setSyncNonce] = useState(0);
   const [showItemModal, setShowItemModal] = useState(false);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [itemDraft, setItemDraft] = useState<ItemDraft>(emptyDraft());
@@ -58,6 +99,8 @@ export default function GameIdeasPage() {
 
   const hydratedRef = useRef(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const serverVersionRef = useRef<number | null>(null);
 
   const currentSection = db[nav];
   const categoryList = currentSection.categories;
@@ -86,8 +129,9 @@ export default function GameIdeasPage() {
           throw new Error(payload?.error || 'Gagal memuat data dari server.');
         }
 
-        const payload = (await response.json()) as { data?: unknown };
+        const payload = (await response.json()) as { data?: unknown; version?: number };
         const sanitized = sanitizeGameIdeaDatabase(payload.data);
+        serverVersionRef.current = typeof payload.version === 'number' ? payload.version : null;
         setDb(sanitized);
         localStorage.setItem(GAME_IDEA_STORAGE_KEY, JSON.stringify(sanitized));
       } catch (err) {
@@ -126,20 +170,49 @@ export default function GameIdeasPage() {
     saveTimerRef.current = setTimeout(async () => {
       try {
         setSaveState('saving');
+        setError('');
+
         const response = await fetch('/api/game-ideas', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ data: db }),
+          body: JSON.stringify({
+            data: db,
+            expectedVersion: serverVersionRef.current,
+          }),
         });
+
+        if (response.status === 409) {
+          const conflictPayload = (await response.json()) as { data?: unknown; version?: number; error?: string };
+          const remote = sanitizeGameIdeaDatabase(conflictPayload.data);
+          const merged = mergeGameIdeaDatabases(db, remote);
+          serverVersionRef.current = typeof conflictPayload.version === 'number' ? conflictPayload.version : serverVersionRef.current;
+          setDb(merged);
+          localStorage.setItem(GAME_IDEA_STORAGE_KEY, JSON.stringify(merged));
+          setSaveState('saving');
+          setError('Conflict detected. Merging local and server data...');
+          setSyncNonce((prev) => prev + 1);
+          return;
+        }
 
         if (!response.ok) {
           const payload = (await response.json().catch(() => null)) as { error?: string } | null;
           throw new Error(payload?.error || 'Gagal menyimpan ke database.');
         }
 
+        const payload = (await response.json()) as { version?: number };
+        if (typeof payload.version === 'number') {
+          serverVersionRef.current = payload.version;
+        }
         setSaveState('saved');
-      } catch {
+      } catch (err) {
         setSaveState('error');
+        setError(err instanceof Error ? err.message : 'Gagal sinkronisasi. Retry otomatis aktif.');
+        if (retryTimerRef.current) {
+          clearTimeout(retryTimerRef.current);
+        }
+        retryTimerRef.current = setTimeout(() => {
+          setSyncNonce((prev) => prev + 1);
+        }, 2200);
       }
     }, SAVE_DEBOUNCE_MS);
 
@@ -149,7 +222,18 @@ export default function GameIdeasPage() {
         saveTimerRef.current = null;
       }
     };
-  }, [db]);
+  }, [db, syncNonce]);
+
+  useEffect(() => () => {
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+  }, []);
+
+  const triggerSyncNow = useCallback(() => {
+    setSyncNonce((prev) => prev + 1);
+  }, []);
 
   const saveItem = useCallback(() => {
     const name = itemDraft.name.trim();
@@ -251,6 +335,7 @@ export default function GameIdeasPage() {
         <h1>CODEX : ARCHITECT</h1>
         <div className="header-actions">
           <span className={`sync-state ${saveState}`}>{statusLabel}</span>
+          <button type="button" className="sync-now" onClick={triggerSyncNow}>SYNC NOW</button>
           <button type="button" className="admin-toggle" onClick={() => setAdminMode((prev) => !prev)}>
             ADMIN MODE: {adminMode ? 'ON' : 'OFF'}
           </button>
@@ -417,6 +502,13 @@ export default function GameIdeasPage() {
           border: 1px solid var(--dim);
           color: var(--dim);
           background: transparent;
+          cursor: pointer;
+        }
+        .sync-now {
+          padding: 8px 12px;
+          border: 1px solid var(--accent);
+          color: var(--accent);
+          background: rgba(0, 242, 255, 0.08);
           cursor: pointer;
         }
         .layout { flex: 1; display: flex; gap: 12px; padding: 12px; min-height: 0; }

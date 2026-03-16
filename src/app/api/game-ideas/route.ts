@@ -1,5 +1,10 @@
 import { NextResponse } from 'next/server';
-import { GameIdeasServiceError, loadGameIdeas, saveGameIdeas } from '@/features/game-ideas/server/game-ideas-service';
+import {
+  GameIdeasConflictError,
+  GameIdeasServiceError,
+  loadGameIdeas,
+  saveGameIdeas,
+} from '@/features/game-ideas/server/game-ideas-service';
 
 const NO_STORE = 'no-store';
 
@@ -31,13 +36,30 @@ export async function GET() {
 
 export async function PUT(request: Request) {
   try {
-    const body = (await request.json()) as { data?: unknown };
-    const payload = await saveGameIdeas(body.data);
+    const body = (await request.json()) as { data?: unknown; expectedVersion?: unknown };
+    const expectedVersion = typeof body.expectedVersion === 'number' ? body.expectedVersion : null;
+    const payload = await saveGameIdeas(body.data, expectedVersion);
 
     return NextResponse.json(payload, {
       headers: { 'Cache-Control': NO_STORE },
     });
   } catch (error) {
+    if (error instanceof GameIdeasConflictError) {
+      return NextResponse.json(
+        {
+          error: error.message,
+          conflict: true,
+          data: error.data,
+          version: error.version,
+          updatedAt: error.updatedAt,
+        },
+        {
+          status: 409,
+          headers: { 'Cache-Control': NO_STORE },
+        }
+      );
+    }
+
     if (error instanceof GameIdeasServiceError) {
       return createErrorResponse(error.message, error.status);
     }
