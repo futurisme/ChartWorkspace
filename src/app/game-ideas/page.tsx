@@ -31,6 +31,8 @@ type RenameAction =
 
 const SAVE_DEBOUNCE_MS = 420;
 const ADMIN_ACCESS_CODE = 'IzinEditKhususGG123';
+const UNIVERSAL_RENAME_CLICKS = 3;
+const UNIVERSAL_RENAME_WINDOW_MS = 3000;
 
 
 const EMPTY_GAME_IDEA_DATA: GameIdeaDatabase = {
@@ -50,6 +52,12 @@ const PRIMARY_GRADIENTS = [
 
 function emptyDraft(): ItemDraft {
   return { name: '', tag: '', desc: '', stats: '' };
+}
+
+function formatStats(stats: Record<string, string>) {
+  return Object.entries(stats)
+    .map(([key, value]) => `${key}:${value}`)
+    .join(', ');
 }
 
 function parseStats(input: string) {
@@ -113,6 +121,7 @@ export default function GameIdeasPage() {
   const [confirmDeleteAction, setConfirmDeleteAction] = useState<ConfirmDeleteAction>(null);
   const [renameAction, setRenameAction] = useState<RenameAction>(null);
   const [renameDraft, setRenameDraft] = useState('');
+  const [itemRenameDraft, setItemRenameDraft] = useState<ItemDraft>(emptyDraft());
   const [selectedItemIndex, setSelectedItemIndex] = useState<number | null>(null);
 
   const hydratedRef = useRef(false);
@@ -123,6 +132,7 @@ export default function GameIdeasPage() {
   const lastSyncedHashRef = useRef<string | null>(null);
   const lastLocalCacheHashRef = useRef<string | null>(null);
   const lastHandledManualSyncRef = useRef(0);
+  const renameClickTrackerRef = useRef<{ key: string; count: number; startedAt: number } | null>(null);
 
   const dbHash = useMemo(() => hashDb(db), [db]);
   const currentSection = useMemo(() => db[nav], [db, nav]);
@@ -334,6 +344,27 @@ export default function GameIdeasPage() {
     setAccessCodeError('');
   }, [accessCodeInput]);
 
+  const registerUniversalRenameClick = useCallback((key: string, onTriple: () => void) => {
+    if (!adminMode) return;
+
+    const now = Date.now();
+    const tracker = renameClickTrackerRef.current;
+
+    if (!tracker || tracker.key !== key || now - tracker.startedAt > UNIVERSAL_RENAME_WINDOW_MS) {
+      renameClickTrackerRef.current = { key, count: 1, startedAt: now };
+      return;
+    }
+
+    const nextCount = tracker.count + 1;
+    if (nextCount >= UNIVERSAL_RENAME_CLICKS) {
+      renameClickTrackerRef.current = null;
+      onTriple();
+      return;
+    }
+
+    renameClickTrackerRef.current = { ...tracker, count: nextCount };
+  }, [adminMode]);
+
   const saveItem = useCallback(() => {
     const name = itemDraft.name.trim();
     if (!name || !currentCategory) return;
@@ -404,6 +435,12 @@ export default function GameIdeasPage() {
 
     setRenameAction({ type: 'item', index, currentName: item.name });
     setRenameDraft(item.name);
+    setItemRenameDraft({
+      name: item.name,
+      tag: item.tag,
+      desc: item.desc,
+      stats: formatStats(item.stats),
+    });
   }, [items]);
 
   const requestRenameNav = useCallback((navKey: GameIdeaNav) => {
@@ -513,7 +550,7 @@ export default function GameIdeasPage() {
     }
 
     if (renameAction.type === 'item') {
-      const nextName = renameDraft.trim().slice(0, 120);
+      const nextName = itemRenameDraft.name.trim().slice(0, 120);
       if (!nextName) return;
 
       setDb((prev) => {
@@ -522,7 +559,15 @@ export default function GameIdeasPage() {
         if (renameAction.index < 0 || renameAction.index >= existing.length) return prev;
 
         const nextItems = existing.map((item, idx) => (
-          idx === renameAction.index ? { ...item, name: nextName } : item
+          idx === renameAction.index
+            ? {
+                ...item,
+                name: nextName,
+                tag: itemRenameDraft.tag.trim().slice(0, 32),
+                desc: itemRenameDraft.desc.trim().slice(0, 1200),
+                stats: parseStats(itemRenameDraft.stats),
+              }
+            : item
         ));
 
         return {
@@ -558,7 +603,8 @@ export default function GameIdeasPage() {
 
     setRenameAction(null);
     setRenameDraft('');
-  }, [renameAction, renameDraft, nav, currentCategory]);
+    setItemRenameDraft(emptyDraft());
+  }, [renameAction, renameDraft, itemRenameDraft, nav, currentCategory]);
 
   const requestDeleteItem = useCallback(
     (index: number) => {
@@ -666,7 +712,10 @@ export default function GameIdeasPage() {
                 type="button"
                 className={`tab-btn ${cat === currentCategory ? 'active' : ''}`}
                 style={currentSection.categoryGradients?.[cat] ? { backgroundImage: currentSection.categoryGradients[cat] } : undefined}
-                onClick={() => setCategory(cat)}
+                onClick={() => {
+                  setCategory(cat);
+                  registerUniversalRenameClick(`category:${nav}:${cat}`, () => requestRenameCategory(cat));
+                }}
               >
                 {cat}
               </button>
@@ -694,6 +743,7 @@ export default function GameIdeasPage() {
                 onClick={() => {
                   setSelectedItemIndex(index);
                   setOpenCardIndex((prev) => (prev === index ? null : index));
+                  registerUniversalRenameClick(`item:${nav}:${currentCategory}:${index}`, () => requestRenameItem(index));
                 }}
               >
                 <h3>{item.name}</h3>
@@ -736,7 +786,10 @@ export default function GameIdeasPage() {
             type="button"
             className={`nav-item ${nav === key ? 'active' : ''}`}
             style={db[key].navGradient ? { backgroundImage: db[key].navGradient } : undefined}
-            onClick={() => setNav(key)}
+            onClick={() => {
+              setNav(key);
+              registerUniversalRenameClick(`nav:${key}`, () => requestRenameNav(key));
+            }}
           >
             {(db[key].title || key.toUpperCase()).toUpperCase()}
           </button>
@@ -746,11 +799,8 @@ export default function GameIdeasPage() {
       {adminMode && (
         <section className="admin-panel" aria-label="FeatureLib admin actions">
           <button type="button" className="admin-action add" onClick={openAddChooser}>ADD</button>
-          <button type="button" className="admin-action" onClick={() => requestRenameCategory(currentCategory)} disabled={!currentCategory}>RENAME CATEGORY</button>
           <button type="button" className="admin-action" onClick={() => recolorCategory(currentCategory)} disabled={!currentCategory}>RECOLOR CATEGORY</button>
-          <button type="button" className="admin-action" onClick={() => requestRenameItem(selectedItemIndex ?? 0)} disabled={selectedItemIndex === null}>RENAME ITEM</button>
           <button type="button" className="admin-action" onClick={() => recolorItem(selectedItemIndex ?? 0)} disabled={selectedItemIndex === null}>RECOLOR ITEM</button>
-          <button type="button" className="admin-action" onClick={() => requestRenameNav(nav)}>RENAME SECTION</button>
           <button type="button" className="admin-action" onClick={() => recolorNav(nav)}>RECOLOR SECTION</button>
           <button type="button" className="admin-action del" onClick={requestDeleteCategory} disabled={!currentCategory}>DELETE CATEGORY</button>
         </section>
@@ -879,15 +929,36 @@ export default function GameIdeasPage() {
       {renameAction && (
         <div className="modal-overlay" role="dialog" aria-modal="true">
           <div className="modal">
-            <h2>{renameAction.type === 'category' ? 'RENAME CATEGORY' : renameAction.type === 'nav' ? 'RENAME BOTTOM SECTION' : 'RENAME ITEM'}</h2>
-            <div className="input-group">
-              <label>{renameAction.type === 'category' ? 'NAMA KATEGORI BARU' : renameAction.type === 'nav' ? 'NAMA SECTION BARU' : 'NAMA ITEM BARU'}</label>
-              <input
-                value={renameDraft}
-                onChange={(e) => setRenameDraft(e.target.value)}
-                maxLength={renameAction.type === 'category' ? 32 : renameAction.type === 'nav' ? 64 : 120}
-              />
-            </div>
+            <h2>{renameAction.type === 'category' ? 'RENAME CATEGORY' : renameAction.type === 'nav' ? 'RENAME BOTTOM SECTION' : 'RENAME ITEM CARD'}</h2>
+            {renameAction.type === 'item' ? (
+              <>
+                <div className="input-group">
+                  <label>TITLE</label>
+                  <input value={itemRenameDraft.name} onChange={(e) => setItemRenameDraft((prev) => ({ ...prev, name: e.target.value }))} maxLength={120} />
+                </div>
+                <div className="input-group">
+                  <label>TAGS</label>
+                  <input value={itemRenameDraft.tag} onChange={(e) => setItemRenameDraft((prev) => ({ ...prev, tag: e.target.value }))} maxLength={32} />
+                </div>
+                <div className="input-group">
+                  <label>DESCRIPTION</label>
+                  <textarea rows={4} value={itemRenameDraft.desc} onChange={(e) => setItemRenameDraft((prev) => ({ ...prev, desc: e.target.value }))} />
+                </div>
+                <div className="input-group">
+                  <label>STATS (Format: Power:10, HP:100)</label>
+                  <input value={itemRenameDraft.stats} onChange={(e) => setItemRenameDraft((prev) => ({ ...prev, stats: e.target.value }))} />
+                </div>
+              </>
+            ) : (
+              <div className="input-group">
+                <label>{renameAction.type === 'category' ? 'NAMA KATEGORI BARU' : 'NAMA SECTION BARU'}</label>
+                <input
+                  value={renameDraft}
+                  onChange={(e) => setRenameDraft(e.target.value)}
+                  maxLength={renameAction.type === 'category' ? 32 : 64}
+                />
+              </div>
+            )}
             <div className="modal-btns">
               <button
                 type="button"
@@ -895,6 +966,7 @@ export default function GameIdeasPage() {
                 onClick={() => {
                   setRenameAction(null);
                   setRenameDraft('');
+                  setItemRenameDraft(emptyDraft());
                 }}
               >
                 CANCEL
