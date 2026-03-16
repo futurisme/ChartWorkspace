@@ -174,10 +174,6 @@ function dragStyle(activeDrag: ActiveDrag | null, kind: DragKind) {
 }
 
 
-function slotLabel(index: number) {
-  return `SLOT ${index + 1}`;
-}
-
 export default function GameIdeasPage() {
   const [db, setDb] = useState<GameIdeaDatabase>(EMPTY_GAME_IDEA_DATA);
   const [nav, setNav] = useState<GameIdeaNav>('govt');
@@ -912,7 +908,6 @@ export default function GameIdeasPage() {
                   registerUniversalRenameClick(`category:${nav}:${cat}`, () => requestRenameCategory(cat));
                 }}
               >
-                <span className="slot-label">{slotLabel(index)}</span>
                 {cat}
               </button>
             ))}
@@ -932,7 +927,6 @@ export default function GameIdeasPage() {
               onPointerUp={(event) => handlePointerEnd(event.pointerId)}
               onPointerCancel={(event) => handlePointerEnd(event.pointerId)}
             >
-              <div className="slot-label card-slot">{slotLabel(index)}</div>
               {adminMode && (
                 <div className="admin-tools">
                   <button type="button" className="btn-icon del" onClick={() => requestDeleteItem(index)}>
@@ -982,7 +976,7 @@ export default function GameIdeasPage() {
         </section>
       </div>
 
-      {activeDrag && <div className="drag-indicator">DRAG MODE ACTIVE • RELEASE TO PLACE INTO GLOWING SLOT</div>}
+      {activeDrag && <div className="drag-indicator">DRAG MODE ACTIVE</div>}
 
       <footer className="footer">
         {navOrder.map((key, index) => (
@@ -1003,7 +997,6 @@ export default function GameIdeasPage() {
               registerUniversalRenameClick(`nav:${key}`, () => requestRenameNav(key));
             }}
           >
-            <span className="slot-label">{slotLabel(index)}</span>
             {(db[key].title || key.toUpperCase()).toUpperCase()}
           </button>
         ))}
@@ -1256,27 +1249,6 @@ export default function GameIdeasPage() {
           outline: 1px solid rgba(148, 163, 184, 0.35);
           outline-offset: -1px;
         }
-        .slot-label {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 8px;
-          line-height: 1.1;
-          letter-spacing: 0.04em;
-          border: 1px solid rgba(255, 255, 255, 0.34);
-          border-radius: 999px;
-          color: #e5f8ff;
-          background: rgba(2, 6, 23, 0.74);
-          padding: 1px 5px;
-          margin-right: 6px;
-          white-space: nowrap;
-        }
-        .card-slot {
-          position: absolute;
-          left: 8px;
-          top: 6px;
-          z-index: 4;
-        }
         .tab-btn {
           padding: 6px 8px;
           text-align: left;
@@ -1346,7 +1318,7 @@ export default function GameIdeasPage() {
           border: 0;
           background: transparent;
           color: inherit;
-          padding: 22px 48px 8px 10px;
+          padding: 8px 48px 8px 10px;
           display: grid;
           gap: 3px;
           align-items: center;
@@ -1428,14 +1400,13 @@ export default function GameIdeasPage() {
           z-index: 80;
           pointer-events: none;
           box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45), 0 0 22px rgba(0, 242, 255, 0.45);
-          filter: brightness(1.06);
         }
         .drag-shift-up,
         .drag-shift-down,
         .tab-btn,
         .card,
         .nav-item {
-          transition: transform 140ms cubic-bezier(0.2, 0.9, 0.2, 1), box-shadow 120ms ease;
+          transition: transform 150ms cubic-bezier(0.2, 0.9, 0.2, 1), box-shadow 120ms ease;
           will-change: transform;
         }
         .drag-shift-up { transform: translate3d(0, -10px, 0); }
@@ -1532,7 +1503,7 @@ export default function GameIdeasPage() {
           .sub-tabs { gap: 6px; }
           .tab-btn { font-size: 11px; padding: 8px 10px; border-width: 1px; }
           .content-area { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
-          .card-head { padding: 24px 52px 10px 12px; }
+          .card-head { padding: 10px 52px 10px 12px; }
           .card-head h3 { font-size: 12px; }
           .desc { font-size: 11px; }
           .stat { font-size: 11px; }
@@ -1550,7 +1521,7 @@ export default function GameIdeasPage() {
           .sub-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: 116px; gap: 5px; }
           .tab-btn { text-align: center; padding: 6px 5px; }
           .content-area { grid-template-columns: 1fr; gap: 7px; }
-          .card-head { padding: 20px 40px 7px 9px; }
+          .card-head { padding: 7px 40px 7px 9px; }
           
           .footer { padding: 7px 6px; }
           .nav-item { padding: 6px 6px; max-width: 22vw; }
