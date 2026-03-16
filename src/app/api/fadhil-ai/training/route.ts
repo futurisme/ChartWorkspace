@@ -14,35 +14,39 @@ type RunPayload = {
   qualityScore: number;
   modelAWeights: Record<string, number>;
   modelBWeights: Record<string, number>;
-  logs: Array<{ epoch: number; trainingLoss: number; validationLoss: number; drift: number; capturedA?: number; capturedB?: number }>;
+  logs: Array<{ epoch: number; trainingLoss: number; validationLoss: number; drift: number; capturedA?: number; capturedB?: number; stuckRisk?: number }>;
   compressedResults: string;
   compressionMode?: string;
+  compressionParams?: { quantization: number; radix: number; deltaEncoding: boolean; chunkSize: number };
   baselineDataset?: { samples: number; source: string; avoidRules: string[] };
-  antiStuck?: { interventions: number; cornerEscapes: number; stuckWarnings: number; badPatternNotes: string[] };
+  antiStuck?: { interventions: number; cornerEscapes: number; stuckWarnings: number; badPatternNotes: string[]; severeDropsAvoided: number };
 };
 
 const MAX_AGE_MS = 1000 * 60 * 60 * 24;
 const ACTIVE_BATTLEGROUND_VERSION = 'bg-v3-2d-soccer';
 const ACTIVE_MODEL_VERSION = 'block-football-v1';
 
+let cachedRuns: { at: number; runs: unknown[] } | null = null;
+
 function validatePayload(payload: RunPayload): string | null {
   if (!payload.runId || payload.runId.length < 10) return 'invalid runId';
   if (!payload.strategy || payload.strategy.length < 6) return 'invalid strategy';
   if (payload.battlegroundVersion !== ACTIVE_BATTLEGROUND_VERSION) return 'outdated battleground version';
   if (payload.trainingModelVersion !== ACTIVE_MODEL_VERSION) return 'outdated training model version';
-  if (!Number.isFinite(payload.datasetSize) || payload.datasetSize < 12) return 'dataset too small';
+  if (!Number.isFinite(payload.datasetSize) || payload.datasetSize < 24) return 'dataset too small';
   if (!Number.isFinite(payload.epochs) || payload.epochs < 1 || payload.epochs > 5000) return 'epochs out of range';
   if (!Number.isFinite(payload.learningRate) || payload.learningRate <= 0 || payload.learningRate > 1) return 'learningRate out of range';
   if (!Number.isFinite(payload.trainingLoss) || payload.trainingLoss <= 0 || payload.trainingLoss > 1) return 'trainingLoss invalid';
   if (!Number.isFinite(payload.validationLoss) || payload.validationLoss <= 0 || payload.validationLoss > 1) return 'validationLoss invalid';
-  if (payload.validationLoss > 0.4) return 'validation loss too high';
+  if (payload.validationLoss > 0.45) return 'validation loss too high';
   if (!Number.isFinite(payload.qualityScore) || payload.qualityScore < 50) return 'quality score too low';
   if (!Array.isArray(payload.logs) || payload.logs.length < 8) return 'logs are insufficient';
   if (!payload.compressedResults || payload.compressedResults.length < 12) return 'compressed results missing';
   if (payload.compressionMode && payload.compressionMode.length < 4) return 'compression mode invalid';
+  if (payload.compressionParams && (!Number.isFinite(payload.compressionParams.quantization) || payload.compressionParams.quantization < 1000)) return 'compression params invalid';
   if (payload.baselineDataset) {
-    if (!Number.isFinite(payload.baselineDataset.samples) || payload.baselineDataset.samples < 120) return 'baseline dataset too small';
-    if (!Array.isArray(payload.baselineDataset.avoidRules) || payload.baselineDataset.avoidRules.length < 2) return 'baseline avoid rules insufficient';
+    if (!Number.isFinite(payload.baselineDataset.samples) || payload.baselineDataset.samples < 180) return 'baseline dataset too small';
+    if (!Array.isArray(payload.baselineDataset.avoidRules) || payload.baselineDataset.avoidRules.length < 3) return 'baseline avoid rules insufficient';
   }
   if (payload.antiStuck) {
     if (!Array.isArray(payload.antiStuck.badPatternNotes)) return 'antiStuck notes invalid';
@@ -64,6 +68,16 @@ function sanitizeLogs(logs: RunPayload['logs']) {
 
 export async function GET() {
   try {
+    if (cachedRuns && Date.now() - cachedRuns.at < 12_000) {
+      return NextResponse.json({
+        ok: true,
+        refreshed: false,
+        activeVersions: { battlegroundVersion: ACTIVE_BATTLEGROUND_VERSION, trainingModelVersion: ACTIVE_MODEL_VERSION },
+        total: cachedRuns.runs.length,
+        runs: cachedRuns.runs,
+      }, { headers: { 'Cache-Control': 'no-store' } });
+    }
+
     const runs = await prisma.aiTrainingRun.findMany({
       where: {
         status: 'accepted',
@@ -91,7 +105,8 @@ export async function GET() {
       },
     });
 
-    const freshRuns = runs.filter((run) => Date.now() - new Date(run.createdAt).getTime() <= MAX_AGE_MS && run.qualityScore >= 80);
+    const freshRuns = runs.filter((run) => Date.now() - new Date(run.createdAt).getTime() <= MAX_AGE_MS && run.qualityScore >= 50);
+    cachedRuns = { at: Date.now(), runs: freshRuns };
 
     return NextResponse.json(
       {
@@ -179,7 +194,7 @@ export async function POST(request: Request) {
         OR: [
           { status: { not: 'accepted' } },
           { qualityScore: { lt: 50 } },
-          { validationLoss: { gt: 0.4 } },
+          { validationLoss: { gt: 0.45 } },
           { createdAt: { lt: new Date(Date.now() - MAX_AGE_MS * 5) } },
           { battlegroundVersion: { not: ACTIVE_BATTLEGROUND_VERSION } },
           { trainingModelVersion: { not: ACTIVE_MODEL_VERSION } },
@@ -187,9 +202,27 @@ export async function POST(request: Request) {
       },
     });
 
+    cachedRuns = null;
     return NextResponse.json({ ok: true, saved: true, run: saved }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    if (message.toLowerCase().includes('too many clients')) {
+      return NextResponse.json({ ok: false, saved: false, reason: `database write failed: ${message}`, retryAfterMs: 60000 }, { status: 503 });
+    }
     return NextResponse.json({ ok: false, saved: false, reason: `database write failed: ${message}` }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const runId = new URL(request.url).searchParams.get('runId');
+    if (!runId) return NextResponse.json({ ok: false, deleted: false, reason: 'runId required' }, { status: 400 });
+
+    const deleted = await prisma.aiTrainingRun.deleteMany({ where: { runId } });
+    cachedRuns = null;
+    return NextResponse.json({ ok: true, deleted: deleted.count > 0, count: deleted.count }, { headers: { 'Cache-Control': 'no-store' } });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return NextResponse.json({ ok: false, deleted: false, reason: `database delete failed: ${message}` }, { status: 500 });
   }
 }
