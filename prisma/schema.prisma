@@ -39,3 +39,25 @@ model PerfMetric {
   @@index([recordedAt])
   @@index([routeType, metricName, recordedAt])
 }
+
+
+model AiTrainingRun {
+  id             Int      @id @default(autoincrement())
+  runId          String   @unique
+  strategy       String
+  datasetSize    Int
+  epochs         Int
+  learningRate   Float
+  trainingLoss   Float
+  validationLoss Float
+  qualityScore   Float
+  modelAWeights  Json
+  modelBWeights  Json
+  logs           Json
+  status         String   @default("accepted")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([createdAt])
+  @@index([status, createdAt])
+}
