@@ -53,13 +53,6 @@ const EMPTY_GAME_IDEA_DATA: GameIdeaDatabase = {
   econ: { title: 'CODEX: ECON', categories: [], data: {} },
 };
 
-const PRIMARY_GRADIENTS = [
-  'linear-gradient(135deg,#00f5ff 0%,#0066ff 100%)',
-  'linear-gradient(135deg,#7c3aed 0%,#06b6d4 100%)',
-  'linear-gradient(135deg,#22c55e 0%,#06b6d4 100%)',
-  'linear-gradient(135deg,#f59e0b 0%,#ef4444 100%)',
-  'linear-gradient(135deg,#ec4899 0%,#8b5cf6 100%)',
-] as const;
 
 function emptyDraft(): ItemDraft {
   return { name: '', tag: '', desc: '', stats: '' };
@@ -97,10 +90,6 @@ function normalizeTitleName(value: string) {
   return value.trim().replace(/\s+/g, ' ').slice(0, 64);
 }
 
-function nextGradient(current?: string) {
-  const index = PRIMARY_GRADIENTS.findIndex((value) => value === current);
-  return PRIMARY_GRADIENTS[(index + 1) % PRIMARY_GRADIENTS.length];
-}
 
 function hashDb(value: GameIdeaDatabase) {
   return JSON.stringify(value);
@@ -143,6 +132,30 @@ function parseStoredNavOrder(value: string | null): GameIdeaNav[] {
   }
 }
 
+
+function findDragIndexFromPoint(kind: DragKind, x: number, y: number) {
+  if (typeof document === 'undefined') return null;
+  const element = document.elementFromPoint(x, y);
+  if (!element) return null;
+
+  const target = element.closest<HTMLElement>(`[data-drag-kind="${kind}"]`);
+  if (!target) return null;
+
+  const raw = target.dataset.dragIndex;
+  const index = raw ? Number.parseInt(raw, 10) : Number.NaN;
+  return Number.isFinite(index) ? index : null;
+}
+
+function dragShiftForIndex(index: number, activeDrag: ActiveDrag | null, kind: DragKind) {
+  if (!activeDrag || activeDrag.kind !== kind || activeDrag.fromIndex === activeDrag.overIndex) return '';
+
+  const low = Math.min(activeDrag.fromIndex, activeDrag.overIndex);
+  const high = Math.max(activeDrag.fromIndex, activeDrag.overIndex);
+  if (index < low || index > high || index === activeDrag.fromIndex) return '';
+
+  return activeDrag.fromIndex < activeDrag.overIndex ? 'drag-shift-up' : 'drag-shift-down';
+}
+
 export default function GameIdeasPage() {
   const [db, setDb] = useState<GameIdeaDatabase>(EMPTY_GAME_IDEA_DATA);
   const [nav, setNav] = useState<GameIdeaNav>('govt');
@@ -166,7 +179,6 @@ export default function GameIdeasPage() {
   const [renameAction, setRenameAction] = useState<RenameAction>(null);
   const [renameDraft, setRenameDraft] = useState('');
   const [itemRenameDraft, setItemRenameDraft] = useState<ItemDraft>(emptyDraft());
-  const [selectedItemIndex, setSelectedItemIndex] = useState<number | null>(null);
   const [navOrder, setNavOrder] = useState<GameIdeaNav[]>([...GAME_IDEA_NAV_ORDER]);
   const [activeDrag, setActiveDrag] = useState<ActiveDrag | null>(null);
 
@@ -180,7 +192,7 @@ export default function GameIdeasPage() {
   const lastHandledManualSyncRef = useRef(0);
   const renameClickTrackerRef = useRef<{ key: string; count: number; startedAt: number } | null>(null);
   const dragHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pointerByKindRef = useRef<Partial<Record<DragKind, number>>>({});
+  const dragPointerRef = useRef<{ kind: DragKind; pointerId: number } | null>(null);
 
   const dbHash = useMemo(() => hashDb(db), [db]);
   const currentSection = useMemo(() => db[nav], [db, nav]);
@@ -364,7 +376,7 @@ export default function GameIdeasPage() {
       clearTimeout(dragHoldTimerRef.current);
       dragHoldTimerRef.current = null;
     }
-    pointerByKindRef.current = {};
+    dragPointerRef.current = null;
     setActiveDrag(null);
   }, [adminMode]);
 
@@ -514,64 +526,6 @@ export default function GameIdeasPage() {
     setRenameDraft(navTitle);
   }, [db]);
 
-  const recolorCategory = useCallback((targetCategory: string) => {
-    if (!targetCategory) return;
-
-    setDb((prev) => {
-      const section = prev[nav];
-      const current = section.categoryGradients?.[targetCategory];
-      const next = nextGradient(current);
-
-      return {
-        ...prev,
-        [nav]: {
-          ...section,
-          categoryGradients: {
-            ...(section.categoryGradients ?? {}),
-            [targetCategory]: next,
-          },
-        },
-      };
-    });
-  }, [nav]);
-
-  const recolorItem = useCallback((index: number) => {
-    setDb((prev) => {
-      const section = prev[nav];
-      const existing = section.data[currentCategory] ?? [];
-      if (index < 0 || index >= existing.length) return prev;
-
-      const nextItems = existing.map((item, idx) => (
-        idx === index
-          ? { ...item, colorGradient: nextGradient(item.colorGradient) }
-          : item
-      ));
-
-      return {
-        ...prev,
-        [nav]: {
-          ...section,
-          data: {
-            ...section.data,
-            [currentCategory]: nextItems,
-          },
-        },
-      };
-    });
-  }, [currentCategory, nav]);
-
-  const recolorNav = useCallback((navKey: GameIdeaNav) => {
-    setDb((prev) => {
-      const section = prev[navKey];
-      return {
-        ...prev,
-        [navKey]: {
-          ...section,
-          navGradient: nextGradient(section.navGradient),
-        },
-      };
-    });
-  }, []);
 
   const confirmRename = useCallback(() => {
     if (!renameAction) return;
@@ -592,19 +546,12 @@ export default function GameIdeasPage() {
         data[nextName] = data[oldName] ?? [];
         delete data[oldName];
 
-        const categoryGradients = { ...(section.categoryGradients ?? {}) };
-        if (categoryGradients[oldName]) {
-          categoryGradients[nextName] = categoryGradients[oldName];
-          delete categoryGradients[oldName];
-        }
-
         return {
           ...prev,
           [nav]: {
             ...section,
             categories,
             data,
-            ...(Object.keys(categoryGradients).length > 0 ? { categoryGradients } : {}),
           },
         };
       });
@@ -753,21 +700,38 @@ export default function GameIdeasPage() {
       clearTimeout(dragHoldTimerRef.current);
     }
 
-    pointerByKindRef.current[kind] = pointerId;
+    dragPointerRef.current = { kind, pointerId };
     dragHoldTimerRef.current = setTimeout(() => {
       setActiveDrag({ kind, fromIndex: index, overIndex: index, pointerId });
       dragHoldTimerRef.current = null;
     }, DRAG_HOLD_MS);
   }, [adminMode]);
 
-  const handlePointerEnter = useCallback((kind: DragKind, index: number) => {
-    setActiveDrag((prev) => {
-      if (!prev || prev.kind !== kind || prev.overIndex === index) return prev;
-      return { ...prev, overIndex: index };
-    });
+  useEffect(() => {
+    const onPointerMove = (event: PointerEvent) => {
+      const pointer = dragPointerRef.current;
+      if (!pointer || pointer.pointerId !== event.pointerId) return;
+
+      setActiveDrag((prev) => {
+        if (!prev || prev.pointerId !== event.pointerId || prev.kind !== pointer.kind) {
+          return prev;
+        }
+
+        const overIndex = findDragIndexFromPoint(pointer.kind, event.clientX, event.clientY);
+        if (overIndex === null || overIndex === prev.overIndex) return prev;
+        return { ...prev, overIndex };
+      });
+    };
+
+    window.addEventListener('pointermove', onPointerMove, { passive: true });
+    return () => {
+      window.removeEventListener('pointermove', onPointerMove);
+    };
   }, []);
 
+
   const commitDrag = useCallback(() => {
+
     setActiveDrag((drag) => {
       if (!drag || drag.fromIndex === drag.overIndex) {
         return null;
@@ -815,7 +779,6 @@ export default function GameIdeasPage() {
           };
         });
 
-        setSelectedItemIndex(drag.overIndex);
         setOpenCardIndex((prev) => {
           if (prev === null) return prev;
           if (prev === drag.fromIndex) return drag.overIndex;
@@ -833,23 +796,41 @@ export default function GameIdeasPage() {
     });
   }, [categoryList, currentCategory, nav]);
 
-  const handlePointerEnd = useCallback((kind: DragKind, pointerId: number) => {
-    if (pointerByKindRef.current[kind] !== pointerId) return;
+  const handlePointerEnd = useCallback((pointerId: number) => {
+    if (!dragPointerRef.current || dragPointerRef.current.pointerId !== pointerId) {
+      return;
+    }
 
     if (dragHoldTimerRef.current) {
       clearTimeout(dragHoldTimerRef.current);
       dragHoldTimerRef.current = null;
     }
 
-    pointerByKindRef.current[kind] = undefined;
+    dragPointerRef.current = null;
     commitDrag();
   }, [commitDrag]);
+
+  useEffect(() => {
+    const onPointerStop = (event: PointerEvent) => {
+      const pointer = dragPointerRef.current;
+      if (!pointer || pointer.pointerId !== event.pointerId) return;
+      handlePointerEnd(event.pointerId);
+    };
+
+    window.addEventListener('pointerup', onPointerStop, { passive: true });
+    window.addEventListener('pointercancel', onPointerStop, { passive: true });
+    return () => {
+      window.removeEventListener('pointerup', onPointerStop);
+      window.removeEventListener('pointercancel', onPointerStop);
+    };
+  }, [handlePointerEnd]);
 
   useEffect(() => () => {
     if (dragHoldTimerRef.current) {
       clearTimeout(dragHoldTimerRef.current);
       dragHoldTimerRef.current = null;
     }
+    dragPointerRef.current = null;
   }, []);
 
   const statusLabel = useMemo(() => {
@@ -881,18 +862,12 @@ export default function GameIdeasPage() {
               <button
                 key={cat}
                 type="button"
-                className={`tab-btn ${cat === currentCategory ? 'active' : ''} ${activeDrag?.kind === 'category' && activeDrag.overIndex === index ? 'drag-target' : ''}`}
-                style={currentSection.categoryGradients?.[cat] ? { backgroundImage: currentSection.categoryGradients[cat] } : undefined}
+                className={`tab-btn ${cat === currentCategory ? 'active' : ''} ${activeDrag?.kind === 'category' && activeDrag.overIndex === index ? 'drag-target' : ''} ${dragShiftForIndex(index, activeDrag, 'category')}`}
+                data-drag-kind="category"
+                data-drag-index={index}
                 onPointerDown={(event) => handlePointerDown('category', index, event.pointerId)}
-                onPointerEnter={() => handlePointerEnter('category', index)}
-                onPointerUp={(event) => handlePointerEnd('category', event.pointerId)}
-                onPointerCancel={(event) => handlePointerEnd('category', event.pointerId)}
-                onPointerLeave={(event) => {
-                  if (dragHoldTimerRef.current && pointerByKindRef.current.category === event.pointerId) {
-                    clearTimeout(dragHoldTimerRef.current);
-                    dragHoldTimerRef.current = null;
-                  }
-                }}
+                onPointerUp={(event) => handlePointerEnd(event.pointerId)}
+                onPointerCancel={(event) => handlePointerEnd(event.pointerId)}
                 onClick={() => {
                   if (activeDrag) return;
                   setCategory(cat);
@@ -909,12 +884,12 @@ export default function GameIdeasPage() {
           {items.map((item, index) => (
             <article
               key={`${item.name}-${index}`}
-              className={`card ${openCardIndex === index ? 'open' : ''} ${activeDrag?.kind === 'item' && activeDrag.overIndex === index ? 'drag-target' : ''}`}
-              style={item.colorGradient ? { backgroundImage: item.colorGradient } : undefined}
+              className={`card ${openCardIndex === index ? 'open' : ''} ${activeDrag?.kind === 'item' && activeDrag.overIndex === index ? 'drag-target' : ''} ${dragShiftForIndex(index, activeDrag, 'item')}`}
+              data-drag-kind="item"
+              data-drag-index={index}
               onPointerDown={(event) => handlePointerDown('item', index, event.pointerId)}
-              onPointerEnter={() => handlePointerEnter('item', index)}
-              onPointerUp={(event) => handlePointerEnd('item', event.pointerId)}
-              onPointerCancel={(event) => handlePointerEnd('item', event.pointerId)}
+              onPointerUp={(event) => handlePointerEnd(event.pointerId)}
+              onPointerCancel={(event) => handlePointerEnd(event.pointerId)}
             >
               {adminMode && (
                 <div className="admin-tools">
@@ -928,7 +903,6 @@ export default function GameIdeasPage() {
                 className="card-head"
                 onClick={() => {
                   if (activeDrag) return;
-                  setSelectedItemIndex(index);
                   setOpenCardIndex((prev) => (prev === index ? null : index));
                   registerUniversalRenameClick(`item:${nav}:${currentCategory}:${index}`, () => requestRenameItem(index));
                 }}
@@ -973,12 +947,12 @@ export default function GameIdeasPage() {
           <button
             key={key}
             type="button"
-            className={`nav-item ${nav === key ? 'active' : ''} ${activeDrag?.kind === 'nav' && activeDrag.overIndex === index ? 'drag-target' : ''}`}
-            style={db[key].navGradient ? { backgroundImage: db[key].navGradient } : undefined}
+            className={`nav-item ${nav === key ? 'active' : ''} ${activeDrag?.kind === 'nav' && activeDrag.overIndex === index ? 'drag-target' : ''} ${dragShiftForIndex(index, activeDrag, 'nav')}`}
+            data-drag-kind="nav"
+            data-drag-index={index}
             onPointerDown={(event) => handlePointerDown('nav', index, event.pointerId)}
-            onPointerEnter={() => handlePointerEnter('nav', index)}
-            onPointerUp={(event) => handlePointerEnd('nav', event.pointerId)}
-            onPointerCancel={(event) => handlePointerEnd('nav', event.pointerId)}
+            onPointerUp={(event) => handlePointerEnd(event.pointerId)}
+            onPointerCancel={(event) => handlePointerEnd(event.pointerId)}
             onClick={() => {
               if (activeDrag) return;
               setNav(key);
@@ -993,9 +967,6 @@ export default function GameIdeasPage() {
       {adminMode && (
         <section className="admin-panel" aria-label="FeatureLib admin actions">
           <button type="button" className="admin-action add" onClick={openAddChooser}>ADD</button>
-          <button type="button" className="admin-action" onClick={() => recolorCategory(currentCategory)} disabled={!currentCategory}>RECOLOR CATEGORY</button>
-          <button type="button" className="admin-action" onClick={() => recolorItem(selectedItemIndex ?? 0)} disabled={selectedItemIndex === null}>RECOLOR ITEM</button>
-          <button type="button" className="admin-action" onClick={() => recolorNav(nav)}>RECOLOR SECTION</button>
           <button type="button" className="admin-action del" onClick={requestDeleteCategory} disabled={!currentCategory}>DELETE CATEGORY</button>
         </section>
       )}
@@ -1377,6 +1348,16 @@ export default function GameIdeasPage() {
           outline-offset: -2px;
           box-shadow: 0 0 20px rgba(0, 242, 255, 0.55), inset 0 0 0 1px rgba(0, 242, 255, 0.4);
         }
+        .drag-shift-up,
+        .drag-shift-down,
+        .tab-btn,
+        .card,
+        .nav-item {
+          transition: transform 170ms cubic-bezier(0.2, 0.9, 0.2, 1), box-shadow 140ms ease;
+          will-change: transform;
+        }
+        .drag-shift-up { transform: translate3d(0, -8px, 0); }
+        .drag-shift-down { transform: translate3d(0, 8px, 0); }
         .drag-indicator {
           position: fixed;
           left: 50%;
