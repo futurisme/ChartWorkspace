@@ -23,6 +23,11 @@ type ConfirmDeleteAction =
   | { type: 'category'; category: string; label: string }
   | null;
 
+type RenameAction =
+  | { type: 'item'; index: number; currentName: string }
+  | { type: 'category'; currentName: string }
+  | null;
+
 const SAVE_DEBOUNCE_MS = 420;
 const ADMIN_ACCESS_CODE = 'IzinEditKhususGG123';
 
@@ -114,6 +119,8 @@ export default function GameIdeasPage() {
   const [itemDraft, setItemDraft] = useState<ItemDraft>(emptyDraft());
   const [categoryDraft, setCategoryDraft] = useState('');
   const [confirmDeleteAction, setConfirmDeleteAction] = useState<ConfirmDeleteAction>(null);
+  const [renameAction, setRenameAction] = useState<RenameAction>(null);
+  const [renameDraft, setRenameDraft] = useState('');
 
   const hydratedRef = useRef(false);
   const dbRef = useRef(DEFAULT_GAME_IDEA_DATA);
@@ -365,6 +372,85 @@ export default function GameIdeasPage() {
     setShowCategoryModal(false);
   }, [categoryDraft, nav]);
 
+  const requestRenameCategory = useCallback((targetCategory: string) => {
+    setRenameAction({ type: 'category', currentName: targetCategory });
+    setRenameDraft(targetCategory);
+  }, []);
+
+  const requestRenameItem = useCallback((index: number) => {
+    const item = items[index];
+    if (!item) return;
+
+    setRenameAction({ type: 'item', index, currentName: item.name });
+    setRenameDraft(item.name);
+  }, [items]);
+
+  const confirmRename = useCallback(() => {
+    if (!renameAction) return;
+
+    if (renameAction.type === 'category') {
+      const nextName = normalizeCategoryName(renameDraft);
+      if (!nextName) return;
+
+      setDb((prev) => {
+        const section = prev[nav];
+        const oldName = renameAction.currentName;
+        if (!section.categories.includes(oldName) || oldName === nextName || section.categories.includes(nextName)) {
+          return prev;
+        }
+
+        const categories = section.categories.map((cat) => (cat === oldName ? nextName : cat));
+        const data = { ...section.data };
+        data[nextName] = data[oldName] ?? [];
+        delete data[oldName];
+
+        return {
+          ...prev,
+          [nav]: {
+            ...section,
+            categories,
+            data,
+          },
+        };
+      });
+
+      if (currentCategory === renameAction.currentName) {
+        setCategory(nextName);
+      }
+    }
+
+    if (renameAction.type === 'item') {
+      const nextName = renameDraft.trim().slice(0, 120);
+      if (!nextName) return;
+
+      setDb((prev) => {
+        const section = prev[nav];
+        const existing = section.data[currentCategory] ?? [];
+        if (renameAction.index < 0 || renameAction.index >= existing.length) return prev;
+
+        const nextItems = existing.map((item, idx) => (
+          idx === renameAction.index
+            ? { ...item, name: nextName }
+            : item
+        ));
+
+        return {
+          ...prev,
+          [nav]: {
+            ...section,
+            data: {
+              ...section.data,
+              [currentCategory]: nextItems,
+            },
+          },
+        };
+      });
+    }
+
+    setRenameAction(null);
+    setRenameDraft('');
+  }, [renameAction, renameDraft, nav, currentCategory]);
+
   const requestDeleteItem = useCallback(
     (index: number) => {
       const item = items[index];
@@ -470,7 +556,11 @@ export default function GameIdeasPage() {
                 key={cat}
                 type="button"
                 className={`tab-btn ${cat === currentCategory ? 'active' : ''}`}
-                onClick={() => setCategory(cat)}
+                onClick={(event) => {
+                  if (event.detail > 1) return;
+                  setCategory(cat);
+                }}
+                onDoubleClick={() => requestRenameCategory(cat)}
               >
                 {cat}
               </button>
@@ -491,7 +581,11 @@ export default function GameIdeasPage() {
               <button
                 type="button"
                 className="card-head"
-                onClick={() => setOpenCardIndex((prev) => (prev === index ? null : index))}
+                onClick={(event) => {
+                  if (event.detail > 1) return;
+                  setOpenCardIndex((prev) => (prev === index ? null : index));
+                }}
+                onDoubleClick={() => requestRenameItem(index)}
               >
                 <h3>{item.name}</h3>
                 <div className="card-meta">
@@ -504,7 +598,7 @@ export default function GameIdeasPage() {
               <div className="card-body-wrapper">
                 <div className="card-body">
                   <div className="inner">
-                    <p className="desc">{item.desc || 'No description.'}</p>
+                    <p className="desc desc-content">{item.desc || 'No description.'}</p>
                     {Object.entries(item.stats).length === 0 ? (
                       <p className="desc">No stats.</p>
                     ) : (
@@ -646,6 +740,37 @@ export default function GameIdeasPage() {
         </div>
       )}
 
+      {renameAction && (
+        <div className="modal-overlay" role="dialog" aria-modal="true">
+          <div className="modal">
+            <h2>{renameAction.type === 'category' ? 'RENAME CATEGORY' : 'RENAME ITEM'}</h2>
+            <div className="input-group">
+              <label>{renameAction.type === 'category' ? 'NAMA KATEGORI BARU' : 'NAMA ITEM BARU'}</label>
+              <input
+                value={renameDraft}
+                onChange={(e) => setRenameDraft(e.target.value)}
+                maxLength={renameAction.type === 'category' ? 32 : 120}
+              />
+            </div>
+            <div className="modal-btns">
+              <button
+                type="button"
+                className="btn-abort"
+                onClick={() => {
+                  setRenameAction(null);
+                  setRenameDraft('');
+                }}
+              >
+                CANCEL
+              </button>
+              <button type="button" className="btn-confirm" onClick={confirmRename}>
+                CONFIRM
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style jsx>{`
         .architect-shell {
           --bg: #010103;
@@ -741,13 +866,13 @@ export default function GameIdeasPage() {
           position: relative;
           background: var(--surface);
           border: 1px solid rgba(0, 242, 255, 0.42);
-          box-shadow: 0 0 16px rgba(0, 242, 255, 0.16), inset 0 0 0 1px rgba(0, 242, 255, 0.1);
+          box-shadow: 0 0 18px rgba(0, 242, 255, 0.2), inset 0 0 0 1px rgba(0, 242, 255, 0.14);
           overflow: hidden;
           transition: border-color 140ms ease, box-shadow 140ms ease;
         }
         .card:hover {
           border-color: rgba(0, 242, 255, 0.72);
-          box-shadow: 0 0 18px rgba(0, 242, 255, 0.28), inset 0 0 0 1px rgba(0, 242, 255, 0.22);
+          box-shadow: 0 0 24px rgba(0, 242, 255, 0.34), inset 0 0 0 1px rgba(0, 242, 255, 0.26);
         }
         .admin-tools { position: absolute; right: 6px; top: 5px; z-index: 3; }
         .btn-icon.del {
@@ -778,11 +903,12 @@ export default function GameIdeasPage() {
         .card-meta {
           display: flex;
           align-items: center;
-          gap: 6px;
+          gap: 4px;
           flex-wrap: wrap;
         }
         .tag {
           font-size: 8px;
+          box-shadow: 0 0 8px rgba(188, 19, 254, 0.35);
           color: var(--accent2);
           border: 1px solid var(--accent2);
           padding: 1px 3px;
@@ -793,6 +919,7 @@ export default function GameIdeasPage() {
         .card-body { overflow: hidden; contain: content; }
         .inner { padding: 0 10px 8px; border-top: 1px solid rgba(0, 242, 255, 0.14); }
         .desc { color: #9ca3af; margin: 5px 0; font-size: 10px; line-height: 1.35; }
+        .desc-content { white-space: pre-wrap; word-break: break-word; }
         .stat { display: inline-flex; align-items: baseline; gap: 2px; padding: 2px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.04); font-size: 10px; }
         .stat-label { color: #94a3b8; }
         .stat-value { color: var(--accent); font-weight: 700; }
@@ -869,6 +996,19 @@ export default function GameIdeasPage() {
         .btn-abort { border: 1px solid #475569; background: transparent; color: #94a3b8; }
         .btn-confirm { border: 0; background: var(--accent); color: #020617; font-weight: 800; }
         .btn-confirm.danger { background: #ff2a5f; color: #fff; }
+
+        @media (min-width: 1024px) {
+          .layout { gap: 14px; padding: 12px; }
+          .sidebar { width: 220px; }
+          .sub-tabs { gap: 6px; }
+          .tab-btn { font-size: 11px; padding: 8px 10px; border-width: 1px; }
+          .content-area { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+          .card-head { padding: 10px 52px 10px 12px; }
+          .card-head h3 { font-size: 12px; }
+          .desc { font-size: 11px; }
+          .stat { font-size: 11px; }
+          .btn-icon.del { font-size: 9px; padding: 1px 4px; }
+        }
 
         @media (max-width: 768px) {
           .architect-header { padding: 8px 10px; }
