@@ -31,7 +31,17 @@ type RenameAction =
 
 const SAVE_DEBOUNCE_MS = 420;
 const RENAME_CLICK_COUNT = 4;
+const RECOLOR_CLICK_COUNT = 5;
+const MULTI_CLICK_DELAY_MS = 190;
 const ADMIN_ACCESS_CODE = 'IzinEditKhususGG123';
+
+const PRIMARY_GRADIENTS = [
+  'linear-gradient(135deg,#00f5ff 0%,#0066ff 100%)',
+  'linear-gradient(135deg,#7c3aed 0%,#06b6d4 100%)',
+  'linear-gradient(135deg,#22c55e 0%,#06b6d4 100%)',
+  'linear-gradient(135deg,#f59e0b 0%,#ef4444 100%)',
+  'linear-gradient(135deg,#ec4899 0%,#8b5cf6 100%)',
+] as const;
 
 function emptyDraft(): ItemDraft {
   return { name: '', tag: '', desc: '', stats: '' };
@@ -61,6 +71,11 @@ function normalizeCategoryName(value: string) {
 
 function normalizeTitleName(value: string) {
   return value.trim().replace(/\s+/g, ' ').slice(0, 64);
+}
+
+function nextGradient(current?: string) {
+  const index = PRIMARY_GRADIENTS.findIndex((value) => value === current);
+  return PRIMARY_GRADIENTS[(index + 1) % PRIMARY_GRADIENTS.length];
 }
 
 function hashDb(value: GameIdeaDatabase) {
@@ -136,6 +151,7 @@ export default function GameIdeasPage() {
   const lastSyncedHashRef = useRef<string | null>(null);
   const lastLocalCacheHashRef = useRef<string | null>(null);
   const lastHandledManualSyncRef = useRef(0);
+  const multiClickTimerRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   const dbHash = useMemo(() => hashDb(db), [db]);
   const currentSection = useMemo(() => db[nav], [db, nav]);
@@ -297,6 +313,8 @@ export default function GameIdeasPage() {
         clearTimeout(retryTimerRef.current);
         retryTimerRef.current = null;
       }
+      Object.values(multiClickTimerRef.current).forEach((timer) => clearTimeout(timer));
+      multiClickTimerRef.current = {};
     },
     []
   );
@@ -404,6 +422,93 @@ export default function GameIdeasPage() {
     setRenameAction({ type: 'nav', navKey, currentName: navTitle });
     setRenameDraft(navTitle);
   }, [db]);
+
+  const recolorCategory = useCallback((targetCategory: string) => {
+    setDb((prev) => {
+      const section = prev[nav];
+      const current = section.categoryGradients?.[targetCategory];
+      const next = nextGradient(current);
+
+      return {
+        ...prev,
+        [nav]: {
+          ...section,
+          categoryGradients: {
+            ...(section.categoryGradients ?? {}),
+            [targetCategory]: next,
+          },
+        },
+      };
+    });
+  }, [nav]);
+
+  const recolorItem = useCallback((index: number) => {
+    setDb((prev) => {
+      const section = prev[nav];
+      const existing = section.data[currentCategory] ?? [];
+      if (index < 0 || index >= existing.length) return prev;
+
+      const nextItems = existing.map((item, idx) => {
+        if (idx !== index) return item;
+        return {
+          ...item,
+          colorGradient: nextGradient(item.colorGradient),
+        };
+      });
+
+      return {
+        ...prev,
+        [nav]: {
+          ...section,
+          data: {
+            ...section.data,
+            [currentCategory]: nextItems,
+          },
+        },
+      };
+    });
+  }, [currentCategory, nav]);
+
+  const recolorNav = useCallback((navKey: GameIdeaNav) => {
+    setDb((prev) => {
+      const section = prev[navKey];
+      return {
+        ...prev,
+        [navKey]: {
+          ...section,
+          navGradient: nextGradient(section.navGradient),
+        },
+      };
+    });
+  }, []);
+
+  const executeClickAction = useCallback((key: string, clickCount: number, onRename: () => void, onRecolor: () => void, onSingle?: () => void) => {
+    if (clickCount >= RECOLOR_CLICK_COUNT) {
+      const currentTimer = multiClickTimerRef.current[key];
+      if (currentTimer) {
+        clearTimeout(currentTimer);
+        delete multiClickTimerRef.current[key];
+      }
+      onRecolor();
+      return;
+    }
+
+    if (clickCount === RENAME_CLICK_COUNT) {
+      const currentTimer = multiClickTimerRef.current[key];
+      if (currentTimer) {
+        clearTimeout(currentTimer);
+      }
+      multiClickTimerRef.current[key] = setTimeout(() => {
+        onRename();
+        delete multiClickTimerRef.current[key];
+      }, MULTI_CLICK_DELAY_MS);
+      return;
+    }
+
+    if (clickCount === 1 && onSingle) {
+      onSingle();
+    }
+  }, []);
 
   const confirmRename = useCallback(() => {
     if (!renameAction) return;
@@ -594,15 +699,16 @@ export default function GameIdeasPage() {
                 key={cat}
                 type="button"
                 className={`tab-btn ${cat === currentCategory ? 'active' : ''}`}
-                onClick={(event) => {
-                  if (event.detail >= RENAME_CLICK_COUNT) {
-                    requestRenameCategory(cat);
-                    return;
-                  }
-                  if (event.detail === 1) {
-                    setCategory(cat);
-                  }
-                }}
+                style={currentSection.categoryGradients?.[cat] ? { backgroundImage: currentSection.categoryGradients[cat] } : undefined}
+                onClick={(event) =>
+                  executeClickAction(
+                    `category:${nav}:${cat}`,
+                    event.detail,
+                    () => requestRenameCategory(cat),
+                    () => recolorCategory(cat),
+                    () => setCategory(cat)
+                  )
+                }
               >
                 {cat}
               </button>
@@ -612,7 +718,11 @@ export default function GameIdeasPage() {
 
         <section className="content-area">
           {items.map((item, index) => (
-            <article key={`${item.name}-${index}`} className={`card ${openCardIndex === index ? 'open' : ''}`}>
+            <article
+              key={`${item.name}-${index}`}
+              className={`card ${openCardIndex === index ? 'open' : ''}`}
+              style={item.colorGradient ? { backgroundImage: item.colorGradient } : undefined}
+            >
               {adminMode && (
                 <div className="admin-tools">
                   <button type="button" className="btn-icon del" onClick={() => requestDeleteItem(index)}>
@@ -623,15 +733,15 @@ export default function GameIdeasPage() {
               <button
                 type="button"
                 className="card-head"
-                onClick={(event) => {
-                  if (event.detail >= RENAME_CLICK_COUNT) {
-                    requestRenameItem(index);
-                    return;
-                  }
-                  if (event.detail === 1) {
-                    setOpenCardIndex((prev) => (prev === index ? null : index));
-                  }
-                }}
+                onClick={(event) =>
+                  executeClickAction(
+                    `item:${nav}:${currentCategory}:${index}`,
+                    event.detail,
+                    () => requestRenameItem(index),
+                    () => recolorItem(index),
+                    () => setOpenCardIndex((prev) => (prev === index ? null : index))
+                  )
+                }
               >
                 <h3>{item.name}</h3>
                 <div className="card-meta">
@@ -686,16 +796,17 @@ export default function GameIdeasPage() {
             key={key}
             type="button"
             className={`nav-item ${nav === key ? 'active' : ''}`}
-            onClick={(event) => {
-              if (event.detail >= RENAME_CLICK_COUNT) {
-                requestRenameNav(key);
-                return;
-              }
-              if (event.detail === 1) {
-                setNav(key);
-              }
-            }}
-            title={`4x click to rename ${key.toUpperCase()} section`}
+            style={db[key].navGradient ? { backgroundImage: db[key].navGradient } : undefined}
+            onClick={(event) =>
+              executeClickAction(
+                `nav:${key}`,
+                event.detail,
+                () => requestRenameNav(key),
+                () => recolorNav(key),
+                () => setNav(key)
+              )
+            }
+            title={`4x click rename / 5x click recolor ${key.toUpperCase()} section`}
           >
             {(db[key].title || key.toUpperCase()).toUpperCase()}
           </button>
@@ -899,7 +1010,7 @@ export default function GameIdeasPage() {
           border: 1px solid rgba(0, 242, 255, 0.48);
           box-shadow: inset 0 0 0 1px rgba(0, 242, 255, 0.18), 0 0 12px rgba(0, 242, 255, 0.18);
           background: var(--surface);
-          color: var(--dim);
+          color: #d8f9ff;
           cursor: pointer;
           font-size: 10px;
           line-height: 1.2;
@@ -930,6 +1041,7 @@ export default function GameIdeasPage() {
         .card {
           position: relative;
           background: var(--surface);
+          background-size: 180% 180%;
           border: 1px solid rgba(0, 242, 255, 0.42);
           box-shadow: 0 0 18px rgba(0, 242, 255, 0.2), inset 0 0 0 1px rgba(0, 242, 255, 0.14);
           overflow: hidden;
@@ -1025,7 +1137,7 @@ export default function GameIdeasPage() {
           padding: 8px;
           background: #000;
         }
-        .nav-item { border: 0; background: transparent; color: var(--dim); padding: 6px 10px; cursor: pointer; font-size: 10px; font-weight: 800; max-width: 24vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .nav-item { border: 0; background: transparent; color: #ddf7ff; padding: 6px 10px; cursor: pointer; font-size: 10px; font-weight: 800; max-width: 24vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .nav-item.active { color: var(--accent); text-shadow: var(--neon); }
         .empty-hint,
         .error-hint { font-size: 12px; color: #9ca3af; }

@@ -7,12 +7,15 @@ export interface GameIdeaItem {
   tag: string;
   desc: string;
   stats: Record<string, string>;
+  colorGradient?: string;
 }
 
 export interface GameIdeaSection {
   title: string;
   categories: string[];
   data: Record<string, GameIdeaItem[]>;
+  navGradient?: string;
+  categoryGradients?: Record<string, string>;
 }
 
 export type GameIdeaDatabase = Record<GameIdeaNav, GameIdeaSection>;
@@ -51,8 +54,22 @@ export const DEFAULT_GAME_IDEA_DATA: GameIdeaDatabase = {
   },
 };
 
+const ALLOWED_GRADIENTS = new Set([
+  'linear-gradient(135deg,#00f5ff 0%,#0066ff 100%)',
+  'linear-gradient(135deg,#7c3aed 0%,#06b6d4 100%)',
+  'linear-gradient(135deg,#22c55e 0%,#06b6d4 100%)',
+  'linear-gradient(135deg,#f59e0b 0%,#ef4444 100%)',
+  'linear-gradient(135deg,#ec4899 0%,#8b5cf6 100%)',
+]);
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function sanitizeGradient(value: unknown) {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim();
+  return ALLOWED_GRADIENTS.has(normalized) ? normalized : undefined;
 }
 
 function sanitizeItem(value: unknown): GameIdeaItem | null {
@@ -73,7 +90,15 @@ function sanitizeItem(value: unknown): GameIdeaItem | null {
     stats[cleanKey.slice(0, 32)] = cleanValue.slice(0, 80);
   });
 
-  return { name: name.slice(0, 120), tag, desc, stats };
+  const colorGradient = sanitizeGradient(value.colorGradient);
+
+  return {
+    name: name.slice(0, 120),
+    tag,
+    desc,
+    stats,
+    ...(colorGradient ? { colorGradient } : {}),
+  };
 }
 
 function sanitizeSection(value: unknown, fallback: GameIdeaSection): GameIdeaSection {
@@ -89,7 +114,7 @@ function sanitizeSection(value: unknown, fallback: GameIdeaSection): GameIdeaSec
     )
   ).slice(0, 60);
 
-  const safeCategories = categories.length > 0 ? categories : fallback.categories;
+  const safeCategories = categories;
   const rawData = isRecord(sectionObj.data) ? sectionObj.data : {};
   const data: Record<string, GameIdeaItem[]> = {};
 
@@ -98,7 +123,24 @@ function sanitizeSection(value: unknown, fallback: GameIdeaSection): GameIdeaSec
     data[category] = incoming.map(sanitizeItem).filter((item): item is GameIdeaItem => Boolean(item)).slice(0, 500);
   });
 
-  return { title, categories: safeCategories, data };
+  const categoryGradientsRaw = isRecord(sectionObj.categoryGradients) ? sectionObj.categoryGradients : {};
+  const categoryGradients: Record<string, string> = {};
+  safeCategories.forEach((category) => {
+    const gradient = sanitizeGradient(categoryGradientsRaw[category]);
+    if (gradient) {
+      categoryGradients[category] = gradient;
+    }
+  });
+
+  const navGradient = sanitizeGradient(sectionObj.navGradient);
+
+  return {
+    title,
+    categories: safeCategories,
+    data,
+    ...(Object.keys(categoryGradients).length > 0 ? { categoryGradients } : {}),
+    ...(navGradient ? { navGradient } : {}),
+  };
 }
 
 export function sanitizeGameIdeaDatabase(input: unknown): GameIdeaDatabase {
