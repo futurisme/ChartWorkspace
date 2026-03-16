@@ -93,6 +93,7 @@ export function FadhilAiGlobalChat() {
     } else {
       utterance.lang = 'en-US';
     }
+
     utterance.rate = 0.98;
     utterance.pitch = 1.02;
     utterance.volume = 1;
@@ -168,6 +169,7 @@ export function FadhilAiGlobalChat() {
         // ignore malformed payload
       }
     };
+
     window.addEventListener('storage', onStorage);
 
     return () => {
@@ -182,13 +184,16 @@ export function FadhilAiGlobalChat() {
   const sendChat = async () => {
     const text = chatInput.trim();
     if (!text) return;
+
     setChatInput('');
     setOpenInput(false);
+
     const payload: BroadcastPayload = {
       type: 'fadhil-ai-chat-speak',
       text,
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
     };
+
     if (canBroadcastRef.current && channelRef.current) {
       channelRef.current.postMessage(payload);
     } else if (typeof window !== 'undefined') {
@@ -198,6 +203,7 @@ export function FadhilAiGlobalChat() {
         // storage may be unavailable in private mode
       }
     }
+
     await playPayload(payload);
   };
 
@@ -215,60 +221,80 @@ export function FadhilAiGlobalChat() {
 
   return (
     <>
-      <div className="fixed bottom-3 right-3 z-40 flex items-center gap-2">
+      <div className="fixed bottom-4 right-4 z-40 flex items-center gap-2">
         {openInput && (
-          <div className="flex items-center gap-1 rounded-full border border-cyan-300/50 bg-slate-900/95 px-2 py-1 shadow-xl">
+          <div className="flex items-center gap-1 rounded-2xl border border-cyan-300/40 bg-gradient-to-r from-slate-900/95 via-slate-900/95 to-cyan-950/90 px-2 py-1.5 shadow-[0_8px_22px_rgba(8,47,73,0.45)] backdrop-blur">
             <input
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') void sendChat();
               }}
-              className="w-28 rounded bg-slate-800 px-2 py-1 text-[11px] text-cyan-100 outline-none"
-              placeholder="chat"
+              className="w-36 rounded-md border border-cyan-300/20 bg-slate-800/90 px-2 py-1 text-[11px] text-cyan-100 outline-none placeholder:text-cyan-200/60"
+              placeholder="Say something…"
+              aria-label="Global speech input"
             />
-            <button type="button" onClick={() => void sendChat()} className="rounded bg-cyan-600 px-2 py-1 text-[11px] font-semibold text-white">Go</button>
+            <button
+              type="button"
+              onClick={() => void sendChat()}
+              className="rounded-md bg-gradient-to-br from-cyan-500 to-blue-600 px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm"
+            >
+              Send
+            </button>
           </div>
         )}
-        <button type="button" onClick={() => setOpenInput((v) => !v)} className="h-9 w-9 rounded-full bg-cyan-600 text-sm font-bold text-white shadow-xl">💬</button>
+
+        <button
+          type="button"
+          onClick={() => setOpenInput((v) => !v)}
+          aria-label="Open global chat speech"
+          className="h-10 w-10 rounded-full border border-cyan-200/40 bg-gradient-to-br from-cyan-500 via-sky-500 to-indigo-600 text-base font-bold text-white shadow-[0_8px_24px_rgba(6,182,212,0.45)]"
+        >
+          💬
+        </button>
       </div>
 
       {overlayVisible && (
-      <div className={`pointer-events-none fixed inset-0 z-30 flex items-start justify-center transition-transform duration-300 ${state === 'speaking' ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0'}`}>
-        <div className="mt-8 w-[290px] rounded-2xl border border-amber-300/50 bg-slate-900/85 p-2 shadow-2xl backdrop-blur">
-          <svg viewBox="0 0 280 200" className="w-full" role="img" aria-label="FadhilAiEngine global dynamic face">
-            <defs>
-              <radialGradient id="globalFaceCore" cx="50%" cy="35%" r="70%">
-                <stop offset="0%" stopColor="#fde68a" stopOpacity={0.68 + face.mouth_open * 0.22} />
-                <stop offset="100%" stopColor="#f59e0b" stopOpacity="0.92" />
-              </radialGradient>
-            </defs>
-            <g transform={`translate(${headShiftX} ${headShiftY}) rotate(${headTiltDeg} 140 100)`}>
-              <path d="M66,84 C76,38 204,34 214,84 L214,90 C204,70 76,70 66,90 Z" fill="#111827" opacity="0.92" />
-              <ellipse cx="140" cy="100" rx="92" ry={82 + face.breath * 1.7} fill="url(#globalFaceCore)" stroke="#92400e" strokeOpacity="0.62" />
-              <circle cx="94" cy="120" r="18" fill="#f97316" opacity={cheekGlow} />
-              <circle cx="186" cy="120" r="18" fill="#f97316" opacity={cheekGlow} />
-              <g transform={`translate(86 ${72 + browOffset})`}><rect x="-22" y="0" width="44" height="4" rx="2" fill="#1f2937" opacity="0.9" /></g>
-              <g transform={`translate(194 ${72 + browOffset})`}><rect x="-22" y="0" width="44" height="4" rx="2" fill="#1f2937" opacity="0.9" /></g>
-              <g transform={`translate(86 90) scale(1 ${eyeScaleY})`}>
-                <ellipse cx="0" cy="0" rx="15" ry="11" fill="#fff7ed" />
-                <rect x={-15} y={-11} width={30} height={22 * eyelidDrop} fill="#f59e0b" opacity={0.92} />
-                <circle cx={face.gaze_x} cy={face.gaze_y} r={4.8 + face.eye_squint * 4.2} fill="#1f2937" />
+        <div className={`pointer-events-none fixed inset-0 z-30 flex items-start justify-center transition-all duration-300 ${state === 'speaking' ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0'}`}>
+          <div className="mt-6 w-[310px] rounded-2xl border border-cyan-300/40 bg-gradient-to-b from-slate-900/90 via-slate-900/85 to-cyan-950/80 p-2.5 shadow-[0_24px_55px_rgba(8,47,73,0.6)] backdrop-blur-sm">
+            <div className="mb-1.5 flex items-center justify-between px-1 text-[10px]">
+              <span className="font-semibold uppercase tracking-[0.14em] text-cyan-100/90">FadhilAiEngine Live</span>
+              <span className="rounded-full bg-cyan-500/20 px-2 py-0.5 font-semibold text-cyan-200">Speaking</span>
+            </div>
+
+            <svg viewBox="0 0 280 200" className="w-full" role="img" aria-label="FadhilAiEngine global dynamic face">
+              <defs>
+                <radialGradient id="globalFaceCore" cx="50%" cy="35%" r="70%">
+                  <stop offset="0%" stopColor="#fde68a" stopOpacity={0.68 + face.mouth_open * 0.22} />
+                  <stop offset="100%" stopColor="#f59e0b" stopOpacity="0.92" />
+                </radialGradient>
+              </defs>
+              <g transform={`translate(${headShiftX} ${headShiftY}) rotate(${headTiltDeg} 140 100)`}>
+                <path d="M66,84 C76,38 204,34 214,84 L214,90 C204,70 76,70 66,90 Z" fill="#111827" opacity="0.92" />
+                <ellipse cx="140" cy="100" rx="92" ry={82 + face.breath * 1.7} fill="url(#globalFaceCore)" stroke="#92400e" strokeOpacity="0.62" />
+                <circle cx="94" cy="120" r="18" fill="#f97316" opacity={cheekGlow} />
+                <circle cx="186" cy="120" r="18" fill="#f97316" opacity={cheekGlow} />
+                <g transform={`translate(86 ${72 + browOffset})`}><rect x="-22" y="0" width="44" height="4" rx="2" fill="#1f2937" opacity="0.9" /></g>
+                <g transform={`translate(194 ${72 + browOffset})`}><rect x="-22" y="0" width="44" height="4" rx="2" fill="#1f2937" opacity="0.9" /></g>
+                <g transform={`translate(86 90) scale(1 ${eyeScaleY})`}>
+                  <ellipse cx="0" cy="0" rx="15" ry="11" fill="#fff7ed" />
+                  <rect x={-15} y={-11} width={30} height={22 * eyelidDrop} fill="#f59e0b" opacity={0.92} />
+                  <circle cx={face.gaze_x} cy={face.gaze_y} r={4.8 + face.eye_squint * 4.2} fill="#1f2937" />
+                </g>
+                <g transform={`translate(194 90) scale(1 ${eyeScaleY})`}>
+                  <ellipse cx="0" cy="0" rx="15" ry="11" fill="#fff7ed" />
+                  <rect x={-15} y={-11} width={30} height={22 * eyelidDrop} fill="#f59e0b" opacity={0.92} />
+                  <circle cx={face.gaze_x * 0.94} cy={face.gaze_y * 0.88} r={4.8 + face.eye_squint * 4.2} fill="#1f2937" />
+                </g>
+                <g transform={`translate(140 ${jawY})`}>
+                  <rect x={-mouthWidth / 2} y={-mouthHeight / 2} width={mouthWidth} height={mouthHeight} rx={mouthHeight / 2} fill="#7c2d12" stroke="#fbbf24" />
+                  <ellipse cx="0" cy={Math.max(0, mouthHeight * 0.14)} rx={Math.max(6, mouthWidth * 0.2)} ry={Math.max(2, mouthHeight * 0.18)} fill="#fb923c" opacity={0.56 + face.mouth_open * 0.25} />
+                  <path d={`M ${-mouthWidth * 0.34} ${2 - smileLift} Q 0 ${8 - smileLift - face.mouth_open * 2} ${mouthWidth * 0.34} ${2 - smileLift}`} stroke="#fde68a" strokeWidth="3" fill="none" strokeLinecap="round" />
+                </g>
               </g>
-              <g transform={`translate(194 90) scale(1 ${eyeScaleY})`}>
-                <ellipse cx="0" cy="0" rx="15" ry="11" fill="#fff7ed" />
-                <rect x={-15} y={-11} width={30} height={22 * eyelidDrop} fill="#f59e0b" opacity={0.92} />
-                <circle cx={face.gaze_x * 0.94} cy={face.gaze_y * 0.88} r={4.8 + face.eye_squint * 4.2} fill="#1f2937" />
-              </g>
-              <g transform={`translate(140 ${jawY})`}>
-                <rect x={-mouthWidth / 2} y={-mouthHeight / 2} width={mouthWidth} height={mouthHeight} rx={mouthHeight / 2} fill="#7c2d12" stroke="#fbbf24" />
-                <ellipse cx="0" cy={Math.max(0, mouthHeight * 0.14)} rx={Math.max(6, mouthWidth * 0.2)} ry={Math.max(2, mouthHeight * 0.18)} fill="#fb923c" opacity={0.56 + face.mouth_open * 0.25} />
-                <path d={`M ${-mouthWidth * 0.34} ${2 - smileLift} Q 0 ${8 - smileLift - face.mouth_open * 2} ${mouthWidth * 0.34} ${2 - smileLift}`} stroke="#fde68a" strokeWidth="3" fill="none" strokeLinecap="round" />
-              </g>
-            </g>
-          </svg>
+            </svg>
+          </div>
         </div>
-      </div>
       )}
     </>
   );
