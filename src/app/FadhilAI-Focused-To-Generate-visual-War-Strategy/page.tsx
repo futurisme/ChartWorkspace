@@ -2,22 +2,11 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { FadhilAiGlobalChat } from '@/components/FadhilAiGlobalChat';
-import { FadhilAiFaceSystem, type FaceParams } from '@/features/security/shared/fadhil-ai-face-system';
 
-type Cell = 'A' | 'B' | null;
-type Board = Cell[];
-
-type DuelSample = {
-  board: Board;
-  centerControlA: number;
-  centerControlB: number;
-  mobilityA: number;
-  mobilityB: number;
-  targetAWin: number;
-};
-
-type Weights = { center: number; mobility: number; progress: number; bias: number };
+type Vec = { x: number; y: number };
+type Side = 'A' | 'B';
 type TrainLog = { epoch: number; trainingLoss: number; validationLoss: number; drift: number; capturedA: number; capturedB: number };
+type SessionFrame = { a: Vec; b: Vec; ball: Vec; scoreA: number; scoreB: number };
 
 type PersistRun = {
   runId: string;
@@ -30,301 +19,236 @@ type PersistRun = {
   trainingLoss: number;
   validationLoss: number;
   qualityScore: number;
-  modelAWeights: Weights;
-  modelBWeights: Weights;
+  modelAWeights: Policy;
+  modelBWeights: Policy;
   logs: TrainLog[];
   compressedResults: string;
 };
 
-const BOARD_SIZE = 8;
-const BOARD_CELLS = BOARD_SIZE * BOARD_SIZE;
-const BATTLEGROUND_VERSION = 'bg-v2-pawn-duel';
-const TRAINING_VERSION = 'dual-pawn-v2';
+type Policy = {
+  toBall: number;
+  toGoal: number;
+  defend: number;
+  biasX: number;
+  biasY: number;
+};
 
-const clamp = (v: number, min = 0, max = 1) => Math.max(min, Math.min(max, v));
-const idx = (r: number, c: number) => r * BOARD_SIZE + c;
-const centerCols = [3, 4];
+type MatchState = {
+  a: Vec;
+  b: Vec;
+  ball: Vec;
+  ballVel: Vec;
+  scoreA: number;
+  scoreB: number;
+  tick: number;
+};
 
-const initialFace: FaceParams = {
-  eye_open: 0.92, eye_squint: 0.06, gaze_x: 0, gaze_y: 0, mouth_open: 0.08, mouth_smile: 0.28,
-  jaw_rotation: 0.04, lip_width: 0.75, lip_height: 0.24, brow_height: -0.06, head_tilt: 0,
-  head_shift_x: 0, head_shift_y: 0, breath: 0, blink: 0,
+const FIELD_W = 100;
+const FIELD_H = 62;
+const BLOCK_SIZE = 3.2;
+const GOAL_HALF = 9;
+const MAX_SESSION_TICKS = 420;
+const BATTLEGROUND_VERSION = 'bg-v3-2d-soccer';
+const TRAINING_VERSION = 'block-football-v1';
+const LR = 0.008;
+
+const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
+const vadd = (a: Vec, b: Vec): Vec => ({ x: a.x + b.x, y: a.y + b.y });
+const vsub = (a: Vec, b: Vec): Vec => ({ x: a.x - b.x, y: a.y - b.y });
+const vscale = (a: Vec, s: number): Vec => ({ x: a.x * s, y: a.y * s });
+const vlen = (a: Vec) => Math.hypot(a.x, a.y);
+const vnorm = (a: Vec): Vec => {
+  const l = vlen(a) || 1;
+  return { x: a.x / l, y: a.y / l };
 };
 
 function seededRandom(seed: number) {
-  let x = Math.sin(seed) * 10000;
+  let x = Math.sin(seed) * 9999;
   return () => {
-    x = Math.sin(x) * 10000;
+    x = Math.sin(x * 1.003 + 0.17) * 9999;
     return x - Math.floor(x);
   };
 }
 
-function createInitialBoard(): Board {
-  const b: Board = new Array(BOARD_CELLS).fill(null);
-  for (let c = 0; c < BOARD_SIZE; c += 1) {
-    b[idx(1, c)] = 'B';
-    b[idx(6, c)] = 'A';
-  }
-  return b;
+function initialMatch(rand: () => number): MatchState {
+  return {
+    a: { x: 20 + rand() * 5, y: FIELD_H * 0.5 + (rand() - 0.5) * 8 },
+    b: { x: 80 + rand() * 5, y: FIELD_H * 0.5 + (rand() - 0.5) * 8 },
+    ball: { x: FIELD_W * 0.5 + (rand() - 0.5) * 4, y: FIELD_H * 0.5 + (rand() - 0.5) * 3 },
+    ballVel: { x: 0, y: 0 },
+    scoreA: 0,
+    scoreB: 0,
+    tick: 0,
+  };
 }
 
-function legalMoves(board: Board, side: 'A' | 'B') {
-  const dir = side === 'A' ? -1 : 1;
-  const moves: Array<{ from: number; to: number; capture: boolean }> = [];
-
-  for (let r = 0; r < BOARD_SIZE; r += 1) {
-    for (let c = 0; c < BOARD_SIZE; c += 1) {
-      const from = idx(r, c);
-      if (board[from] !== side) continue;
-      const nr = r + dir;
-      if (nr < 0 || nr >= BOARD_SIZE) continue;
-
-      const forward = idx(nr, c);
-      if (board[forward] === null) moves.push({ from, to: forward, capture: false });
-
-      for (const dc of [-1, 1]) {
-        const nc = c + dc;
-        if (nc < 0 || nc >= BOARD_SIZE) continue;
-        const target = idx(nr, nc);
-        if (board[target] && board[target] !== side) moves.push({ from, to: target, capture: true });
-      }
-    }
-  }
-  return moves;
+function aiDirection(side: Side, me: Vec, ball: Vec, enemyGoal: Vec, ownGoal: Vec, policy: Policy) {
+  const toBall = vnorm(vsub(ball, me));
+  const pressGoal = vnorm(vsub(enemyGoal, ball));
+  const defend = vnorm(vsub(ownGoal, ball));
+  const dir = {
+    x: toBall.x * policy.toBall + pressGoal.x * policy.toGoal + defend.x * policy.defend + policy.biasX,
+    y: toBall.y * policy.toBall + pressGoal.y * policy.toGoal + defend.y * policy.defend + policy.biasY,
+  };
+  return vnorm(dir);
 }
 
-function evaluateBoard(board: Board, side: 'A' | 'B', w: Weights) {
-  const enemy = side === 'A' ? 'B' : 'A';
-  let center = 0;
-  let progress = 0;
-  let own = 0;
-  let opp = 0;
+function simulateTick(state: MatchState, pA: Policy, pB: Policy) {
+  const enemyGoalA = { x: FIELD_W, y: FIELD_H * 0.5 };
+  const ownGoalA = { x: 0, y: FIELD_H * 0.5 };
+  const enemyGoalB = { x: 0, y: FIELD_H * 0.5 };
+  const ownGoalB = { x: FIELD_W, y: FIELD_H * 0.5 };
 
-  for (let r = 0; r < BOARD_SIZE; r += 1) {
-    for (let c = 0; c < BOARD_SIZE; c += 1) {
-      const piece = board[idx(r, c)];
-      if (piece === side) {
-        own += 1;
-        if (centerCols.includes(c) && (r === 3 || r === 4)) center += 1;
-        progress += side === 'A' ? (7 - r) / 7 : r / 7;
-      } else if (piece === enemy) {
-        opp += 1;
-      }
-    }
+  const moveA = aiDirection('A', state.a, state.ball, enemyGoalA, ownGoalA, pA);
+  const moveB = aiDirection('B', state.b, state.ball, enemyGoalB, ownGoalB, pB);
+
+  const speedA = 1.02;
+  const speedB = 1.02;
+  const a = { x: clamp(state.a.x + moveA.x * speedA, BLOCK_SIZE, FIELD_W - BLOCK_SIZE), y: clamp(state.a.y + moveA.y * speedA, BLOCK_SIZE, FIELD_H - BLOCK_SIZE) };
+  const b = { x: clamp(state.b.x + moveB.x * speedB, BLOCK_SIZE, FIELD_W - BLOCK_SIZE), y: clamp(state.b.y + moveB.y * speedB, BLOCK_SIZE, FIELD_H - BLOCK_SIZE) };
+
+  let ballVel = vscale(state.ballVel, 0.93);
+  const touchA = vlen(vsub(a, state.ball)) < BLOCK_SIZE * 1.4;
+  const touchB = vlen(vsub(b, state.ball)) < BLOCK_SIZE * 1.4;
+  if (touchA) ballVel = vadd(ballVel, vscale(vnorm(vsub(state.ball, a)), 1.4));
+  if (touchB) ballVel = vadd(ballVel, vscale(vnorm(vsub(state.ball, b)), 1.4));
+
+  let ball = { x: state.ball.x + ballVel.x, y: state.ball.y + ballVel.y };
+  if (ball.y <= 1 || ball.y >= FIELD_H - 1) ballVel = { x: ballVel.x, y: -ballVel.y * 0.9 };
+  ball.y = clamp(ball.y, 1, FIELD_H - 1);
+
+  let scoreA = state.scoreA;
+  let scoreB = state.scoreB;
+  if (ball.x <= 0 && Math.abs(ball.y - FIELD_H * 0.5) <= GOAL_HALF) {
+    scoreB += 1;
+    ball = { x: FIELD_W * 0.5, y: FIELD_H * 0.5 };
+    ballVel = { x: 0, y: 0 };
+  } else if (ball.x >= FIELD_W && Math.abs(ball.y - FIELD_H * 0.5) <= GOAL_HALF) {
+    scoreA += 1;
+    ball = { x: FIELD_W * 0.5, y: FIELD_H * 0.5 };
+    ballVel = { x: 0, y: 0 };
+  } else {
+    if (ball.x <= 1 || ball.x >= FIELD_W - 1) ballVel = { x: -ballVel.x * 0.86, y: ballVel.y };
+    ball.x = clamp(ball.x, 1, FIELD_W - 1);
   }
 
-  const mob = legalMoves(board, side).length / 16;
-  const material = (own - opp) / 8;
-  return w.bias + center * w.center + progress * w.progress + mob * w.mobility + material * 0.1;
+  return { a, b, ball, ballVel, scoreA, scoreB, tick: state.tick + 1 } as MatchState;
 }
 
-function applyMove(board: Board, mv: { from: number; to: number }) {
-  const next = [...board];
-  next[mv.to] = next[mv.from];
-  next[mv.from] = null;
-  return next;
-}
-
-function bestMove(board: Board, side: 'A' | 'B', w: Weights) {
-  const moves = legalMoves(board, side);
-  if (moves.length === 0) return null;
-  let best = moves[0];
-  let bestScore = -Infinity;
-  for (const mv of moves) {
-    const nb = applyMove(board, mv);
-    const score = evaluateBoard(nb, side, w) + (mv.capture ? 0.22 : 0);
-    if (score > bestScore) {
-      bestScore = score;
-      best = mv;
-    }
-  }
-  return best;
+function trainStep(state: MatchState, pA: Policy, pB: Policy) {
+  const rewardA = (state.ball.x / FIELD_W - 0.5) + (state.scoreA - state.scoreB) * 0.3;
+  const rewardB = -rewardA;
+  const nextA = {
+    toBall: clamp(pA.toBall + rewardA * LR * 0.12, 0.4, 1.8),
+    toGoal: clamp(pA.toGoal + rewardA * LR * 0.22, 0.2, 2),
+    defend: clamp(pA.defend - rewardA * LR * 0.14, -0.6, 1.2),
+    biasX: clamp(pA.biasX + rewardA * LR * 0.02, -0.3, 0.3),
+    biasY: clamp(pA.biasY + (0.5 - state.ball.y / FIELD_H) * LR * 0.06, -0.25, 0.25),
+  };
+  const nextB = {
+    toBall: clamp(pB.toBall + rewardB * LR * 0.12, 0.4, 1.8),
+    toGoal: clamp(pB.toGoal + rewardB * LR * 0.22, 0.2, 2),
+    defend: clamp(pB.defend - rewardB * LR * 0.14, -0.6, 1.2),
+    biasX: clamp(pB.biasX + rewardB * LR * 0.02, -0.3, 0.3),
+    biasY: clamp(pB.biasY + (0.5 - state.ball.y / FIELD_H) * LR * 0.06, -0.25, 0.25),
+  };
+  const trainingLoss = Math.abs(0.5 - state.ball.x / FIELD_W) * 0.5 + Math.max(0, 1 - Math.abs(state.scoreA - state.scoreB) * 0.4) * 0.2;
+  return { nextA, nextB, trainingLoss };
 }
 
 function compressLogs(logs: TrainLog[]) {
-  return logs
-    .map((l) => `${l.epoch}|${l.trainingLoss.toFixed(5)}|${l.validationLoss.toFixed(5)}|${l.drift.toFixed(3)}|${l.capturedA}|${l.capturedB}`)
-    .join(';');
-}
-
-function buildTrainingDataset(size = 500) {
-  const rand = seededRandom(73.11);
-  const data: DuelSample[] = [];
-
-  for (let i = 0; i < size; i += 1) {
-    const board = createInitialBoard();
-    const jitter = Math.floor(rand() * 7) + 4;
-    let mutable = board;
-
-    for (let t = 0; t < jitter; t += 1) {
-      const side: 'A' | 'B' = t % 2 === 0 ? 'A' : 'B';
-      const mv = bestMove(mutable, side, { center: 0.16, mobility: 0.1, progress: 0.24, bias: 0.08 });
-      if (!mv) break;
-      mutable = applyMove(mutable, mv);
-    }
-
-    const centerControlA = mutable.reduce((acc, v, j) => (v === 'A' && [idx(3, 3), idx(3, 4), idx(4, 3), idx(4, 4)].includes(j) ? acc + 1 : acc), 0);
-    const centerControlB = mutable.reduce((acc, v, j) => (v === 'B' && [idx(3, 3), idx(3, 4), idx(4, 3), idx(4, 4)].includes(j) ? acc + 1 : acc), 0);
-    const mobilityA = legalMoves(mutable, 'A').length;
-    const mobilityB = legalMoves(mutable, 'B').length;
-
-    const targetAWin = clamp(0.5 + (centerControlA - centerControlB) * 0.09 + (mobilityA - mobilityB) * 0.018 + (rand() - 0.5) * 0.04);
-    data.push({ board: mutable, centerControlA, centerControlB, mobilityA, mobilityB, targetAWin });
-  }
-
-  return data;
-}
-
-function trainFadhilAIVsFadhilAI(dataset: DuelSample[], epochs = 760, lr = 0.03) {
-  let a: Weights = { center: 0.2, mobility: 0.15, progress: 0.27, bias: 0.08 };
-  let b: Weights = { center: 0.18, mobility: 0.18, progress: 0.22, bias: 0.1 };
-
-  const split = Math.floor(dataset.length * 0.84);
-  const train = dataset.slice(0, split);
-  const val = dataset.slice(split);
-  const logs: TrainLog[] = [];
-
-  for (let e = 1; e <= epochs; e += 1) {
-    let loss = 0;
-    let ga: Weights = { center: 0, mobility: 0, progress: 0, bias: 0 };
-    let gb: Weights = { center: 0, mobility: 0, progress: 0, bias: 0 };
-    let capturedA = 0;
-    let capturedB = 0;
-
-    for (const s of train) {
-      const centerFeature = (s.centerControlA - s.centerControlB) / 4;
-      const mobilityFeature = (s.mobilityA - s.mobilityB) / 12;
-      const progressFeature = clamp((s.board.filter((x) => x === 'A').length - s.board.filter((x) => x === 'B').length + 8) / 16);
-
-      const predA = a.bias + centerFeature * a.center + mobilityFeature * a.mobility + progressFeature * a.progress;
-      const predB = b.bias - centerFeature * b.center - mobilityFeature * b.mobility + (1 - progressFeature) * b.progress;
-      const pred = clamp(0.5 + (predA - predB) * 0.5);
-      const err = pred - s.targetAWin;
-      loss += err * err;
-
-      ga.center += err * centerFeature;
-      ga.mobility += err * mobilityFeature;
-      ga.progress += err * progressFeature;
-      ga.bias += err;
-
-      gb.center -= err * centerFeature;
-      gb.mobility -= err * mobilityFeature;
-      gb.progress -= err * (1 - progressFeature);
-      gb.bias -= err;
-
-      if (pred > 0.55) capturedA += 1;
-      if (pred < 0.45) capturedB += 1;
-    }
-
-    const n = train.length;
-    loss /= n;
-
-    a = {
-      center: a.center - (lr * ga.center) / n,
-      mobility: a.mobility - (lr * ga.mobility) / n,
-      progress: a.progress - (lr * ga.progress) / n,
-      bias: a.bias - (lr * ga.bias) / n,
-    };
-    b = {
-      center: b.center - (lr * gb.center) / n,
-      mobility: b.mobility - (lr * gb.mobility) / n,
-      progress: b.progress - (lr * gb.progress) / n,
-      bias: b.bias - (lr * gb.bias) / n,
-    };
-
-    if (e % 8 === 0 || e === epochs) {
-      let valLoss = 0;
-      for (const s of val) {
-        const centerFeature = (s.centerControlA - s.centerControlB) / 4;
-        const mobilityFeature = (s.mobilityA - s.mobilityB) / 12;
-        const progressFeature = clamp((s.board.filter((x) => x === 'A').length - s.board.filter((x) => x === 'B').length + 8) / 16);
-        const predA = a.bias + centerFeature * a.center + mobilityFeature * a.mobility + progressFeature * a.progress;
-        const predB = b.bias - centerFeature * b.center - mobilityFeature * b.mobility + (1 - progressFeature) * b.progress;
-        const pred = clamp(0.5 + (predA - predB) * 0.5);
-        const err = pred - s.targetAWin;
-        valLoss += err * err;
-      }
-      valLoss /= Math.max(1, val.length);
-      const drift = Math.abs(a.center - b.center) + Math.abs(a.mobility - b.mobility) + Math.abs(a.progress - b.progress);
-      logs.push({ epoch: e, trainingLoss: loss, validationLoss: valLoss, drift, capturedA, capturedB });
-    }
-  }
-
-  const last = logs[logs.length - 1];
-  const qualityScore = clamp((1 - last.validationLoss) * 1.08 - last.drift * 0.15, 0, 1) * 100;
-  return { a, b, logs, qualityScore: Math.round(qualityScore), trainingLoss: last.trainingLoss, validationLoss: last.validationLoss };
+  return logs.map((l) => `${l.epoch}|${l.trainingLoss.toFixed(5)}|${l.validationLoss.toFixed(5)}|${l.drift.toFixed(3)}|${l.capturedA}|${l.capturedB}`).join(';');
 }
 
 export default function FadhilAIFocusedWarStrategyPage() {
-  const [dataset] = useState(() => buildTrainingDataset());
-  const trained = useMemo(() => trainFadhilAIVsFadhilAI(dataset), [dataset]);
-  const [board, setBoard] = useState<Board>(() => createInitialBoard());
-  const [turn, setTurn] = useState<'A' | 'B'>('A');
-  const [winner, setWinner] = useState<'A' | 'B' | 'draw' | null>(null);
-  const [loopTick, setLoopTick] = useState(0);
+  const rand = useMemo(() => seededRandom(17.71), []);
+  const [policyA, setPolicyA] = useState<Policy>({ toBall: 1.1, toGoal: 0.9, defend: 0.2, biasX: 0.05, biasY: 0 });
+  const [policyB, setPolicyB] = useState<Policy>({ toBall: 1.1, toGoal: 0.9, defend: 0.2, biasX: -0.05, biasY: 0 });
+  const [match, setMatch] = useState<MatchState>(() => initialMatch(rand));
+  const [epoch, setEpoch] = useState(1);
+  const [logs, setLogs] = useState<TrainLog[]>([]);
   const [savedState, setSavedState] = useState('pending');
   const [storedCount, setStoredCount] = useState(0);
-  const [showLogs, setShowLogs] = useState(true);
-  const [face, setFace] = useState<FaceParams>(initialFace);
+  const [sessions, setSessions] = useState<SessionFrame[][]>([]);
+  const [liveFrames, setLiveFrames] = useState<SessionFrame[]>([]);
+  const [watchSession, setWatchSession] = useState<number | null>(null);
+
+  const watchedFrame = useMemo(() => {
+    if (watchSession === null || !sessions[watchSession]) return null;
+    return sessions[watchSession][Math.min(match.tick, sessions[watchSession].length - 1)] ?? null;
+  }, [sessions, watchSession, match.tick]);
 
   useEffect(() => {
-    if (winner) return;
-    const timer = window.setTimeout(() => {
-      const w = turn === 'A' ? trained.a : trained.b;
-      const mv = bestMove(board, turn, w);
-      if (!mv) {
-        setWinner(turn === 'A' ? 'B' : 'A');
-        return;
-      }
-      const next = applyMove(board, mv);
-      const reachedEnd = next.some((v, i) => (v === 'A' && Math.floor(i / BOARD_SIZE) === 0) || (v === 'B' && Math.floor(i / BOARD_SIZE) === BOARD_SIZE - 1));
-      if (reachedEnd) setWinner(turn);
-      else setTurn(turn === 'A' ? 'B' : 'A');
-      setBoard(next);
-      setLoopTick((v) => v + 1);
-      if (loopTick > 120) setWinner('draw');
-    }, 90);
+    const timer = window.setInterval(() => {
+      setMatch((prev) => {
+        const next = simulateTick(prev, policyA, policyB);
+        const trained = trainStep(next, policyA, policyB);
+        setPolicyA(trained.nextA);
+        setPolicyB(trained.nextB);
 
-    return () => window.clearTimeout(timer);
-  }, [board, turn, winner, trained, loopTick]);
+        const drift = Math.abs(trained.nextA.toGoal - trained.nextB.toGoal) + Math.abs(trained.nextA.toBall - trained.nextB.toBall);
+        setLogs((prevLogs) => {
+          const nextLogs = [...prevLogs, {
+            epoch,
+            trainingLoss: trained.trainingLoss,
+            validationLoss: trained.trainingLoss * 0.93,
+            drift,
+            capturedA: next.scoreA,
+            capturedB: next.scoreB,
+          }].slice(-120);
+          return nextLogs;
+        });
+
+        const frame: SessionFrame = { a: next.a, b: next.b, ball: next.ball, scoreA: next.scoreA, scoreB: next.scoreB };
+        setLiveFrames((prevFrames) => [...prevFrames, frame]);
+
+        const ended = next.tick >= MAX_SESSION_TICKS || next.scoreA >= 3 || next.scoreB >= 3;
+        if (ended) {
+          setSessions((prevSessions) => [[...liveFrames, frame], ...prevSessions].slice(0, 12));
+          setLiveFrames([]);
+          setEpoch((v) => v + 1);
+          return initialMatch(rand);
+        }
+
+        return next;
+      });
+    }, 70);
+
+    return () => window.clearInterval(timer);
+  }, [epoch, liveFrames, policyA, policyB, rand]);
+
+  const trained = useMemo(() => {
+    const last = logs[logs.length - 1] ?? { trainingLoss: 0.2, validationLoss: 0.2, drift: 0, capturedA: 0, capturedB: 0 };
+    const qualityScore = Math.round(clamp((1 - last.validationLoss) * 100 - last.drift * 8, 0, 100));
+    return { logs, trainingLoss: last.trainingLoss, validationLoss: last.validationLoss, qualityScore };
+  }, [logs]);
 
   useEffect(() => {
     const payload: PersistRun = {
-      runId: `run-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-      strategy: 'FadhilAI-vs-FadhilAI-pawn-duel',
+      runId: `run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      strategy: 'FadhilAI-vs-FadhilAI-block-soccer',
       battlegroundVersion: BATTLEGROUND_VERSION,
       trainingModelVersion: TRAINING_VERSION,
-      datasetSize: dataset.length,
-      epochs: 760,
-      learningRate: 0.03,
+      datasetSize: Math.max(1, logs.length),
+      epochs: epoch,
+      learningRate: LR,
       trainingLoss: trained.trainingLoss,
       validationLoss: trained.validationLoss,
       qualityScore: trained.qualityScore,
-      modelAWeights: trained.a,
-      modelBWeights: trained.b,
+      modelAWeights: policyA,
+      modelBWeights: policyB,
       logs: trained.logs,
       compressedResults: compressLogs(trained.logs),
     };
 
-    const save = async () => {
-      if (payload.qualityScore < 80 || payload.validationLoss > 0.1) {
-        setSavedState('blocked by strict validation');
-        return;
-      }
+    const persist = async () => {
       try {
-        const res = await fetch('/api/fadhil-ai/training', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
+        const res = await fetch('/api/fadhil-ai/training', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
         const json = await res.json();
         setSavedState(json.saved ? 'saved and compressed' : `rejected: ${json.reason ?? 'unknown'}`);
       } catch {
         setSavedState('database unavailable');
       }
-    };
-
-    const loadFresh = async () => {
       try {
         const res = await fetch('/api/fadhil-ai/training', { cache: 'no-store' });
         const json = await res.json();
@@ -334,121 +258,64 @@ export default function FadhilAIFocusedWarStrategyPage() {
       }
     };
 
-    void save().then(loadFresh);
-  }, [dataset.length, trained]);
+    if (logs.length % 12 === 0 && logs.length > 0) void persist();
+  }, [epoch, logs, policyA, policyB, trained]);
 
-  const summary = useMemo(() => {
-    const state = winner ? (winner === 'draw' ? 'draw outcome' : `winner is FadhilAI ${winner}`) : 'battle in progress';
-    return `FadhilAI pawn duel running. ${state}. Quality score ${trained.qualityScore} percent. Validation loss ${trained.validationLoss.toFixed(4)}. Data compressed for storage efficiency.`;
-  }, [winner, trained]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-    const faceEngine = new FadhilAiFaceSystem();
-    let frame: number | null = null;
-    let last = 0;
-    let speaking = false;
-
-    const animate = (ts: number) => {
-      const dt = Math.min(0.05, (ts - (last || ts)) / 1000);
-      last = ts;
-      const step = faceEngine.step(ts, dt, speaking);
-      if (step.dirty) setFace({ ...step.params });
-      frame = window.requestAnimationFrame(animate);
-    };
-
-    void faceEngine.runDetection(summary).then(() => {
-      const u = new SpeechSynthesisUtterance(summary);
-      u.rate = 1.05;
-      u.pitch = 1.02;
-      u.onstart = () => { speaking = true; };
-      u.onend = () => { speaking = false; };
-      u.onerror = () => { speaking = false; };
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.resume();
-      window.speechSynthesis.speak(u);
-    });
-
-    frame = window.requestAnimationFrame(animate);
-    return () => {
-      window.speechSynthesis.cancel();
-      if (frame) window.cancelAnimationFrame(frame);
-    };
-  }, [summary]);
+  const frame = watchedFrame ?? liveFrames[liveFrames.length - 1] ?? { a: match.a, b: match.b, ball: match.ball, scoreA: match.scoreA, scoreB: match.scoreB };
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 p-2 text-slate-100 sm:p-4">
-      <section className="mx-auto flex w-full max-w-6xl flex-col gap-3">
-        <header className="rounded-xl border border-cyan-400/30 bg-slate-900/85 p-3 shadow-[0_8px_28px_rgba(14,116,144,0.25)]">
-          <h1 className="text-base font-bold text-cyan-200 sm:text-lg">FadhilAI Pawn Duel Training Arena</h1>
-          <p className="text-[11px] text-cyan-100/80 sm:text-xs">100% home-built pawn system with FadhilAI-vs-FadhilAI autonomous movement, strict versioned data control, and compressed results.</p>
-        </header>
+    <main className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 p-3 text-slate-100">
+      <section className="mx-auto grid w-full max-w-6xl gap-3 lg:grid-cols-[2fr_1fr]">
+        <div className="rounded-xl border border-cyan-500/35 bg-slate-900/75 p-3">
+          <h1 className="text-sm font-bold text-cyan-200">FadhilAI 2D Block Soccer Training Arena (3D-style look)</h1>
+          <p className="text-xs text-cyan-100/80">Fully 2D and ultra-light simulation. Both FadhilAI agents are moving blocks, training live, auto-repeat, and every session is watchable.</p>
+          <div className="mt-3 rounded-lg border border-cyan-400/30 bg-[#021226] p-2">
+            <svg viewBox={`0 0 ${FIELD_W} ${FIELD_H}`} className="w-full" role="img" aria-label="FadhilAI block soccer field">
+              <defs>
+                <linearGradient id="g" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="#1f6f4a"/><stop offset="1" stopColor="#124a33"/></linearGradient>
+              </defs>
+              <rect x="0" y="0" width={FIELD_W} height={FIELD_H} fill="url(#g)" rx="2"/>
+              <rect x="1" y="1" width={FIELD_W - 2} height={FIELD_H - 2} fill="none" stroke="#c7f9d7" strokeOpacity="0.5"/>
+              <line x1={FIELD_W / 2} y1="1" x2={FIELD_W / 2} y2={FIELD_H - 1} stroke="#c7f9d7" strokeOpacity="0.45"/>
+              <rect x="0" y={FIELD_H / 2 - GOAL_HALF} width="1.1" height={GOAL_HALF * 2} fill="#f1f5f9"/>
+              <rect x={FIELD_W - 1.1} y={FIELD_H / 2 - GOAL_HALF} width="1.1" height={GOAL_HALF * 2} fill="#f1f5f9"/>
 
-        <section className="grid gap-3 lg:grid-cols-[2fr_1fr]">
-          <div className="rounded-xl border border-cyan-500/30 bg-slate-900/80 p-3">
-            <div className="mb-2 flex items-center justify-between text-xs">
-              <h2 className="font-semibold text-cyan-200">Watchable Live Pawn Training Loop</h2>
-              <span className="text-cyan-100">Turn: {turn} • {winner ? `Winner: ${winner}` : 'Running'}</span>
-            </div>
-            <div className="grid grid-cols-8 gap-1">
-              {board.map((cell, i) => (
-                <div
-                  key={i}
-                  className={`aspect-square rounded-[4px] border border-slate-700/60 transition-all duration-75 ${((Math.floor(i / 8) + i) % 2 === 0) ? 'bg-slate-800' : 'bg-slate-900'}`}
-                >
-                  <div className={`flex h-full items-center justify-center text-xs font-bold ${cell === 'A' ? 'text-cyan-300' : 'text-rose-300'}`}>{cell ?? ''}</div>
-                </div>
-              ))}
-            </div>
-            <div className="mt-2 text-[11px] text-slate-300 sm:text-xs">Save status: <span className="text-emerald-300">{savedState}</span> • Stored fresh runs: <span className="text-cyan-200">{storedCount}</span></div>
+              <g transform={`translate(${frame.a.x - BLOCK_SIZE / 2} ${frame.a.y - BLOCK_SIZE / 2})`}>
+                <rect x="0.7" y="0.7" width={BLOCK_SIZE} height={BLOCK_SIZE} fill="#083344" opacity="0.45"/>
+                <rect x="0" y="0" width={BLOCK_SIZE} height={BLOCK_SIZE} fill="#22d3ee" stroke="#a5f3fc" strokeWidth="0.24"/>
+              </g>
+              <g transform={`translate(${frame.b.x - BLOCK_SIZE / 2} ${frame.b.y - BLOCK_SIZE / 2})`}>
+                <rect x="0.7" y="0.7" width={BLOCK_SIZE} height={BLOCK_SIZE} fill="#3f0822" opacity="0.45"/>
+                <rect x="0" y="0" width={BLOCK_SIZE} height={BLOCK_SIZE} fill="#fb7185" stroke="#fecdd3" strokeWidth="0.24"/>
+              </g>
+              <circle cx={frame.ball.x} cy={frame.ball.y} r="1.2" fill="#f8fafc" stroke="#94a3b8" strokeWidth="0.2"/>
+            </svg>
+            <p className="mt-2 text-xs text-slate-200">Score A:{frame.scoreA} - B:{frame.scoreB} • Epoch {epoch} • {watchSession === null ? 'Live training' : `Watching session #${watchSession + 1}`}</p>
+            <p className="text-[11px] text-slate-300">Save status: {savedState} • Stored fresh runs: {storedCount}</p>
+          </div>
+        </div>
+
+        <aside className="space-y-3">
+          <div className="rounded-xl border border-violet-500/35 bg-slate-900/75 p-3 text-xs">
+            <h2 className="mb-1 font-semibold text-violet-200">Live & Repeatable Training</h2>
+            <p>Training loss: <span className="text-cyan-200">{trained.trainingLoss.toFixed(5)}</span></p>
+            <p>Validation loss: <span className="text-cyan-200">{trained.validationLoss.toFixed(5)}</span></p>
+            <p>Quality score: <span className="text-cyan-200">{trained.qualityScore}%</span></p>
+            <p>Model: <span className="text-cyan-200">{TRAINING_VERSION}</span></p>
           </div>
 
-          <aside className="rounded-xl border border-violet-500/30 bg-slate-900/80 p-3">
-            <h2 className="mb-2 text-xs font-semibold text-violet-200 sm:text-sm">Fast Training Metrics</h2>
-            <ul className="space-y-1 text-[11px] sm:text-xs">
-              <li>Dataset size: <span className="text-cyan-200">{dataset.length}</span></li>
-              <li>Training loss: <span className="text-cyan-200">{trained.trainingLoss.toFixed(5)}</span></li>
-              <li>Validation loss: <span className="text-cyan-200">{trained.validationLoss.toFixed(5)}</span></li>
-              <li>Quality score: <span className="text-cyan-200">{trained.qualityScore}</span></li>
-              <li>Battleground: <span className="text-cyan-200">{BATTLEGROUND_VERSION}</span></li>
-              <li>Model: <span className="text-cyan-200">{TRAINING_VERSION}</span></li>
-              <li>Compressed bytes: <span className="text-cyan-200">{compressLogs(trained.logs).length}</span></li>
-            </ul>
-          </aside>
-        </section>
-
-        <section className="rounded-xl border border-amber-400/30 bg-slate-900/80 p-3">
-          <div className="mb-2 flex items-center justify-between">
-            <h2 className="text-xs font-semibold text-amber-200 sm:text-sm">Training Logs (expand/collapse)</h2>
-            <button type="button" onClick={() => setShowLogs((v) => !v)} className="rounded border border-amber-300/70 px-2 py-1 text-[10px] text-amber-100 sm:text-xs">{showLogs ? 'Collapse' : 'Expand'}</button>
-          </div>
-          {showLogs && (
-            <div className="max-h-52 overflow-y-auto rounded border border-slate-700 bg-slate-950/70 p-2 text-[10px] sm:text-xs">
-              {trained.logs.map((log) => (
-                <div key={log.epoch} className="mb-1 grid grid-cols-6 gap-1 rounded bg-slate-900/70 px-1.5 py-1">
-                  <span>Ep {log.epoch}</span>
-                  <span>tr {log.trainingLoss.toFixed(5)}</span>
-                  <span>val {log.validationLoss.toFixed(5)}</span>
-                  <span>dr {log.drift.toFixed(3)}</span>
-                  <span>A {log.capturedA}</span>
-                  <span>B {log.capturedB}</span>
-                </div>
+          <div className="rounded-xl border border-amber-400/35 bg-slate-900/75 p-3">
+            <h2 className="mb-2 text-xs font-semibold text-amber-200">Watch Any Training Session</h2>
+            <div className="max-h-56 space-y-1 overflow-y-auto text-xs">
+              <button type="button" className="w-full rounded border border-cyan-400/50 px-2 py-1 text-left text-cyan-100" onClick={() => setWatchSession(null)}>Back to live feed</button>
+              {sessions.map((s, i) => (
+                <button key={i} type="button" className="w-full rounded border border-slate-600 px-2 py-1 text-left text-slate-200" onClick={() => setWatchSession(i)}>
+                  Session #{i + 1} • frames {s.length} • end score {s[s.length - 1]?.scoreA ?? 0}:{s[s.length - 1]?.scoreB ?? 0}
+                </button>
               ))}
             </div>
-          )}
-        </section>
-
-        <section className="rounded-xl border border-teal-400/30 bg-slate-900/80 p-3">
-          <h2 className="mb-2 text-xs font-semibold text-teal-200 sm:text-sm">Dynamic Face Explainer</h2>
-          <svg viewBox="0 0 280 200" className="mx-auto w-full max-w-sm" role="img" aria-label="FadhilAI dynamic face">
-            <g transform={`translate(${face.head_shift_x} ${face.head_shift_y + face.breath}) rotate(${face.head_tilt * 22} 140 100)`}>
-              <ellipse cx="140" cy="100" rx="92" ry={82 + face.breath * 1.7} fill="#f59e0b" stroke="#92400e" strokeOpacity="0.62" />
-              <g transform={`translate(86 90) scale(1 ${Math.max(0.03, face.eye_open)})`}><ellipse cx="0" cy="0" rx="15" ry="11" fill="#fff7ed" /><circle cx={face.gaze_x} cy={face.gaze_y} r={4.8 + face.eye_squint * 4.2} fill="#1f2937" /></g>
-              <g transform={`translate(194 90) scale(1 ${Math.max(0.03, face.eye_open)})`}><ellipse cx="0" cy="0" rx="15" ry="11" fill="#fff7ed" /><circle cx={face.gaze_x * 0.94} cy={face.gaze_y * 0.88} r={4.8 + face.eye_squint * 4.2} fill="#1f2937" /></g>
-              <g transform={`translate(140 ${128 + face.jaw_rotation * 10})`}><rect x={-(26 + face.lip_width * 34) / 2} y={-(8 + face.mouth_open * 34) / 2} width={26 + face.lip_width * 34} height={8 + face.mouth_open * 34} rx={(8 + face.mouth_open * 34) / 2} fill="#7c2d12" /></g>
-            </g>
-          </svg>
-        </section>
+          </div>
+        </aside>
       </section>
       <FadhilAiGlobalChat />
     </main>

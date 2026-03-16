@@ -960,7 +960,7 @@ export default function GameIdeasPage() {
   }, [openCardIndex, nav, currentCategory, items.length]);
 
   return (
-    <main className="architect-shell">
+    <main className={`architect-shell ${adminMode ? 'with-admin-panel' : ''}`}>
       <header className="architect-header">
         <h1>Created by Fadhil Akbar</h1>
         <div className="header-actions">
@@ -1292,6 +1292,10 @@ export default function GameIdeasPage() {
 
       <style jsx>{`
         .architect-shell {
+          --header-h: 52px;
+          --footer-h: 50px;
+          --admin-h: 0px;
+          --shell-v-pad: 20px;
           --bg: #010103;
           --surface: rgba(10, 10, 15, 0.8);
           --accent: #00f2ff;
@@ -1315,6 +1319,9 @@ export default function GameIdeasPage() {
           font-family: 'Orbitron', 'Rajdhani', 'Inter', 'Segoe UI', sans-serif;
           font-weight: 700;
           overflow: hidden;
+        }
+        .architect-shell.with-admin-panel {
+          --admin-h: 56px;
         }
         .architect-header {
           padding: 7px 10px;
@@ -1626,19 +1633,33 @@ export default function GameIdeasPage() {
         }
 
         @media (max-width: 768px) {
+          .architect-shell {
+            --header-h: 46px;
+            --footer-h: 48px;
+            --shell-v-pad: 16px;
+          }
+          .architect-shell.with-admin-panel {
+            --admin-h: 54px;
+          }
           .architect-header { padding: 6px 8px; gap: 6px; }
           .architect-header h1 { font-size: 0.72rem; letter-spacing: 0.2px; max-width: 42vw; }
           .header-actions { gap: 4px; }
           .sync-state { font-size: 8px; }
           .admin-toggle, .sync-now { font-size: 8px; padding: 4px 6px; }
-          .layout { flex-direction: column; padding: 8px; gap: 8px; }
+          .layout {
+            flex-direction: column;
+            padding: 8px;
+            gap: 8px;
+            height: calc(100dvh - var(--header-h) - var(--footer-h) - var(--admin-h));
+          }
           .sidebar { width: 100%; }
           .sub-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: min(42dvh, 320px); gap: 5px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
           .tab-btn { text-align: center; padding: 6px 5px; }
           .content-area {
             grid-template-columns: 1fr;
             gap: 7px;
-            max-height: min(68dvh, calc(100dvh - 180px));
+            flex: 1;
+            max-height: calc(100dvh - var(--header-h) - var(--footer-h) - var(--admin-h) - var(--shell-v-pad) - 96px);
             overflow-y: auto;
             overscroll-behavior: contain;
             -webkit-overflow-scrolling: touch;
