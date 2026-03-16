@@ -1384,7 +1384,7 @@ export default function GameIdeasPage() {
                             folder.items.map((item, itemIndex) => {
                               const itemOpen = openFolderItemIndex === itemIndex;
                               return (
-                                <article key={`folder-item-${folder.name}-${item.name}-${itemIndex}`} className={`folder-item-card ${itemOpen ? 'open' : ''}`}>
+                                <article key={`folder-item-${folder.name}-${item.name}-${itemIndex}`} className={`card folder-item-card ${itemOpen ? 'open' : ''}`}>
                                   <button
                                     type="button"
                                     className="folder-item-head"
@@ -1952,39 +1952,35 @@ export default function GameIdeasPage() {
         .card.open .card-body-wrapper { grid-template-rows: 1fr; }
         .card-body { overflow: hidden; contain: content; }
         .folder-card {
-          background: linear-gradient(140deg, rgba(255, 255, 255, 0.98), rgba(240, 249, 255, 0.96));
-          border: 1px solid rgba(125, 211, 252, 0.88);
-          box-shadow: 0 0 18px rgba(56, 189, 248, 0.22), inset 0 0 0 1px rgba(56, 189, 248, 0.18);
-          color: #0f172a;
+          background: linear-gradient(145deg, rgba(34, 5, 14, 0.95), rgba(66, 10, 28, 0.92));
+          border: 1px solid rgba(127, 29, 29, 0.85);
+          box-shadow: 0 0 18px rgba(127, 29, 29, 0.32), inset 0 0 0 1px rgba(185, 28, 28, 0.22);
+          color: #f8fafc;
         }
         .folder-head {
           background: transparent;
-          color: #0f172a;
+          color: #f8fafc;
           padding-right: 120px;
         }
-        .folder-head h3 { margin: 0; font-size: 11px; color: #0f172a; line-height: 1.15; }
+        .folder-head h3 { margin: 0; font-size: 11px; color: #f8fafc; line-height: 1.15; }
         .folder-expand-indicator {
-          color: #000000;
-          border-color: rgba(0, 0, 0, 0.88);
-          box-shadow: 0 0 10px rgba(2, 6, 23, 0.28);
+          color: #67f6ff;
+          border-color: rgba(0, 242, 255, 0.78);
+          box-shadow: 0 0 12px rgba(0, 242, 255, 0.42);
           font-size: 10px;
           padding: 2px 8px;
           font-weight: 800;
         }
         .folder-tag {
-          color: #0369a1;
-          border-color: rgba(14, 116, 144, 0.45);
-          box-shadow: 0 0 8px rgba(56, 189, 248, 0.2);
+          color: #fecaca;
+          border-color: rgba(248, 113, 113, 0.52);
+          box-shadow: 0 0 8px rgba(127, 29, 29, 0.35);
         }
-        .folder-slot-shell { outline-color: rgba(56, 189, 248, 0.45); }
+        .folder-slot-shell { outline-color: rgba(127, 29, 29, 0.55); }
         .folder-body-wrapper { grid-template-rows: 1fr; }
-        .folder-inner { padding: 0 10px 10px; border-top: 1px solid rgba(14, 116, 144, 0.2); display: grid; gap: 8px; }
+        .folder-inner { padding: 0 10px 10px; border-top: 1px solid rgba(248, 113, 113, 0.22); display: grid; gap: 8px; }
         .folder-item-card {
           border-radius: 8px;
-          overflow: hidden;
-          background: var(--surface);
-          border: 1px solid rgba(0, 242, 255, 0.42);
-          box-shadow: 0 0 18px rgba(0, 242, 255, 0.2), inset 0 0 0 1px rgba(0, 242, 255, 0.14);
         }
         .folder-item-card.open {
           border-color: rgba(0, 242, 255, 0.72);
