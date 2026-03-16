@@ -1478,6 +1478,7 @@ export default function GameIdeasPage() {
           --border: rgba(0, 242, 255, 0.3);
           --neon: 0 0 7px rgba(0, 242, 255, 0.4), 0 0 20px rgba(0, 242, 255, 0.2);
           --neon-intense: 0 0 10px #00f2ff, 0 0 30px rgba(0, 242, 255, 0.5), 0 0 60px rgba(0, 242, 255, 0.2);
+          height: 100dvh;
           min-height: 100dvh;
           display: flex;
           flex-direction: column;
@@ -1769,19 +1770,17 @@ export default function GameIdeasPage() {
           letter-spacing: 0.08em;
         }
         .footer {
+          position: fixed;
+          left: 0;
+          right: 0;
+          bottom: calc(var(--admin-h) + env(safe-area-inset-bottom));
+          z-index: 850;
           display: grid;
           grid-template-columns: repeat(4, minmax(0, 1fr));
           gap: 6px;
           border-top: 1px solid var(--border);
           padding: 8px;
           background: #000;
-        }
-        .architect-shell.with-admin-panel .footer {
-          position: fixed;
-          left: 0;
-          right: 0;
-          bottom: calc(var(--admin-h) + env(safe-area-inset-bottom));
-          z-index: 850;
           margin-bottom: 0;
         }
         .nav-item { border: 0; background: transparent; color: #ddf7ff; padding: 6px 10px; cursor: pointer; font-size: 10px; font-weight: 800; max-width: 24vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: none; touch-action: pan-y; }
