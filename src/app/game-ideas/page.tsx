@@ -230,6 +230,7 @@ export default function GameIdeasPage() {
   const [itemRenameDraft, setItemRenameDraft] = useState<ItemDraft>(emptyDraft());
   const [showFolderModal, setShowFolderModal] = useState(false);
   const [openFolders, setOpenFolders] = useState<Record<string, boolean>>({});
+  const [openFolderItemCards, setOpenFolderItemCards] = useState<Record<string, number | null>>({});
   const [transferItemIndex, setTransferItemIndex] = useState<number | null>(null);
   const [navOrder, setNavOrder] = useState<GameIdeaNav[]>([...GAME_IDEA_NAV_ORDER]);
   const [activeDrag, setActiveDrag] = useState<ActiveDrag | null>(null);
@@ -325,6 +326,7 @@ export default function GameIdeasPage() {
     const firstCategory = db[nav].categories[0] ?? '';
     setCategory((prev) => (db[nav].categories.includes(prev) ? prev : firstCategory));
     setOpenCardIndex(null);
+    setOpenFolderItemCards({});
   }, [db, nav]);
 
   useEffect(() => {
@@ -1299,45 +1301,81 @@ export default function GameIdeasPage() {
           {currentFolders.map((folder, folderIndex) => {
             const folderKey = `${nav}:${currentCategory}:${folderIndex}`;
             const isOpenFolder = openFolders[folderKey] ?? true;
+            const openFolderItemIndex = openFolderItemCards[folderKey] ?? null;
             return (
-              <article key={`folder-${folder.name}-${folderIndex}`} className={`card folder-card ${isOpenFolder ? 'open' : ''}`}>
-                <button
-                  type="button"
-                  className="card-head folder-head"
-                  onClick={() => setOpenFolders((prev) => ({ ...prev, [folderKey]: !isOpenFolder }))}
-                >
-                  <div>
-                    <h3>{folder.name}</h3>
-                    <div className="card-meta">
-                      <span className="tag folder-tag">{folder.items.length} ITEMCARDS</span>
+              <div key={`folder-slot-${folder.name}-${folderIndex}`} className="slot-shell item-slot-shell folder-slot-shell">
+                <article className={`card folder-card ${isOpenFolder ? 'open' : ''}`}>
+                  <button
+                    type="button"
+                    className="card-head folder-head"
+                    onClick={() => setOpenFolders((prev) => ({ ...prev, [folderKey]: !isOpenFolder }))}
+                  >
+                    <div>
+                      <h3>{folder.name}</h3>
+                      <div className="card-meta">
+                        <span className="tag folder-tag">{folder.items.length} ITEMCARDS</span>
+                      </div>
+                    </div>
+                    <span className="expand-indicator folder-expand-indicator" aria-hidden="true">
+                      {isOpenFolder ? '▲ Collapse folder' : '▼ Expand folder'}
+                    </span>
+                  </button>
+                  <div className="card-body-wrapper folder-body-wrapper">
+                    <div className="card-body">
+                      {isOpenFolder ? (
+                        <div className="inner folder-inner">
+                          {folder.items.length === 0 ? (
+                            <p className="desc folder-desc">Folder kosong.</p>
+                          ) : (
+                            folder.items.map((item, itemIndex) => {
+                              const itemOpen = openFolderItemIndex === itemIndex;
+                              return (
+                                <article key={`folder-item-${folder.name}-${item.name}-${itemIndex}`} className={`folder-item-card ${itemOpen ? 'open' : ''}`}>
+                                  <button
+                                    type="button"
+                                    className="folder-item-head"
+                                    onClick={() => setOpenFolderItemCards((prev) => ({
+                                      ...prev,
+                                      [folderKey]: prev[folderKey] === itemIndex ? null : itemIndex,
+                                    }))}
+                                  >
+                                    <h4>{item.name}</h4>
+                                    <div className="card-meta">
+                                      <span className="tag folder-tag">{item.tag || 'UNTAGGED'}</span>
+                                      <span className="expand-indicator folder-expand-indicator" aria-hidden="true">
+                                        {itemOpen ? '▲ Collapse detail' : '▼ Expand detail'}
+                                      </span>
+                                    </div>
+                                  </button>
+                                  <div className="card-body-wrapper folder-item-body-wrapper">
+                                    <div className="card-body">
+                                      {itemOpen ? (
+                                        <div className="inner folder-item-inner">
+                                          <p className="desc desc-content folder-desc">{item.desc || 'No description.'}</p>
+                                          {Object.entries(item.stats).length === 0 ? (
+                                            <p className="desc folder-desc">No stats.</p>
+                                          ) : (
+                                            Object.entries(item.stats).map(([key, value]) => (
+                                              <div key={`${folder.name}-${item.name}-${key}`} className="stat folder-stat">
+                                                <span className="stat-label">{key}:</span>
+                                                <span className="stat-value folder-stat-value">{value}</span>
+                                              </div>
+                                            ))
+                                          )}
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                </article>
+                              );
+                            })
+                          )}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
-                  <span className="expand-indicator" aria-hidden="true">
-                    {isOpenFolder ? '▲ Collapse folder' : '▼ Expand folder'}
-                  </span>
-                </button>
-                <div className="card-body-wrapper folder-body-wrapper">
-                  <div className="card-body">
-                    {isOpenFolder ? (
-                      <div className="inner folder-inner">
-                        {folder.items.length === 0 ? (
-                          <p className="desc folder-desc">Folder kosong.</p>
-                        ) : (
-                          folder.items.map((item, itemIndex) => (
-                            <article key={`folder-item-${folder.name}-${item.name}-${itemIndex}`} className="folder-item-card">
-                              <div className="folder-item-head">
-                                <h4>{item.name}</h4>
-                                <span className="tag folder-tag">{item.tag || 'UNTAGGED'}</span>
-                              </div>
-                              <p className="desc desc-content folder-desc">{item.desc || 'No description.'}</p>
-                            </article>
-                          ))
-                        )}
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              </article>
+                </article>
+              </div>
             );
           })}
 
@@ -1869,27 +1907,37 @@ export default function GameIdeasPage() {
           padding-right: 10px;
         }
         .folder-head h3 { margin: 0; font-size: 11px; color: #0f172a; line-height: 1.15; }
-        .folder-card .expand-indicator {
-          color: #0369a1;
-          border-color: rgba(14, 116, 144, 0.45);
-          box-shadow: 0 0 10px rgba(56, 189, 248, 0.25);
+        .folder-expand-indicator {
+          color: #000000;
+          border-color: rgba(0, 0, 0, 0.65);
+          box-shadow: 0 0 10px rgba(15, 23, 42, 0.18);
+          font-size: 10px;
+          padding: 2px 8px;
+          font-weight: 700;
         }
         .folder-tag {
           color: #0369a1;
           border-color: rgba(14, 116, 144, 0.45);
           box-shadow: 0 0 8px rgba(56, 189, 248, 0.2);
         }
+        .folder-slot-shell { outline-color: rgba(56, 189, 248, 0.45); }
         .folder-body-wrapper { grid-template-rows: 1fr; }
         .folder-inner { padding: 0 10px 10px; border-top: 1px solid rgba(14, 116, 144, 0.2); display: grid; gap: 8px; }
         .folder-item-card {
           border: 1px solid rgba(14, 116, 144, 0.24);
           border-radius: 8px;
           background: rgba(248, 250, 252, 0.98);
-          padding: 8px;
+          overflow: hidden;
         }
-        .folder-item-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+        .folder-item-card.open { border-color: rgba(14, 116, 144, 0.52); box-shadow: inset 0 0 0 1px rgba(14, 116, 144, 0.12); }
+        .folder-item-head { width: 100%; border: 0; background: transparent; color: inherit; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px; text-align: left; cursor: pointer; }
         .folder-item-head h4 { margin: 0; font-size: 11px; color: #0f172a; }
+        .folder-item-body-wrapper { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 150ms ease; }
+        .folder-item-card.open .folder-item-body-wrapper { grid-template-rows: 1fr; }
+        .folder-item-inner { padding: 0 8px 8px; border-top: 1px solid rgba(14, 116, 144, 0.18); }
         .folder-desc { color: #1e293b; }
+        .folder-stat { border-bottom-color: rgba(14, 116, 144, 0.18); }
+        .folder-stat-value { color: #0f172a; }
         .transfer-list { display: grid; gap: 8px; max-height: 280px; overflow: auto; }
         .transfer-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 1px solid rgba(0, 242, 255, 0.32); padding: 8px 10px; }
         .inner { padding: 0 10px 8px; border-top: 1px solid rgba(0, 242, 255, 0.14); }
