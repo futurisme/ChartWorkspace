@@ -220,6 +220,7 @@ export default function GameIdeasPage() {
   const [navOrder, setNavOrder] = useState<GameIdeaNav[]>([...GAME_IDEA_NAV_ORDER]);
   const [activeDrag, setActiveDrag] = useState<ActiveDrag | null>(null);
   const [scrollHint, setScrollHint] = useState({ show: false, up: false, down: false });
+  const [dynamicScrollSpacer, setDynamicScrollSpacer] = useState(CONTENT_SCROLL_EXTRA_SPACE_PX);
 
   const hydratedRef = useRef(false);
   const dbRef = useRef(DEFAULT_GAME_IDEA_DATA);
@@ -240,7 +241,6 @@ export default function GameIdeasPage() {
   const categoryList = currentSection.categories;
   const currentCategory = category || categoryList[0] || '';
   const items = useMemo(() => currentSection.data[currentCategory] ?? [], [currentCategory, currentSection.data]);
-  const shouldArmScroll = items.length >= 5 || openCardIndex !== null;
 
   useEffect(() => {
     dbRef.current = db;
@@ -1014,7 +1014,7 @@ export default function GameIdeasPage() {
     const updateHint = () => {
       const maxScroll = Math.max(0, container.scrollHeight - container.clientHeight);
       const top = container.scrollTop;
-      const show = shouldArmScroll && maxScroll > 4;
+      const show = maxScroll > 4;
       const up = show && top > 6;
       const down = show && top < maxScroll - 6;
       setScrollHint((prev) => (prev.show === show && prev.up === up && prev.down === down ? prev : { show, up, down }));
@@ -1031,7 +1031,41 @@ export default function GameIdeasPage() {
       window.removeEventListener('resize', updateHint);
       observer.disconnect();
     };
-  }, [shouldArmScroll, items.length, openCardIndex, currentCategory, nav]);
+  }, [items.length, openCardIndex, currentCategory, nav]);
+
+  useEffect(() => {
+    const container = contentAreaRef.current;
+    if (!container) return;
+
+    const measureSpacer = () => {
+      if (openCardIndex === null) {
+        setDynamicScrollSpacer(CONTENT_SCROLL_EXTRA_SPACE_PX);
+        return;
+      }
+
+      const openCard = document.querySelector<HTMLElement>(`[data-item-index=\"${openCardIndex}\"]`);
+      if (!openCard) {
+        setDynamicScrollSpacer(CONTENT_SCROLL_EXTRA_SPACE_PX);
+        return;
+      }
+
+      const cardHeight = openCard.getBoundingClientRect().height;
+      const baseline = 240;
+      const extra = Math.max(0, cardHeight - baseline);
+      const nextSpacer = Math.min(1600, CONTENT_SCROLL_EXTRA_SPACE_PX + extra);
+      setDynamicScrollSpacer(Math.round(nextSpacer));
+    };
+
+    measureSpacer();
+    const raf = window.requestAnimationFrame(measureSpacer);
+    const observer = new ResizeObserver(measureSpacer);
+    observer.observe(container);
+
+    return () => {
+      window.cancelAnimationFrame(raf);
+      observer.disconnect();
+    };
+  }, [openCardIndex, items.length, currentCategory, nav]);
 
   useEffect(() => {
     if (openCardIndex === null || typeof window === 'undefined') return;
@@ -1082,7 +1116,7 @@ export default function GameIdeasPage() {
   }, [openCardIndex, nav, currentCategory, items.length]);
 
   return (
-    <main className={`architect-shell ${adminMode ? 'with-admin-panel' : ''} ${shouldArmScroll ? 'has-scrollable-items' : ''}`}>
+    <main className={`architect-shell ${adminMode ? 'with-admin-panel' : ''}`}>
       <header className="architect-header">
         <h1>Created by Fadhil Akbar</h1>
         <div className="header-actions">
@@ -1132,7 +1166,7 @@ export default function GameIdeasPage() {
           </nav>
         </aside>
 
-        <section className={`content-area ${shouldArmScroll ? 'scroll-armed' : ''}`} ref={contentAreaRef}>
+        <section className="content-area" ref={contentAreaRef} style={{ '--dynamic-scroll-spacer': `${dynamicScrollSpacer}px` } as CSSProperties}>
           {items.map((item, index) => (
             <div
               key={`${item.name}-${index}`}
@@ -1465,9 +1499,6 @@ export default function GameIdeasPage() {
         .architect-shell.with-admin-panel .layout {
           height: calc(100dvh - var(--header-h) - var(--footer-h) - var(--admin-h) - env(safe-area-inset-bottom));
         }
-        .architect-shell.has-scrollable-items .layout {
-          height: calc(100dvh - var(--header-h) - var(--footer-h) - var(--admin-h) - env(safe-area-inset-bottom));
-        }
         .architect-header {
           padding: 7px 10px;
           border-bottom: 1px solid var(--border);
@@ -1556,21 +1587,15 @@ export default function GameIdeasPage() {
           gap: 8px;
           align-content: start;
           padding-right: 2px;
-          padding-bottom: max(20px, calc(var(--footer-h) + env(safe-area-inset-bottom)));
-        }
-        .content-area.scroll-armed {
-          overflow-y: auto;
+          padding-bottom: max(20px, calc(var(--footer-h) + var(--admin-h) + env(safe-area-inset-bottom) + 14px));
         }
         .content-area::-webkit-scrollbar { width: 10px; }
         .content-area::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.42); }
         .content-area::-webkit-scrollbar-thumb { background: linear-gradient(180deg, rgba(0, 242, 255, 0.85), rgba(56, 189, 248, 0.65)); border-radius: 999px; border: 2px solid rgba(2, 6, 23, 0.8); }
         .content-scroll-spacer {
           grid-column: 1 / -1;
-          height: max(14dvh, calc(var(--footer-h) + 64px));
+          height: max(18dvh, calc(var(--footer-h) + var(--admin-h) + env(safe-area-inset-bottom) + var(--dynamic-scroll-spacer, 220px)));
           pointer-events: none;
-        }
-        .content-area.scroll-armed .content-scroll-spacer {
-          height: max(34dvh, calc(var(--footer-h) + var(--admin-h) + ${CONTENT_SCROLL_EXTRA_SPACE_PX}px));
         }
         .scroll-indicator {
           position: absolute;
@@ -1875,9 +1900,6 @@ export default function GameIdeasPage() {
             touch-action: pan-y;
             scroll-behavior: smooth;
             padding-bottom: max(20px, calc(env(safe-area-inset-bottom) + 20px));
-          }
-          .content-area.scroll-armed {
-            padding-bottom: max(32px, calc(var(--footer-h) + var(--admin-h) + env(safe-area-inset-bottom) + 28px));
           }
           .scroll-indicator { right: 4px; }
           .card-head { padding: 7px 40px 7px 9px; }
