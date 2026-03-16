@@ -904,35 +904,38 @@ export default function GameIdeasPage() {
         <aside className="sidebar">
           <nav className="sub-tabs">
             {categoryList.map((cat, index) => (
-              <button
+              <div
                 key={cat}
-                type="button"
-                className={`tab-btn slot-box ${cat === currentCategory ? 'active' : ''} ${activeDrag?.kind === 'category' && activeDrag.overIndex === index ? 'drag-target' : ''} ${dragShiftForIndex(index, activeDrag, 'category')} ${isDraggedIndex(index, activeDrag, 'category') ? 'dragged' : ''}`}
-                style={dragStyle(isDraggedIndex(index, activeDrag, 'category') ? activeDrag : null, 'category')}
+                className={`slot-shell ${activeDrag?.kind === 'category' && activeDrag.overIndex === index ? 'slot-shell-target' : ''}`}
                 data-drag-kind="category"
                 data-drag-index={index}
                 data-slot-index={index + 1}
                 onPointerDown={(event) => handlePointerDown('category', index, event.pointerId, event.clientX, event.clientY)}
                 onPointerUp={(event) => handlePointerEnd(event.pointerId)}
                 onPointerCancel={(event) => handlePointerEnd(event.pointerId)}
-                onClick={() => {
-                  if (activeDrag) return;
-                  setCategory(cat);
-                  registerUniversalRenameClick(`category:${nav}:${cat}`, () => requestRenameCategory(cat));
-                }}
               >
-                {cat}
-              </button>
+                <button
+                  type="button"
+                  className={`tab-btn slot-el ${cat === currentCategory ? 'active' : ''} ${dragShiftForIndex(index, activeDrag, 'category')} ${isDraggedIndex(index, activeDrag, 'category') ? 'dragged' : ''}`}
+                  style={dragStyle(isDraggedIndex(index, activeDrag, 'category') ? activeDrag : null, 'category')}
+                  onClick={() => {
+                    if (activeDrag) return;
+                    setCategory(cat);
+                    registerUniversalRenameClick(`category:${nav}:${cat}`, () => requestRenameCategory(cat));
+                  }}
+                >
+                  {cat}
+                </button>
+              </div>
             ))}
           </nav>
         </aside>
 
         <section className="content-area">
           {items.map((item, index) => (
-            <article
+            <div
               key={`${item.name}-${index}`}
-              className={`card slot-box ${openCardIndex === index ? 'open' : ''} ${activeDrag?.kind === 'item' && activeDrag.overIndex === index ? 'drag-target item-slot-target' : ''} ${dragShiftForIndex(index, activeDrag, 'item')} ${isDraggedIndex(index, activeDrag, 'item') ? 'dragged' : ''}`}
-              style={dragStyle(isDraggedIndex(index, activeDrag, 'item') ? activeDrag : null, 'item')}
+              className={`slot-shell item-slot-shell ${activeDrag?.kind === 'item' && activeDrag.overIndex === index ? 'slot-shell-target item-slot-target' : ''}`}
               data-drag-kind="item"
               data-drag-index={index}
               data-slot-index={index + 1}
@@ -940,6 +943,10 @@ export default function GameIdeasPage() {
               onPointerDown={(event) => handlePointerDown('item', index, event.pointerId, event.clientX, event.clientY)}
               onPointerUp={(event) => handlePointerEnd(event.pointerId)}
               onPointerCancel={(event) => handlePointerEnd(event.pointerId)}
+            >
+            <article
+              className={`card slot-el ${openCardIndex === index ? 'open' : ''} ${dragShiftForIndex(index, activeDrag, 'item')} ${isDraggedIndex(index, activeDrag, 'item') ? 'dragged' : ''}`}
+              style={dragStyle(isDraggedIndex(index, activeDrag, 'item') ? activeDrag : null, 'item')}
             >
               {adminMode && (
                 <div className="admin-tools">
@@ -983,6 +990,7 @@ export default function GameIdeasPage() {
                 </div>
               </div>
             </article>
+            </div>
           ))}
 
           {!loading && items.length === 0 && <p className="empty-hint">Belum ada ide di kategori ini.</p>}
@@ -994,17 +1002,20 @@ export default function GameIdeasPage() {
 
       <footer className="footer">
         {navOrder.map((key, index) => (
-          <button
+          <div
             key={key}
-            type="button"
-            className={`nav-item slot-box ${nav === key ? 'active' : ''} ${activeDrag?.kind === 'nav' && activeDrag.overIndex === index ? 'drag-target' : ''} ${dragShiftForIndex(index, activeDrag, 'nav')} ${isDraggedIndex(index, activeDrag, 'nav') ? 'dragged' : ''}`}
-            style={dragStyle(isDraggedIndex(index, activeDrag, 'nav') ? activeDrag : null, 'nav')}
+            className={`slot-shell nav-slot-shell ${activeDrag?.kind === 'nav' && activeDrag.overIndex === index ? 'slot-shell-target' : ''}`}
             data-drag-kind="nav"
             data-drag-index={index}
             data-slot-index={index + 1}
             onPointerDown={(event) => handlePointerDown('nav', index, event.pointerId, event.clientX, event.clientY)}
             onPointerUp={(event) => handlePointerEnd(event.pointerId)}
             onPointerCancel={(event) => handlePointerEnd(event.pointerId)}
+          >
+          <button
+            type="button"
+            className={`nav-item slot-el ${nav === key ? 'active' : ''} ${dragShiftForIndex(index, activeDrag, 'nav')} ${isDraggedIndex(index, activeDrag, 'nav') ? 'dragged' : ''}`}
+            style={dragStyle(isDraggedIndex(index, activeDrag, 'nav') ? activeDrag : null, 'nav')}
             onClick={() => {
               if (activeDrag) return;
               setNav(key);
@@ -1013,6 +1024,7 @@ export default function GameIdeasPage() {
           >
             {(db[key].title || key.toUpperCase()).toUpperCase()}
           </button>
+          </div>
         ))}
       </footer>
 
@@ -1258,16 +1270,24 @@ export default function GameIdeasPage() {
         .layout { flex: 1; display: flex; gap: 10px; padding: 10px; min-height: 0; }
         .sidebar { width: 170px; flex-shrink: 0; }
         .sub-tabs { display: flex; flex-direction: column; gap: 4px; overflow: auto; max-height: 100%; }
-        .slot-box {
+        .slot-shell {
           position: relative;
           outline: 1px solid rgba(148, 163, 184, 0.35);
           outline-offset: -1px;
+          border-radius: 4px;
+        }
+        .slot-shell-target {
+          outline: 2px dashed rgba(0, 242, 255, 0.95);
+          box-shadow: 0 0 20px rgba(0, 242, 255, 0.35), inset 0 0 0 1px rgba(0, 242, 255, 0.25);
+        }
+        .slot-el {
+          width: 100%;
         }
         .tab-btn {
           padding: 6px 8px;
           text-align: left;
           user-select: none;
-          touch-action: none;
+          touch-action: pan-y;
           border: 1px solid rgba(0, 242, 255, 0.48);
           box-shadow: inset 0 0 0 1px rgba(0, 242, 255, 0.18), 0 0 12px rgba(0, 242, 255, 0.18);
           background: var(--surface);
@@ -1302,7 +1322,7 @@ export default function GameIdeasPage() {
         .card {
           position: relative;
           user-select: none;
-          touch-action: none;
+          touch-action: pan-y;
           background: var(--surface);
           background-size: 180% 180%;
           border: 1px solid rgba(0, 242, 255, 0.42);
@@ -1400,10 +1420,8 @@ export default function GameIdeasPage() {
         .admin-action.add { border-color: rgba(0, 242, 255, 0.7); color: var(--accent); }
         .admin-action.del { border-color: rgba(255, 42, 95, 0.8); color: #ff2a5f; }
 
-        .drag-target {
-          outline: 2px dashed rgba(0, 242, 255, 0.9);
-          outline-offset: -2px;
-          box-shadow: 0 0 20px rgba(0, 242, 255, 0.55), inset 0 0 0 1px rgba(0, 242, 255, 0.4);
+        .item-slot-shell {
+          padding: 1px;
         }
         .item-slot-target {
           outline: 2px solid rgba(255, 255, 255, 0.98);
@@ -1441,13 +1459,14 @@ export default function GameIdeasPage() {
           letter-spacing: 0.08em;
         }
         .footer {
-          display: flex;
-          justify-content: space-around;
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 6px;
           border-top: 1px solid var(--border);
           padding: 8px;
           background: #000;
         }
-        .nav-item { border: 0; background: transparent; color: #ddf7ff; padding: 6px 10px; cursor: pointer; font-size: 10px; font-weight: 800; max-width: 24vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: none; touch-action: none; }
+        .nav-item { border: 0; background: transparent; color: #ddf7ff; padding: 6px 10px; cursor: pointer; font-size: 10px; font-weight: 800; max-width: 24vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: none; touch-action: pan-y; }
         .nav-item.active { color: var(--accent); text-shadow: var(--neon); }
         .empty-hint,
         .error-hint { font-size: 12px; color: #9ca3af; }
@@ -1532,22 +1551,18 @@ export default function GameIdeasPage() {
           .admin-toggle, .sync-now { font-size: 8px; padding: 4px 6px; }
           .layout { flex-direction: column; padding: 8px; gap: 8px; }
           .sidebar { width: 100%; }
-          .sub-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: 116px; gap: 5px; }
+          .sub-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: min(42dvh, 320px); gap: 5px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
           .tab-btn { text-align: center; padding: 6px 5px; }
           .content-area {
             grid-template-columns: 1fr;
             gap: 7px;
-            max-height: 50dvh;
+            max-height: min(68dvh, calc(100dvh - 180px));
             overflow-y: auto;
             overscroll-behavior: contain;
+            -webkit-overflow-scrolling: touch;
             padding-bottom: max(10px, env(safe-area-inset-bottom));
           }
           .card-head { padding: 7px 40px 7px 9px; }
-          .sub-tabs {
-            max-height: 50dvh;
-            overflow-y: auto;
-            overscroll-behavior: contain;
-          }
           
           .footer { padding: 7px 6px; }
           .nav-item { padding: 6px 6px; max-width: 22vw; }
