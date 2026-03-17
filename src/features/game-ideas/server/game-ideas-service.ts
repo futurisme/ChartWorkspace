@@ -3,6 +3,16 @@ import { activeDatabaseHost, prisma } from '@/lib/prisma';
 import { DEFAULT_GAME_IDEA_DATA, sanitizeGameIdeaDatabase, type GameIdeaDatabase } from '@/features/game-ideas/shared/schema';
 
 const SYSTEM_GAME_IDEA_TITLE = '__SYSTEM__GAME_IDEAS_V1';
+const CACHE_TTL_MS = 5_000;
+
+type CachedGameIdeasRecord = {
+  data: GameIdeaDatabase;
+  version: number;
+  updatedAt: Date;
+  expiresAt: number;
+};
+
+let gameIdeasCache: CachedGameIdeasRecord | null = null;
 
 function toInputJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
@@ -94,7 +104,42 @@ async function findSystemRecord() {
   );
 }
 
+function getValidCache() {
+  if (!gameIdeasCache) return null;
+  if (Date.now() > gameIdeasCache.expiresAt) {
+    gameIdeasCache = null;
+    return null;
+  }
+  return gameIdeasCache;
+}
+
+function setCache(data: GameIdeaDatabase, version: number, updatedAt: Date) {
+  gameIdeasCache = {
+    data,
+    version,
+    updatedAt,
+    expiresAt: Date.now() + CACHE_TTL_MS,
+  };
+}
+
+function clearCache() {
+  gameIdeasCache = null;
+}
+
+function toGameIdeasPayload(data: GameIdeaDatabase, version: number, updatedAt: Date) {
+  return {
+    data,
+    version,
+    updatedAt,
+  };
+}
+
 export async function loadGameIdeas() {
+  const cached = getValidCache();
+  if (cached) {
+    return toGameIdeasPayload(cached.data, cached.version, cached.updatedAt);
+  }
+
   const existing = await findSystemRecord();
 
   if (!existing) {
@@ -113,21 +158,25 @@ export async function loadGameIdeas() {
       })
     );
 
-    return {
-      data: sanitizeGameIdeaDatabase(created.snapshot),
-      version: created.version,
-      updatedAt: created.updatedAt,
-    };
+    const sanitized = sanitizeGameIdeaDatabase(created.snapshot);
+    setCache(sanitized, created.version, created.updatedAt);
+    return toGameIdeasPayload(sanitized, created.version, created.updatedAt);
   }
 
-  return {
-    data: sanitizeGameIdeaDatabase(existing.snapshot),
-    version: existing.version,
-    updatedAt: existing.updatedAt,
-  };
+  const sanitized = sanitizeGameIdeaDatabase(existing.snapshot);
+  setCache(sanitized, existing.version, existing.updatedAt);
+  return toGameIdeasPayload(sanitized, existing.version, existing.updatedAt);
 }
 
 export async function loadGameIdeasMeta() {
+  const cached = getValidCache();
+  if (cached) {
+    return {
+      version: cached.version,
+      updatedAt: cached.updatedAt,
+    };
+  }
+
   const existing = await findSystemRecord();
 
   if (!existing) {
@@ -145,12 +194,14 @@ export async function loadGameIdeasMeta() {
       })
     );
 
+    setCache(DEFAULT_GAME_IDEA_DATA, created.version, created.updatedAt);
     return {
       version: created.version,
       updatedAt: created.updatedAt,
     };
   }
 
+  setCache(sanitizeGameIdeaDatabase(existing.snapshot), existing.version, existing.updatedAt);
   return {
     version: existing.version,
     updatedAt: existing.updatedAt,
@@ -158,6 +209,7 @@ export async function loadGameIdeasMeta() {
 }
 
 export async function saveGameIdeas(rawData: unknown, expectedVersion?: number | null) {
+  clearCache();
   const sanitized: GameIdeaDatabase = sanitizeGameIdeaDatabase(rawData);
   const existing = await findSystemRecord();
 
@@ -176,11 +228,8 @@ export async function saveGameIdeas(rawData: unknown, expectedVersion?: number |
       })
     );
 
-    return {
-      data: sanitized,
-      version: created.version,
-      updatedAt: created.updatedAt,
-    };
+    setCache(sanitized, created.version, created.updatedAt);
+    return toGameIdeasPayload(sanitized, created.version, created.updatedAt);
   }
 
   if (typeof expectedVersion === 'number' && Number.isFinite(expectedVersion)) {
@@ -202,8 +251,10 @@ export async function saveGameIdeas(rawData: unknown, expectedVersion?: number |
     if (updateResult.count === 0) {
       const latest = await findSystemRecord();
       if (latest) {
+        const latestData = sanitizeGameIdeaDatabase(latest.snapshot);
+        setCache(latestData, latest.version, latest.updatedAt);
         throw new GameIdeasConflictError(
-          sanitizeGameIdeaDatabase(latest.snapshot),
+          latestData,
           latest.version,
           latest.updatedAt
         );
@@ -211,11 +262,8 @@ export async function saveGameIdeas(rawData: unknown, expectedVersion?: number |
       throw new GameIdeasServiceError('Record game ideas tidak ditemukan saat menyimpan.', 409);
     }
 
-    return {
-      data: sanitized,
-      version: expectedVersion + 1,
-      updatedAt,
-    };
+    setCache(sanitized, expectedVersion + 1, updatedAt);
+    return toGameIdeasPayload(sanitized, expectedVersion + 1, updatedAt);
   }
 
   const updated = await withDatabaseRecovery(() =>
@@ -233,11 +281,8 @@ export async function saveGameIdeas(rawData: unknown, expectedVersion?: number |
     })
   );
 
-  return {
-    data: sanitized,
-    version: updated.version,
-    updatedAt: updated.updatedAt,
-  };
+  setCache(sanitized, updated.version, updated.updatedAt);
+  return toGameIdeasPayload(sanitized, updated.version, updated.updatedAt);
 }
 
 export { GameIdeasConflictError, GameIdeasServiceError };
