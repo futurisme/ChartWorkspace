@@ -1,4 +1,11 @@
 export type BotStylePreset = 'minimal' | 'alert' | 'release' | 'community';
+export type WorkflowBlockType = 'text' | 'emoji' | 'mentionEveryone' | 'lineBreak' | 'timestamp';
+
+export interface WorkflowBlock {
+  id: string;
+  type: WorkflowBlockType;
+  value: string;
+}
 
 export interface BotMakerBot {
   id: string;
@@ -10,6 +17,7 @@ export interface BotMakerBot {
   guildId: string;
   channelId: string;
   messageTemplate: string;
+  workflow: WorkflowBlock[];
   intervalSeconds: number;
   enabled: boolean;
   deployedAt: string | null;
@@ -52,6 +60,23 @@ function sanitizePreset(value: unknown): BotStylePreset {
   return 'minimal';
 }
 
+function sanitizeBlockType(value: unknown): WorkflowBlockType {
+  if (value === 'emoji' || value === 'mentionEveryone' || value === 'lineBreak' || value === 'timestamp') return value;
+  return 'text';
+}
+
+function sanitizeWorkflow(raw: unknown): WorkflowBlock[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((entry, index) => {
+    const source = (entry && typeof entry === 'object' ? entry : {}) as Partial<WorkflowBlock>;
+    return {
+      id: cleanString(source.id, `block-${index + 1}`),
+      type: sanitizeBlockType(source.type),
+      value: cleanString(source.value),
+    };
+  });
+}
+
 function sanitizeBot(raw: unknown, index: number): BotMakerBot {
   const source = (raw && typeof raw === 'object' ? raw : {}) as Partial<BotMakerBot>;
   const id = cleanString(source.id, `bot-${index + 1}`);
@@ -65,6 +90,7 @@ function sanitizeBot(raw: unknown, index: number): BotMakerBot {
     guildId: cleanString(source.guildId),
     channelId: cleanString(source.channelId),
     messageTemplate: cleanString(source.messageTemplate, 'Halo dari BotMaker!'),
+    workflow: sanitizeWorkflow(source.workflow),
     intervalSeconds: clampInterval(source.intervalSeconds),
     enabled: Boolean(source.enabled),
     deployedAt: typeof source.deployedAt === 'string' && source.deployedAt ? source.deployedAt : null,

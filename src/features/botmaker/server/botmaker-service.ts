@@ -1,13 +1,8 @@
 import { Prisma } from '@prisma/client';
 import { createHash, createHmac, createCipheriv, createDecipheriv, randomBytes, timingSafeEqual } from 'node:crypto';
-import { deflateRawSync, inflateRawSync } from 'node:zlib';
+import { brotliCompressSync, brotliDecompressSync, constants as zlibConstants, deflateRawSync, inflateRawSync } from 'node:zlib';
 import { activeDatabaseHost, prisma } from '@/lib/prisma';
-import {
-  DEFAULT_BOTMAKER_STATE,
-  sanitizeBotMakerState,
-  type BotMakerBot,
-  type BotMakerState,
-} from '@/features/botmaker/shared/schema';
+import { DEFAULT_BOTMAKER_STATE, sanitizeBotMakerState, type BotMakerBot, type BotMakerState } from '@/features/botmaker/shared/schema';
 
 const SYSTEM_BOTMAKER_TITLE = '__SYSTEM__BOTMAKER_V1';
 const DISCORD_API = 'https://discord.com/api/v10';
@@ -17,29 +12,19 @@ const ACTIVE_TIMERS = new Map<string, ReturnType<typeof setTimeout>>();
 const BOT_RUNTIME_STATE = new Map<string, { running: boolean; nextAllowedAt: number; backoffMs: number }>();
 const MIN_SAFE_DISCORD_INTERVAL_MS = 60_000;
 const MAX_BACKOFF_MS = 15 * 60_000;
-const STATE_MAGIC = 'botmaker-v2-deflate';
+const STATE_MAGIC_BROTLI = 'botmaker-v3-br';
+const STATE_MAGIC_DEFLATE = 'botmaker-v2-deflate';
 
 interface PersistedBot extends Omit<BotMakerBot, 'token' | 'hasToken'> {
   tokenCipher: string;
   tokenIv: string;
 }
 
-interface PersistedState {
-  magic: typeof STATE_MAGIC;
-  payload: string;
-}
+type PersistedStateEnvelope =
+  | { magic: typeof STATE_MAGIC_BROTLI; payload: string }
+  | { magic: typeof STATE_MAGIC_DEFLATE; payload: string };
 
 type DiscordUserResponse = { id: string; username: string };
-
-type DiscordSendResponseHeaders = {
-  remaining: number | null;
-  resetAfterMs: number | null;
-  retryAfterMs: number | null;
-};
-
-function toInputJson(value: unknown): Prisma.InputJsonValue {
-  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
-}
 
 class BotMakerServiceError extends Error {
   status: number;
@@ -48,6 +33,10 @@ class BotMakerServiceError extends Error {
     super(message);
     this.status = status;
   }
+}
+
+function toInputJson(value: unknown): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
 
 function getPrismaErrorCode(error: unknown) {
@@ -130,13 +119,18 @@ function decryptToken(tokenCipher: string, tokenIv: string) {
   return Buffer.concat([decipher.update(data), decipher.final()]).toString('utf8');
 }
 
-function compressState(state: BotMakerState) {
+function compressState(state: BotMakerState): PersistedStateEnvelope {
   const text = JSON.stringify(state);
-  const compressed = deflateRawSync(Buffer.from(text, 'utf8'));
+  const compressed = brotliCompressSync(Buffer.from(text, 'utf8'), {
+    params: {
+      [zlibConstants.BROTLI_PARAM_QUALITY]: 5,
+      [zlibConstants.BROTLI_PARAM_MODE]: zlibConstants.BROTLI_MODE_TEXT,
+    },
+  });
   return {
-    magic: STATE_MAGIC,
+    magic: STATE_MAGIC_BROTLI,
     payload: compressed.toString('base64url'),
-  } satisfies PersistedState;
+  };
 }
 
 function decompressState(raw: unknown): BotMakerState {
@@ -144,9 +138,14 @@ function decompressState(raw: unknown): BotMakerState {
     return DEFAULT_BOTMAKER_STATE;
   }
 
-  const maybePacked = raw as Partial<PersistedState>;
-  if (maybePacked.magic === STATE_MAGIC && typeof maybePacked.payload === 'string') {
-    const inflated = inflateRawSync(Buffer.from(maybePacked.payload, 'base64url')).toString('utf8');
+  const envelope = raw as Partial<PersistedStateEnvelope>;
+  if (typeof envelope.payload === 'string' && envelope.magic === STATE_MAGIC_BROTLI) {
+    const inflated = brotliDecompressSync(Buffer.from(envelope.payload, 'base64url')).toString('utf8');
+    return sanitizeBotMakerState(JSON.parse(inflated));
+  }
+
+  if (typeof envelope.payload === 'string' && envelope.magic === STATE_MAGIC_DEFLATE) {
+    const inflated = inflateRawSync(Buffer.from(envelope.payload, 'base64url')).toString('utf8');
     return sanitizeBotMakerState(JSON.parse(inflated));
   }
 
@@ -155,10 +154,12 @@ function decompressState(raw: unknown): BotMakerState {
 
 function toPersistedBot(bot: BotMakerBot, existing?: PersistedBot): PersistedBot {
   const tokenChanged = bot.token.trim().length > 0;
-  const encrypted = tokenChanged ? encryptToken(bot.token.trim()) : {
-    tokenCipher: existing?.tokenCipher ?? '',
-    tokenIv: existing?.tokenIv ?? '',
-  };
+  const encrypted = tokenChanged
+    ? encryptToken(bot.token.trim())
+    : {
+        tokenCipher: existing?.tokenCipher ?? '',
+        tokenIv: existing?.tokenIv ?? '',
+      };
 
   return {
     id: bot.id,
@@ -167,6 +168,7 @@ function toPersistedBot(bot: BotMakerBot, existing?: PersistedBot): PersistedBot
     guildId: bot.guildId,
     channelId: bot.channelId,
     messageTemplate: bot.messageTemplate,
+    workflow: bot.workflow,
     intervalSeconds: Math.max(bot.intervalSeconds, 60),
     enabled: bot.enabled,
     deployedAt: bot.deployedAt,
@@ -191,6 +193,7 @@ function toPublicBot(bot: PersistedBot): BotMakerBot {
     guildId: bot.guildId,
     channelId: bot.channelId,
     messageTemplate: bot.messageTemplate,
+    workflow: bot.workflow,
     intervalSeconds: bot.intervalSeconds,
     enabled: bot.enabled,
     deployedAt: bot.deployedAt,
@@ -202,35 +205,14 @@ function toPublicBot(bot: PersistedBot): BotMakerBot {
 }
 
 function parsePersistedBots(state: BotMakerState): PersistedBot[] {
-  return state.bots
-    .map((bot) => {
-      const source = bot as unknown as Partial<PersistedBot>;
-      return {
-        ...bot,
-        tokenCipher: typeof source.tokenCipher === 'string' ? source.tokenCipher : '',
-        tokenIv: typeof source.tokenIv === 'string' ? source.tokenIv : '',
-      } satisfies PersistedBot;
-    });
-}
-
-function parseDiscordHeaders(headers: Headers, responseBody: unknown): DiscordSendResponseHeaders {
-  const retryFromBody = typeof responseBody === 'object' && responseBody && 'retry_after' in responseBody
-    ? Number((responseBody as { retry_after?: unknown }).retry_after)
-    : NaN;
-
-  const retryFromHeader = Number(headers.get('retry-after'));
-  const resetAfterSeconds = Number(headers.get('x-ratelimit-reset-after'));
-  const remaining = Number(headers.get('x-ratelimit-remaining'));
-
-  return {
-    remaining: Number.isFinite(remaining) ? remaining : null,
-    resetAfterMs: Number.isFinite(resetAfterSeconds) ? Math.max(0, Math.round(resetAfterSeconds * 1000)) : null,
-    retryAfterMs: Number.isFinite(retryFromBody)
-      ? Math.max(0, Math.round(retryFromBody * 1000))
-      : Number.isFinite(retryFromHeader)
-        ? Math.max(0, Math.round(retryFromHeader * 1000))
-        : null,
-  };
+  return state.bots.map((bot) => {
+    const source = bot as unknown as Partial<PersistedBot>;
+    return {
+      ...bot,
+      tokenCipher: typeof source.tokenCipher === 'string' ? source.tokenCipher : '',
+      tokenIv: typeof source.tokenIv === 'string' ? source.tokenIv : '',
+    };
+  });
 }
 
 function getPresetPrefix(preset: BotMakerBot['stylePreset']) {
@@ -246,10 +228,31 @@ function getPresetPrefix(preset: BotMakerBot['stylePreset']) {
   }
 }
 
+function renderWorkflowMessage(bot: BotMakerBot) {
+  if (bot.workflow.length === 0) {
+    return bot.messageTemplate;
+  }
+
+  return bot.workflow
+    .map((block) => {
+      if (block.type === 'text') return block.value;
+      if (block.type === 'emoji') return block.value || '✨';
+      if (block.type === 'mentionEveryone') return '@everyone';
+      if (block.type === 'lineBreak') return '\n';
+      if (block.type === 'timestamp') return `<t:${Math.floor(Date.now() / 1000)}:R>`;
+      return '';
+    })
+    .join(' ')
+    .replace(/\s+\n/g, '\n')
+    .replace(/\n\s+/g, '\n')
+    .trim();
+}
+
 function buildMessagePayload(bot: BotMakerBot) {
   const mention = bot.mentionEveryone ? '@everyone ' : '';
   const title = `${getPresetPrefix(bot.stylePreset)} • ${bot.name}`;
-  const content = `${mention}${bot.messageTemplate}`.trim();
+  const generated = renderWorkflowMessage(bot) || bot.messageTemplate;
+  const content = `${mention}${generated}`.trim();
 
   if (!bot.useEmbed) {
     return {
@@ -270,6 +273,21 @@ function buildMessagePayload(bot: BotMakerBot) {
   };
 }
 
+function parseLimitHeaders(headers: Headers, body: unknown) {
+  const retryFromBody = typeof body === 'object' && body && 'retry_after' in body ? Number((body as { retry_after?: unknown }).retry_after) : NaN;
+  const retryFromHeader = Number(headers.get('retry-after'));
+  const resetAfterSeconds = Number(headers.get('x-ratelimit-reset-after'));
+
+  return {
+    retryAfterMs: Number.isFinite(retryFromBody)
+      ? Math.max(0, Math.round(retryFromBody * 1000))
+      : Number.isFinite(retryFromHeader)
+        ? Math.max(0, Math.round(retryFromHeader * 1000))
+        : null,
+    resetAfterMs: Number.isFinite(resetAfterSeconds) ? Math.max(0, Math.round(resetAfterSeconds * 1000)) : null,
+  };
+}
+
 async function sendDiscordMessage(bot: BotMakerBot, token: string) {
   const response = await fetch(`${DISCORD_API}/channels/${bot.channelId}/messages`, {
     method: 'POST',
@@ -281,18 +299,18 @@ async function sendDiscordMessage(bot: BotMakerBot, token: string) {
     cache: 'no-store',
   });
 
-  let parsed: unknown = null;
+  let body: unknown = null;
   try {
-    parsed = await response.json();
+    body = await response.json();
   } catch {
-    parsed = null;
+    body = null;
   }
 
-  const limits = parseDiscordHeaders(response.headers, parsed);
+  const limits = parseLimitHeaders(response.headers, body);
 
   if (response.status === 429) {
-    const waitMs = limits.retryAfterMs ?? 5_000;
-    throw new BotMakerServiceError(`Discord rate limited bot ${bot.name}. Retry in ${Math.ceil(waitMs / 1000)}s.`, 429);
+    const waitMs = limits.retryAfterMs ?? 10_000;
+    throw new BotMakerServiceError(`Discord rate limited. Retry in ${Math.ceil(waitMs / 1000)}s.`, 429);
   }
 
   if (!response.ok) {
@@ -350,11 +368,7 @@ export function verifySession(userId: string | null | undefined, signature: stri
 async function readPersistedState() {
   const existing = await findSystemRecord();
   if (!existing) {
-    return {
-      recordId: null as number | null,
-      version: 0,
-      state: DEFAULT_BOTMAKER_STATE,
-    };
+    return { recordId: null as number | null, version: 0, state: DEFAULT_BOTMAKER_STATE };
   }
 
   return {
@@ -368,7 +382,7 @@ async function persistState(recordId: number | null, state: BotMakerState) {
   const packed = compressState(state);
 
   if (!recordId) {
-    const created = await withDatabaseRecovery(() =>
+    return withDatabaseRecovery(() =>
       prisma.map.create({
         data: {
           title: SYSTEM_BOTMAKER_TITLE,
@@ -378,10 +392,9 @@ async function persistState(recordId: number | null, state: BotMakerState) {
         select: { id: true, version: true, updatedAt: true },
       })
     );
-    return created;
   }
 
-  const updated = await withDatabaseRecovery(() =>
+  return withDatabaseRecovery(() =>
     prisma.map.update({
       where: { id: recordId },
       data: {
@@ -392,16 +405,12 @@ async function persistState(recordId: number | null, state: BotMakerState) {
       select: { id: true, version: true, updatedAt: true },
     })
   );
-
-  return updated;
 }
 
 export async function loginBotMaker(usernameRaw: string, passwordRaw: string) {
   const username = usernameRaw.trim().toLowerCase();
   const password = passwordRaw.trim();
-  if (!username || !password) {
-    throw new BotMakerServiceError('Username dan password wajib diisi.', 400);
-  }
+  if (!username || !password) throw new BotMakerServiceError('Username dan password wajib diisi.', 400);
 
   const { recordId, state } = await readPersistedState();
   const users = state.users ?? [];
@@ -416,17 +425,8 @@ export async function loginBotMaker(usernameRaw: string, passwordRaw: string) {
       lastLoginAt: new Date().toISOString(),
     };
 
-    const nextState: BotMakerState = {
-      ...state,
-      users: [...users, newUser],
-    };
-
-    await persistState(recordId, nextState);
-    return {
-      userId: newUser.id,
-      username: newUser.username,
-      signature: signSession(newUser.id),
-    };
+    await persistState(recordId, { ...state, users: [...users, newUser] });
+    return { userId: newUser.id, username: newUser.username, signature: signSession(newUser.id) };
   }
 
   if (!constantSafeEqual(existingUser.passHash, hashPassword(password))) {
@@ -435,22 +435,16 @@ export async function loginBotMaker(usernameRaw: string, passwordRaw: string) {
 
   existingUser.lastLoginAt = new Date().toISOString();
   await persistState(recordId, state);
-
-  return {
-    userId: existingUser.id,
-    username: existingUser.username,
-    signature: signSession(existingUser.id),
-  };
+  return { userId: existingUser.id, username: existingUser.username, signature: signSession(existingUser.id) };
 }
 
 export async function loadBotMakerState() {
   const { state, version } = await readPersistedState();
   const persistedBots = parsePersistedBots(state);
-  const publicBots = persistedBots.map(toPublicBot);
 
   return {
     data: {
-      bots: publicBots,
+      bots: persistedBots.map(toPublicBot),
       users: [],
     },
     version,
@@ -462,13 +456,8 @@ export async function saveBotMakerState(raw: unknown) {
   const incoming = sanitizeBotMakerState(raw);
   const { recordId, state } = await readPersistedState();
 
-  const existingPersisted = new Map(parsePersistedBots(state).map((bot) => [bot.id, bot]));
-  const mergedPersistedBots = incoming.bots.map((bot) => toPersistedBot(bot, existingPersisted.get(bot.id)));
-
-  const nextState: BotMakerState = {
-    bots: mergedPersistedBots.map(toPublicBot),
-    users: state.users,
-  };
+  const existingById = new Map(parsePersistedBots(state).map((bot) => [bot.id, bot]));
+  const mergedPersistedBots = incoming.bots.map((bot) => toPersistedBot(bot, existingById.get(bot.id)));
 
   const storageState: BotMakerState = {
     bots: mergedPersistedBots as unknown as BotMakerBot[],
@@ -479,7 +468,10 @@ export async function saveBotMakerState(raw: unknown) {
   reconcileRuntime(storageState);
 
   return {
-    data: nextState,
+    data: {
+      bots: mergedPersistedBots.map(toPublicBot),
+      users: [],
+    },
     version: persisted.version,
     updatedAt: persisted.updatedAt,
   };
@@ -489,26 +481,16 @@ async function loadBotById(botId: string) {
   const { recordId, state } = await readPersistedState();
   const persistedBots = parsePersistedBots(state);
   const bot = persistedBots.find((entry) => entry.id === botId);
-  if (!bot) {
-    throw new BotMakerServiceError('Bot tidak ditemukan.', 404);
-  }
+  if (!bot) throw new BotMakerServiceError('Bot tidak ditemukan.', 404);
 
   const token = decryptToken(bot.tokenCipher, bot.tokenIv);
-  if (!token) {
-    throw new BotMakerServiceError('Token bot belum tersimpan.', 400);
-  }
+  if (!token) throw new BotMakerServiceError('Token bot belum tersimpan.', 400);
 
-  return {
-    recordId,
-    state,
-    bot,
-    token,
-  };
+  return { recordId, state, bot, token };
 }
 
 export async function deployBot(botId: string) {
   const loaded = await loadBotById(botId);
-  const bot = toPublicBot(loaded.bot);
 
   const identityRes = await fetch(`${DISCORD_API}/users/@me`, {
     headers: { Authorization: `Bot ${loaded.token}` },
@@ -547,11 +529,7 @@ export async function deployBot(botId: string) {
     });
   }
 
-  const nextState: BotMakerState = {
-    bots: persistedBots as unknown as BotMakerBot[],
-    users: loaded.state.users,
-  };
-
+  const nextState: BotMakerState = { bots: persistedBots as unknown as BotMakerBot[], users: loaded.state.users };
   const persisted = await persistState(loaded.recordId, nextState);
   reconcileRuntime(nextState);
 
@@ -562,7 +540,6 @@ export async function deployBot(botId: string) {
     },
     version: persisted.version,
     updatedAt: persisted.updatedAt,
-    bot,
   };
 }
 
@@ -575,9 +552,7 @@ export async function sendBotNow(botId: string) {
 function reconcileRuntime(state: BotMakerState) {
   const persistedBots = parsePersistedBots(state);
   const activeIds = new Set(
-    persistedBots
-      .filter((bot) => bot.enabled && bot.channelId && bot.tokenCipher)
-      .map((bot) => bot.id)
+    persistedBots.filter((bot) => bot.enabled && bot.channelId && bot.tokenCipher).map((bot) => bot.id)
   );
 
   for (const botId of [...ACTIVE_TIMERS.keys()]) {
@@ -589,20 +564,16 @@ function reconcileRuntime(state: BotMakerState) {
   persistedBots.forEach((persistedBot) => {
     if (!activeIds.has(persistedBot.id)) return;
 
-    const publicBot = toPublicBot(persistedBot);
+    const bot = toPublicBot(persistedBot);
     const token = decryptToken(persistedBot.tokenCipher, persistedBot.tokenIv);
     if (!token) return;
 
-    const runtime = BOT_RUNTIME_STATE.get(persistedBot.id) ?? {
-      running: false,
-      nextAllowedAt: 0,
-      backoffMs: 0,
-    };
+    const runtime = BOT_RUNTIME_STATE.get(persistedBot.id) ?? { running: false, nextAllowedAt: 0, backoffMs: 0 };
     BOT_RUNTIME_STATE.set(persistedBot.id, runtime);
 
     const run = async () => {
       if (runtime.running) {
-        scheduleBotSend(persistedBot.id, Math.max(5_000, publicBot.intervalSeconds * 1000), run);
+        scheduleBotSend(persistedBot.id, Math.max(5_000, bot.intervalSeconds * 1000), run);
         return;
       }
 
@@ -614,8 +585,8 @@ function reconcileRuntime(state: BotMakerState) {
           return;
         }
 
-        const limits = await sendDiscordMessage(publicBot, token);
-        const intervalMs = Math.max(MIN_SAFE_DISCORD_INTERVAL_MS, publicBot.intervalSeconds * 1000);
+        const limits = await sendDiscordMessage(bot, token);
+        const intervalMs = Math.max(MIN_SAFE_DISCORD_INTERVAL_MS, bot.intervalSeconds * 1000);
         const resetMs = limits.resetAfterMs ?? 0;
         runtime.backoffMs = 0;
         runtime.nextAllowedAt = Date.now() + Math.max(intervalMs, resetMs);
@@ -632,7 +603,7 @@ function reconcileRuntime(state: BotMakerState) {
       }
     };
 
-    const firstDelay = Math.max(MIN_SAFE_DISCORD_INTERVAL_MS, publicBot.intervalSeconds * 1000);
+    const firstDelay = Math.max(MIN_SAFE_DISCORD_INTERVAL_MS, bot.intervalSeconds * 1000);
     if (!ACTIVE_TIMERS.has(persistedBot.id)) {
       scheduleBotSend(persistedBot.id, firstDelay, run);
     }
