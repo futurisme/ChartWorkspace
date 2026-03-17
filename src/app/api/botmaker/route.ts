@@ -75,21 +75,21 @@ export async function PUT(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     ensureAuth(request);
-    const body = (await request.json()) as { action?: string; botId?: string; runtimeToken?: string };
+    const body = (await request.json()) as { action?: string; botId?: string };
 
     if (!body.botId) {
       return createErrorResponse('botId is required', 400);
     }
 
     if (body.action === 'deploy') {
-      const payload = await deployBot(body.botId, body.runtimeToken);
+      const payload = await deployBot(body.botId);
       return NextResponse.json(payload, {
         headers: { 'Cache-Control': NO_STORE },
       });
     }
 
     if (body.action === 'send-now') {
-      const payload = await sendBotNow(body.botId, body.runtimeToken);
+      const payload = await sendBotNow(body.botId);
       return NextResponse.json(payload, {
         headers: { 'Cache-Control': NO_STORE },
       });

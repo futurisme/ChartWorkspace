@@ -7,7 +7,7 @@ interface ApiPayload {
   data: BotMakerState;
   version: number;
   updatedAt: string;
-  diagnostics?: { dbHost: string | null; hasFallbackToken: boolean; tokenSecretSource: string; sharedStore: string };
+  diagnostics?: { dbHost: string | null; sharedStore: string };
   message?: string;
 }
 
@@ -155,7 +155,7 @@ export default function BotMakerPage() {
   const [dragBlockId, setDragBlockId] = useState<string | null>(null);
   const [activeBotId, setActiveBotId] = useState<string | null>(null);
   const [details, setDetails] = useState('');
-  const [diagnostics, setDiagnostics] = useState<{ dbHost: string | null; hasFallbackToken: boolean; tokenSecretSource: string; sharedStore: string } | null>(null);
+  const [diagnostics, setDiagnostics] = useState<{ dbHost: string | null; sharedStore: string } | null>(null);
   const [activityLogs, setActivityLogs] = useState<Array<{ ts: string; event: string; botId: string; details: Record<string, unknown> }>>([]);
   const [scrollHint, setScrollHint] = useState({ show: false, up: false, down: false });
   const contentScrollRef = useRef<HTMLDivElement | null>(null);
@@ -282,14 +282,14 @@ export default function BotMakerPage() {
     }
   };
 
-  const runAction = async (action: 'deploy' | 'send-now' | 'stop', botId: string, runtimeToken?: string) => {
+  const runAction = async (action: 'deploy' | 'send-now' | 'stop', botId: string) => {
     setIsBusy(true);
     setError('');
     try {
       const response = await fetch('/api/botmaker', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, botId, runtimeToken: runtimeToken?.trim() || undefined }),
+        body: JSON.stringify({ action, botId }),
       });
       const payload = (await response.json()) as ApiPayload | { error?: string; message?: string };
       if (!response.ok) {
@@ -312,17 +312,9 @@ export default function BotMakerPage() {
   };
 
   const saveThenRun = async (action: 'deploy' | 'send-now', botId: string) => {
-    const bot = state.bots.find((entry) => entry.id === botId);
-    const runtimeToken = bot?.token?.trim() || undefined;
-
     const ok = await persist(state);
-    if (!ok && !runtimeToken) return;
-
-    if (!ok && runtimeToken) {
-      setNotice('Database gagal simpan, menggunakan fallback token dari input untuk eksekusi runtime.');
-    }
-
-    await runAction(action, botId, runtimeToken);
+    if (!ok) return;
+    await runAction(action, botId);
   };
 
   const updateBot = (botId: string, patch: Partial<BotMakerBot>) => {
@@ -449,7 +441,7 @@ export default function BotMakerPage() {
         {diagnostics && (
           <div className="mb-3 rounded-lg border border-cyan-500/30 bg-slate-900/80 px-3 py-2 text-[11px] text-cyan-100">
             <p>DB Host: {diagnostics.dbHost ?? 'tidak terdeteksi'} • Shared store: {diagnostics.sharedStore}</p>
-            <p>Fallback token env: {diagnostics.hasFallbackToken ? 'aktif' : 'tidak aktif'} • Token secret source: {diagnostics.tokenSecretSource}</p>
+            <p>Token mode: strict database-only (.fAdHiL) tanpa fallback runtime.</p>
           </div>
         )}
 

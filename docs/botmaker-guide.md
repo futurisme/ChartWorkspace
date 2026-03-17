@@ -46,29 +46,30 @@ BotMaker mendukung mode hybrid saat drag-drop tidak cukup.
 - Tombol save utama dibuat sticky di bagian bawah agar mudah diakses di HP.
 
 
-## 7) Fallback token environment (anti gagal simpan DB)
-- Fallback utama runtime adalah token yang Anda isi di field **Discord bot token** saat menekan deploy/send. Jika simpan database gagal, runtime tetap memakai token input tersebut.
-- Jika field token kosong, urutan env fallback tetap tersedia: `BOTMAKER_FALLBACK_TOKEN` → `DISCORD_BOT_TOKEN` → `TOKEN`.
-- Status fallback tampil di panel diagnostik BotMaker.
+## 7) Mode token ketat (tanpa fallback runtime)
+- Deploy/send sekarang **wajib** memakai token yang sudah tersimpan di database.
+- Jika save database gagal, aksi deploy/send tidak dijalankan.
+- Ini memastikan runtime tidak memakai token sementara dari request, sehingga status token konsisten.
 
 ## 8) Diagnostik database
-- Panel diagnostik menampilkan `DB Host` aktif dan status fallback token env.
+- Panel diagnostik menampilkan `DB Host` aktif.
 - Jika DB bermasalah, detail error backend akan ditampilkan lebih lengkap di area error merah agar akar masalah cepat diketahui.
 
 
-## 9) Analisa akar masalah Command sync failed (404)
+## 9) Analisa akar masalah Command sync failed (404/401)
 - Error 404 pada command sync Discord umumnya berasal dari **Application ID / Guild ID tidak cocok**, bot belum join ke guild target, atau endpoint command guild tidak menemukan resource target.
-- Pada perbaikan ini, deploy tetap lanjut (tidak hard-fail) dan status warning ditampilkan agar bot tetap bisa host/send pesan sambil memperbaiki ID.
+- Error 401 umumnya berarti token tidak valid/berubah.
+- Pada perbaikan ini, command sync diperlakukan sebagai warning non-fatal agar scheduler kirim pesan utama tidak ikut mati; warning tetap dicatat di activity log untuk tindakan lanjut.
 
 ## 10) Live Logs 24H
 - BotMaker menyediakan panel **CLI Terminal Build Logs + Activity Logs (Live 24H)**.
-- Log mencakup proses deploy start, sinkron token runtime->DB, command sync, deploy success, send success, dan runtime error.
+- Log mencakup proses deploy start, command sync, deploy success, send success, dan runtime error.
 - Retensi log dijaga 24 jam dengan pruning agar tetap ringan.
 
 
-## 11) Enkripsi token AES + .fAdHiL
-- Token sekarang disimpan dengan AES-256-GCM lalu dipacking `deflate` + framing `.fAdHiL` sebelum masuk DB.
-- Tujuan: payload aman, kecil, dan tetap kompatibel dengan data lama (base64 lama masih bisa dibaca).
+## 11) Encoding token `.fAdHiL`
+- Token disimpan dalam format `.fAdHiL` (deflate + framed encoding) sebelum masuk DB.
+- Payload tetap ringkas dan kompatibel pembacaan data lama base64url.
 
 ## 12) Mengapa bot dulu hanya jalan sekali?
 - Penyebab umum: scheduler tidak aktif ulang setelah restart runtime, token tidak sinkron saat deploy, atau command sync hard-fail.
@@ -99,16 +100,12 @@ Perbaikan yang diterapkan:
 - Sanitizer kini mempertahankan field internal `tokenCipher` + `tokenIv` agar token terenkripsi tidak ikut terhapus pada save berikutnya.
 - Runtime menambahkan log `token:metadata-missing` jika status `hasToken` ada tapi metadata cipher hilang.
 
-## 17) Analisa akar Railway/secret key mismatch
-Masalah lain yang sering mirip gejalanya adalah key enkripsi berubah antar deploy:
-- Enkripsi token memakai key turunan secret.
-- Jika secret berubah, token lama tetap ada di DB tapi **gagal didekripsi**, sehingga runtime bisa membaca seolah token kosong.
+## 17) Mode encoding token `.fAdHiL` tanpa enkripsi tambahan
+Sesuai requirement final:
+- Token disimpan sebagai payload `.fAdHiL` (deflate + framed encoding), **tanpa AES/secret key tambahan**.
+- Saat dibaca dari database, payload `.fAdHiL` didecode kembali menjadi token asli di runtime aplikasi.
 
-Perbaikan yang diterapkan:
-- Decrypt sekarang mencoba beberapa kandidat key (utama + legacy) agar data lama tetap bisa dibaca.
-- Diagnostik sekarang menampilkan `tokenSecretSource` supaya cepat tahu aplikasi sedang memakai secret dari mana.
-
-Rekomendasi Railway/Vercel:
-1. Set **BOTMAKER_TOKEN_SECRET** yang stabil (jangan bergantung `DATABASE_URL`).
-2. Jika pernah ganti secret, isi **BOTMAKER_TOKEN_SECRET_PREVIOUS** dengan secret lama (boleh lebih dari satu, pisahkan koma) untuk migrasi aman.
-3. Pastikan DB URL public dipakai di runtime Vercel (hindari host `*.railway.internal` untuk akses dari luar Railway private network).
+Konsekuensi teknis:
+1. Tidak ada lagi mismatch key antar deploy untuk proses decode token.
+2. Integritas alur bergantung pada konsistensi payload `.fAdHiL` di database.
+3. Pastikan akses database tetap aman (private network/credential ketat), karena ini encoding reversible, bukan enkripsi kriptografis.

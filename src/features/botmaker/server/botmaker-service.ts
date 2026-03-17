@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { createHash, createHmac, createCipheriv, createDecipheriv, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { brotliCompressSync, brotliDecompressSync, constants as zlibConstants, deflateRawSync, inflateRawSync } from 'node:zlib';
 import { activeDatabaseHost, prisma } from '@/lib/prisma';
 import { DEFAULT_BOTMAKER_STATE, sanitizeBotMakerState, type BotMakerBot, type BotMakerState } from '@/features/botmaker/shared/schema';
@@ -18,7 +18,6 @@ const STATE_MAGIC_DEFLATE = 'botmaker-v2-deflate';
 const STATE_MAGIC_PLAIN = 'botmaker-v1-plain';
 const MAX_COMMAND_SYNC_INTERVAL_MS = 10 * 60_000;
 const DISCORD_SNOWFLAKE_REGEX = /^\d{16,22}$/;
-const BOTMAKER_RUNTIME_TOKEN_ENV_KEYS = ['BOTMAKER_FALLBACK_TOKEN', 'DISCORD_BOT_TOKEN', 'TOKEN'] as const;
 const BOTMAKER_LOG_PREFIX = '[botmaker-runtime]';
 const TOKEN_CIPHER_FADHIL_PREFIX = 'fAdHiL:';
 const ACTIVITY_LOG_RETENTION_MS = 24 * 60 * 60 * 1000;
@@ -39,8 +38,6 @@ type DiscordUserResponse = { id: string; username: string };
 
 type BotMakerDiagnostics = {
   dbHost: string | null;
-  hasFallbackToken: boolean;
-  tokenSecretSource: 'BOTMAKER_TOKEN_SECRET' | 'BOTMAKER_TOKEN_SECRET_PREVIOUS' | 'DATABASE_URL_FALLBACK' | 'default-dev-secret';
   sharedStore: string;
 };
 
@@ -88,53 +85,15 @@ export function appendBotActivityLog(botId: string, level: 'info' | 'warning' | 
   logRuntime('client-log', { botId, level, source, message, ...(details ?? {}) });
 }
 
-function getFallbackToken() {
-  for (const key of BOTMAKER_RUNTIME_TOKEN_ENV_KEYS) {
-    const value = process.env[key];
-    if (typeof value === 'string' && value.trim().length > 0) {
-      return value.trim();
-    }
-  }
-  return '';
-}
-
-
-function getTokenKeyCandidates() {
-  const direct = process.env.BOTMAKER_TOKEN_SECRET?.trim();
-  const previous = process.env.BOTMAKER_TOKEN_SECRET_PREVIOUS?.split(',').map((entry) => entry.trim()).filter(Boolean) ?? [];
-  const dbFallback = process.env.DATABASE_URL?.trim();
-
-  const ordered = [
-    ...(direct ? [direct] : []),
-    ...previous,
-    ...(!direct && dbFallback ? [dbFallback] : []),
-    ...(!direct && !dbFallback ? ['botmaker-dev-secret'] : []),
-  ];
-
-  return [...new Set(ordered)].map((value) => createHash('sha256').update(value).digest());
-}
-
-function getTokenSecretSource(): BotMakerDiagnostics['tokenSecretSource'] {
-  if (process.env.BOTMAKER_TOKEN_SECRET?.trim()) return 'BOTMAKER_TOKEN_SECRET';
-  if (process.env.BOTMAKER_TOKEN_SECRET_PREVIOUS?.trim()) return 'BOTMAKER_TOKEN_SECRET_PREVIOUS';
-  if (process.env.DATABASE_URL?.trim()) return 'DATABASE_URL_FALLBACK';
-  return 'default-dev-secret';
-}
-
 function getBotMakerDiagnostics(): BotMakerDiagnostics {
   return {
     dbHost: activeDatabaseHost,
-    hasFallbackToken: Boolean(getFallbackToken()),
-    tokenSecretSource: getTokenSecretSource(),
     sharedStore: 'prisma.map (/Editor,/Game-ideas,/BotMaker)',
   };
 }
 
-function resolveRuntimeToken(bot: PersistedBot, override?: string) {
-  if (override && override.trim()) return override.trim();
-  const persisted = decryptToken(bot.tokenCipher, bot.tokenIv).trim();
-  if (persisted) return persisted;
-  return getFallbackToken();
+function resolveRuntimeToken(bot: PersistedBot) {
+  return decryptToken(bot.tokenCipher, bot.tokenIv).trim();
 }
 
 class BotMakerServiceError extends Error {
@@ -204,61 +163,38 @@ async function findSystemRecord() {
   );
 }
 
-function getTokenCryptoKey() {
-  return getTokenKeyCandidates()[0];
+function encodeTokenToFadhil(token: string) {
+  const packed = deflateRawSync(Buffer.from(token, 'utf8'), { level: 1 });
+  return `${TOKEN_CIPHER_FADHIL_PREFIX}${encodeAlienFramed(packed)}`;
 }
 
-function encryptToken(token: string) {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv('aes-256-gcm', getTokenCryptoKey(), iv);
-  const encrypted = Buffer.concat([cipher.update(token, 'utf8'), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  const payload = Buffer.concat([encrypted, tag]);
-
-  const packed = deflateRawSync(payload, { level: 1 });
-  const framed = encodeAlienFramed(packed);
-
-  return {
-    tokenCipher: `${TOKEN_CIPHER_FADHIL_PREFIX}${framed}`,
-    tokenIv: iv.toString('base64url'),
-  };
-}
-
-function decryptToken(tokenCipher: string, tokenIv: string) {
-  if (!tokenCipher || !tokenIv) return '';
+function decodeTokenFromFadhil(tokenCipher: string) {
+  if (!tokenCipher) return '';
 
   try {
-    let payload = Buffer.alloc(0);
-
     if (tokenCipher.startsWith(TOKEN_CIPHER_FADHIL_PREFIX)) {
       const encoded = tokenCipher.slice(TOKEN_CIPHER_FADHIL_PREFIX.length);
       const candidates = decodeAlienFramedCandidates(encoded);
       const packed = Buffer.from(candidates[0] ?? new Uint8Array());
-      payload = inflateRawSync(packed);
-    } else {
-      payload = Buffer.from(tokenCipher, 'base64url');
+      return inflateRawSync(packed).toString('utf8');
     }
 
-    if (payload.length <= 16) return '';
-    const data = payload.subarray(0, payload.length - 16);
-    const tag = payload.subarray(payload.length - 16);
-
-    for (const key of getTokenKeyCandidates()) {
-      try {
-        const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(tokenIv, 'base64url'));
-        decipher.setAuthTag(tag);
-        return Buffer.concat([decipher.update(data), decipher.final()]).toString('utf8');
-      } catch {
-        // try next legacy key
-      }
-    }
-
-    logRuntime('token:decrypt-failed', { reason: 'no-valid-key' });
-    return '';
+    return Buffer.from(tokenCipher, 'base64url').toString('utf8');
   } catch {
-    logRuntime('token:decrypt-failed', { reason: 'invalid-payload' });
+    logRuntime('token:decode-failed');
     return '';
   }
+}
+
+function encryptToken(token: string) {
+  return {
+    tokenCipher: encodeTokenToFadhil(token),
+    tokenIv: '',
+  };
+}
+
+function decryptToken(tokenCipher: string, _tokenIv: string) {
+  return decodeTokenFromFadhil(tokenCipher);
 }
 
 function compressState(state: BotMakerState): PersistedStateEnvelope {
@@ -350,7 +286,7 @@ function validateBotConfiguration(bot: BotMakerBot, options?: { requireToken?: b
   }
 
   if (requireToken && !bot.token.trim()) {
-    throw new BotMakerServiceError('Token bot belum tersimpan.', 400);
+    throw new BotMakerServiceError('Token bot belum tersedia di database.', 400);
   }
 
   if (bot.token.trim() && !looksLikeDiscordToken(bot.token)) {
@@ -412,27 +348,13 @@ function toPublicBot(bot: PersistedBot, revealToken = false): BotMakerBot {
   };
 }
 
-function syncRuntimeTokenOnBot(bot: PersistedBot, runtimeTokenRaw?: string) {
-  const runtimeToken = runtimeTokenRaw?.trim() ?? '';
-  if (!runtimeToken) return false;
-
-  const persisted = decryptToken(bot.tokenCipher, bot.tokenIv);
-  if (persisted === runtimeToken) return false;
-
-  const encrypted = encryptToken(runtimeToken);
-  bot.tokenCipher = encrypted.tokenCipher;
-  bot.tokenIv = encrypted.tokenIv;
-  bot.tokenUpdatedAt = new Date().toISOString();
-  return true;
-}
-
 function parsePersistedBots(state: BotMakerState): PersistedBot[] {
   return state.bots.map((bot) => {
     const source = bot as unknown as Partial<PersistedBot>;
     const tokenCipher = typeof source.tokenCipher === 'string' ? source.tokenCipher : '';
     const tokenIv = typeof source.tokenIv === 'string' ? source.tokenIv : '';
 
-    if (source.hasToken && (!tokenCipher || !tokenIv)) {
+    if (source.hasToken && !tokenCipher) {
       logRuntime('token:metadata-missing', { botId: source.id ?? 'unknown' });
     }
 
@@ -546,8 +468,12 @@ async function syncGuildCommands(bot: BotMakerBot, token: string): Promise<Comma
     return { ok: false, status: 403, warning: 'Command sync 403: scope atau permission bot belum sesuai.' };
   }
 
+  if (response.status === 401) {
+    return { ok: false, status: 401, warning: 'Command sync 401: token bot tidak valid atau token berubah.' };
+  }
+
   if (!response.ok) {
-    throw new BotMakerServiceError(`Command sync failed (${response.status})`, 502);
+    return { ok: false, status: response.status, warning: `Command sync ${response.status}: gagal sinkron command guild.` };
   }
 
   return { ok: true, status: response.status };
@@ -819,21 +745,21 @@ export async function saveBotMakerState(raw: unknown) {
   };
 }
 
-async function loadBotById(botId: string, runtimeTokenRaw?: string) {
+async function loadBotById(botId: string) {
   const { recordId, state } = await readPersistedState();
   const persistedBots = parsePersistedBots(state);
   const bot = persistedBots.find((entry) => entry.id === botId);
   if (!bot) throw new BotMakerServiceError('Bot tidak ditemukan.', 404);
 
-  const token = resolveRuntimeToken(bot, runtimeTokenRaw);
-  if (!token) throw new BotMakerServiceError('Token bot belum tersimpan dan fallback token env belum tersedia.', 400);
+  const token = resolveRuntimeToken(bot);
+  if (!token) throw new BotMakerServiceError('Token bot belum tersedia di database.', 400);
 
   return { recordId, state, bot, token };
 }
 
-export async function deployBot(botId: string, runtimeTokenRaw?: string) {
-  const loaded = await loadBotById(botId, runtimeTokenRaw);
-  logRuntime('deploy:start', { botId, fromRuntimeInput: Boolean(runtimeTokenRaw?.trim()) });
+export async function deployBot(botId: string) {
+  const loaded = await loadBotById(botId);
+  logRuntime('deploy:start', { botId });
 
   const identityRes = await fetch(`${DISCORD_API}/users/@me`, {
     headers: { Authorization: `Bot ${loaded.token}` },
@@ -851,12 +777,7 @@ export async function deployBot(botId: string, runtimeTokenRaw?: string) {
   const target = persistedBots.find((entry) => entry.id === botId);
   if (!target) throw new BotMakerServiceError('Bot tidak ditemukan.', 404);
 
-  const tokenSyncApplied = syncRuntimeTokenOnBot(target, loaded.token);
-  if (tokenSyncApplied) {
-    logRuntime('deploy:token-sync', { botId, reason: 'runtime-input-token' });
-  }
-
-  validateBotConfiguration(toPublicBot(target, true), { requireToken: true, strict: true });
+  validateBotConfiguration({ ...toPublicBot(target, true), token: loaded.token }, { requireToken: true, strict: true });
   target.enabled = true;
   target.deployedAt = new Date().toISOString();
   target.lastDeployStatus = `Deployed as ${identity.username} (${identity.id}) • scheduler aktif (REST-host mode)`;
@@ -915,9 +836,9 @@ export async function stopBot(botId: string) {
   };
 }
 
-export async function sendBotNow(botId: string, runtimeTokenRaw?: string) {
-  const loaded = await loadBotById(botId, runtimeTokenRaw);
-  validateBotConfiguration(toPublicBot(loaded.bot, true), { requireToken: true, strict: true });
+export async function sendBotNow(botId: string) {
+  const loaded = await loadBotById(botId);
+  validateBotConfiguration({ ...toPublicBot(loaded.bot, true), token: loaded.token }, { requireToken: true, strict: true });
   const limits = await sendDiscordMessage(toPublicBot(loaded.bot), loaded.token);
   logRuntime('send-now:success', { botId, hasRetryAfter: Boolean(limits.retryAfterMs), hasResetAfter: Boolean(limits.resetAfterMs) });
   return { ok: true, limits };
