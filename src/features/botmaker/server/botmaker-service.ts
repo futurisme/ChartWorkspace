@@ -9,11 +9,13 @@ const DISCORD_API = 'https://discord.com/api/v10';
 const BOTMAKER_COOKIE = 'botmaker_session';
 const BOTMAKER_USER_COOKIE = 'botmaker_user';
 const ACTIVE_TIMERS = new Map<string, ReturnType<typeof setTimeout>>();
-const BOT_RUNTIME_STATE = new Map<string, { running: boolean; nextAllowedAt: number; backoffMs: number }>();
+const BOT_RUNTIME_STATE = new Map<string, { running: boolean; nextAllowedAt: number; backoffMs: number; lastCommandSyncAt: number }>();
 const MIN_SAFE_DISCORD_INTERVAL_MS = 60_000;
 const MAX_BACKOFF_MS = 15 * 60_000;
 const STATE_MAGIC_BROTLI = 'botmaker-v3-br';
 const STATE_MAGIC_DEFLATE = 'botmaker-v2-deflate';
+const STATE_MAGIC_PLAIN = 'botmaker-v1-plain';
+const MAX_COMMAND_SYNC_INTERVAL_MS = 10 * 60_000;
 
 interface PersistedBot extends Omit<BotMakerBot, 'token' | 'hasToken'> {
   tokenCipher: string;
@@ -22,7 +24,8 @@ interface PersistedBot extends Omit<BotMakerBot, 'token' | 'hasToken'> {
 
 type PersistedStateEnvelope =
   | { magic: typeof STATE_MAGIC_BROTLI; payload: string }
-  | { magic: typeof STATE_MAGIC_DEFLATE; payload: string };
+  | { magic: typeof STATE_MAGIC_DEFLATE; payload: string }
+  | { magic: typeof STATE_MAGIC_PLAIN; payload: string };
 
 type DiscordUserResponse = { id: string; username: string };
 
@@ -121,12 +124,36 @@ function decryptToken(tokenCipher: string, tokenIv: string) {
 
 function compressState(state: BotMakerState): PersistedStateEnvelope {
   const text = JSON.stringify(state);
-  const compressed = brotliCompressSync(Buffer.from(text, 'utf8'), {
+  const source = Buffer.from(text, 'utf8');
+
+  if (source.length < 1_024) {
+    return {
+      magic: STATE_MAGIC_PLAIN,
+      payload: source.toString('base64url'),
+    };
+  }
+
+  const compressed = brotliCompressSync(source, {
     params: {
-      [zlibConstants.BROTLI_PARAM_QUALITY]: 5,
+      [zlibConstants.BROTLI_PARAM_QUALITY]: 4,
       [zlibConstants.BROTLI_PARAM_MODE]: zlibConstants.BROTLI_MODE_TEXT,
     },
   });
+
+  if (compressed.length >= source.length * 0.98) {
+    const fallback = deflateRawSync(source, { level: 1 });
+    if (fallback.length >= source.length * 0.98) {
+      return {
+        magic: STATE_MAGIC_PLAIN,
+        payload: source.toString('base64url'),
+      };
+    }
+    return {
+      magic: STATE_MAGIC_DEFLATE,
+      payload: fallback.toString('base64url'),
+    };
+  }
+
   return {
     magic: STATE_MAGIC_BROTLI,
     payload: compressed.toString('base64url'),
@@ -147,6 +174,11 @@ function decompressState(raw: unknown): BotMakerState {
   if (typeof envelope.payload === 'string' && envelope.magic === STATE_MAGIC_DEFLATE) {
     const inflated = inflateRawSync(Buffer.from(envelope.payload, 'base64url')).toString('utf8');
     return sanitizeBotMakerState(JSON.parse(inflated));
+  }
+
+  if (typeof envelope.payload === 'string' && envelope.magic === STATE_MAGIC_PLAIN) {
+    const text = Buffer.from(envelope.payload, 'base64url').toString('utf8');
+    return sanitizeBotMakerState(JSON.parse(text));
   }
 
   return sanitizeBotMakerState(raw);
@@ -176,6 +208,7 @@ function toPersistedBot(bot: BotMakerBot, existing?: PersistedBot): PersistedBot
     useEmbed: bot.useEmbed,
     mentionEveryone: bot.mentionEveryone,
     stylePreset: bot.stylePreset,
+    customCode: bot.customCode,
     tokenUpdatedAt: tokenChanged ? new Date().toISOString() : (existing?.tokenUpdatedAt ?? bot.tokenUpdatedAt),
     tokenCipher: encrypted.tokenCipher,
     tokenIv: encrypted.tokenIv,
@@ -201,6 +234,7 @@ function toPublicBot(bot: PersistedBot): BotMakerBot {
     useEmbed: bot.useEmbed,
     mentionEveryone: bot.mentionEveryone,
     stylePreset: bot.stylePreset,
+    customCode: (bot as unknown as { customCode?: string }).customCode ?? '',
   };
 }
 
@@ -286,6 +320,29 @@ function parseLimitHeaders(headers: Headers, body: unknown) {
         : null,
     resetAfterMs: Number.isFinite(resetAfterSeconds) ? Math.max(0, Math.round(resetAfterSeconds * 1000)) : null,
   };
+}
+
+async function syncGuildCommands(bot: BotMakerBot, token: string) {
+  if (!bot.applicationId || !bot.guildId) return;
+  const response = await fetch(`${DISCORD_API}/applications/${bot.applicationId}/guilds/${bot.guildId}/commands`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bot ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify([
+      {
+        name: 'ping',
+        description: 'BotMaker health command',
+        type: 1,
+      },
+    ]),
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    throw new BotMakerServiceError(`Command sync failed (${response.status})`, 502);
+  }
 }
 
 async function sendDiscordMessage(bot: BotMakerBot, token: string) {
@@ -511,22 +568,9 @@ export async function deployBot(botId: string) {
   target.deployedAt = new Date().toISOString();
   target.lastDeployStatus = `Deployed as ${identity.username} (${identity.id})`;
 
+
   if (target.applicationId && target.guildId) {
-    await fetch(`${DISCORD_API}/applications/${target.applicationId}/guilds/${target.guildId}/commands`, {
-      method: 'PUT',
-      headers: {
-        Authorization: `Bot ${loaded.token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify([
-        {
-          name: 'ping',
-          description: 'BotMaker health command',
-          type: 1,
-        },
-      ]),
-      cache: 'no-store',
-    });
+    await syncGuildCommands(toPublicBot(target), loaded.token);
   }
 
   const nextState: BotMakerState = { bots: persistedBots as unknown as BotMakerBot[], users: loaded.state.users };
@@ -568,7 +612,7 @@ function reconcileRuntime(state: BotMakerState) {
     const token = decryptToken(persistedBot.tokenCipher, persistedBot.tokenIv);
     if (!token) return;
 
-    const runtime = BOT_RUNTIME_STATE.get(persistedBot.id) ?? { running: false, nextAllowedAt: 0, backoffMs: 0 };
+    const runtime = BOT_RUNTIME_STATE.get(persistedBot.id) ?? { running: false, nextAllowedAt: 0, backoffMs: 0, lastCommandSyncAt: 0 };
     BOT_RUNTIME_STATE.set(persistedBot.id, runtime);
 
     const run = async () => {
@@ -583,6 +627,11 @@ function reconcileRuntime(state: BotMakerState) {
         if (now < runtime.nextAllowedAt) {
           scheduleBotSend(persistedBot.id, runtime.nextAllowedAt - now, run);
           return;
+        }
+
+        if (Date.now() - runtime.lastCommandSyncAt > MAX_COMMAND_SYNC_INTERVAL_MS) {
+          await syncGuildCommands(bot, token);
+          runtime.lastCommandSyncAt = Date.now();
         }
 
         const limits = await sendDiscordMessage(bot, token);

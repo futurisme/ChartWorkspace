@@ -34,6 +34,7 @@ const EMPTY_BOT: BotMakerBot = {
   useEmbed: true,
   mentionEveryone: false,
   stylePreset: 'minimal',
+  customCode: '',
 };
 
 function createBotId() {
@@ -80,6 +81,7 @@ export default function BotMakerPage() {
   const [loginUser, setLoginUser] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [dragBlockId, setDragBlockId] = useState<string | null>(null);
+  const [activeBotId, setActiveBotId] = useState<string | null>(null);
 
   const stats = useMemo(() => ({ total: state.bots.length, active: state.bots.filter((bot) => bot.enabled).length }), [state.bots]);
 
@@ -148,7 +150,7 @@ export default function BotMakerPage() {
   };
 
   const updateBot = (botId: string, patch: Partial<BotMakerBot>) => {
-    setState((prev) => ({ bots: prev.bots.map((bot) => (bot.id === botId ? { ...bot, ...patch } : bot)), users: [] }));
+    setState((prev) => ({ bots: prev.bots.map((bot) => (bot.id === botId ? { ...bot, ...patch } : bot)), users: prev.users }));
   };
 
   const addBlock = (bot: BotMakerBot, type: WorkflowBlockType) => {
@@ -237,7 +239,7 @@ export default function BotMakerPage() {
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div>
             <h1 className="text-lg font-black tracking-tight text-cyan-100 sm:text-3xl">BotMaker No-Code Editor</h1>
-            <p className="text-[11px] text-cyan-200/80 sm:text-xs">Drag & drop block editor (Scratch/Blockly style) optimized for narrow mobile screens.</p>
+            <p className="text-[11px] text-cyan-200/80 sm:text-xs">Drag & drop block editor (Scratch/Blockly style) optimized for narrow mobile screens, dilengkapi custom code editor.</p>
           </div>
           <div className="flex items-center gap-2 text-right text-[11px] text-slate-300 sm:text-xs">
             <div>
@@ -249,7 +251,7 @@ export default function BotMakerPage() {
         </div>
 
         <div className="mb-3 flex flex-wrap gap-2">
-          <button type="button" onClick={() => setState((prev) => ({ users: [], bots: [...prev.bots, { ...EMPTY_BOT, id: createBotId(), name: `Bot ${prev.bots.length + 1}` }] }))} className="rounded-lg border border-cyan-400/40 bg-cyan-500/20 px-3 py-1.5 text-xs font-semibold text-cyan-100">Add bot</button>
+          <button type="button" onClick={() => setState((prev) => ({ users: prev.users, bots: [...prev.bots, { ...EMPTY_BOT, id: createBotId(), name: `Bot ${prev.bots.length + 1}` }] }))} className="rounded-lg border border-cyan-400/40 bg-cyan-500/20 px-3 py-1.5 text-xs font-semibold text-cyan-100">Add bot</button>
           <button type="button" onClick={() => void persist(state)} disabled={isBusy} className="rounded-lg border border-emerald-400/40 bg-emerald-500/20 px-3 py-1.5 text-xs font-semibold text-emerald-100 disabled:opacity-50">Save all</button>
           <button type="button" onClick={() => void refresh()} disabled={isBusy} className="rounded-lg border border-violet-400/40 bg-violet-500/20 px-3 py-1.5 text-xs font-semibold text-violet-100 disabled:opacity-50">Reload</button>
         </div>
@@ -345,10 +347,34 @@ export default function BotMakerPage() {
                 <pre className="whitespace-pre-wrap break-words text-[11px] text-slate-300">{workflowToPreview(bot.workflow) || bot.messageTemplate}</pre>
               </div>
 
+
+              <div className="mt-2 grid gap-2 lg:grid-cols-[1fr_1fr]">
+                <div className="rounded border border-slate-700 bg-slate-950/70 p-2">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <p className="text-[11px] font-semibold text-cyan-100">Code Editor (Custom)</p>
+                    <button type="button" onClick={() => setActiveBotId((prev) => (prev === bot.id ? null : bot.id))} className="rounded border border-slate-600 px-1.5 py-0.5 text-[10px]">{activeBotId === bot.id ? 'Hide Explorer' : 'Open Explorer'}</button>
+                  </div>
+                  <textarea value={bot.customCode} onChange={(e) => updateBot(bot.id, { customCode: e.target.value })} placeholder="// Tulis custom script di sini untuk logic yang tidak bisa drag-drop" className="min-h-[130px] w-full rounded border border-slate-700 bg-slate-950 p-2 font-mono text-[11px]" />
+                </div>
+                <div className="rounded border border-slate-700 bg-slate-950/70 p-2">
+                  <p className="mb-2 text-[11px] font-semibold text-cyan-100">Code Explorer</p>
+                  <div className="max-h-[170px] overflow-y-auto rounded border border-slate-700 bg-slate-950 p-2 font-mono text-[11px]">
+                    <p className="text-cyan-300">bot://{bot.id}/workflow.bot.ts</p>
+                    <p className="text-violet-300">syntax: custom-botmaker-v1</p>
+                    <p className="mt-1 text-slate-300">blocks: {bot.workflow.length}</p>
+                    <p className="text-slate-300">interval: {bot.intervalSeconds}s</p>
+                    <p className="mt-1 text-slate-300">custom-size: {bot.customCode.length} chars</p>
+                    {activeBotId === bot.id && (
+                      <pre className="mt-2 whitespace-pre-wrap break-words text-[10px] text-emerald-200">{bot.customCode || '// explorer preview kosong'}</pre>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               <div className="mt-2 flex flex-wrap gap-2">
                 <button type="button" onClick={() => void runAction('deploy', bot.id)} disabled={isBusy} className="rounded border border-cyan-300/50 bg-cyan-500/20 px-2.5 py-1 text-xs font-semibold text-cyan-100 disabled:opacity-50">Deploy + Host</button>
                 <button type="button" onClick={() => void runAction('send-now', bot.id)} disabled={isBusy} className="rounded border border-amber-300/50 bg-amber-500/20 px-2.5 py-1 text-xs font-semibold text-amber-100 disabled:opacity-50">Send test now</button>
-                <button type="button" onClick={() => setState((prev) => ({ users: [], bots: prev.bots.filter((entry) => entry.id !== bot.id) }))} className="rounded border border-red-400/40 bg-red-500/20 px-2.5 py-1 text-xs font-semibold text-red-100">Delete</button>
+                <button type="button" onClick={() => setState((prev) => ({ users: prev.users, bots: prev.bots.filter((entry) => entry.id !== bot.id) }))} className="rounded border border-red-400/40 bg-red-500/20 px-2.5 py-1 text-xs font-semibold text-red-100">Delete</button>
               </div>
             </article>
           ))}

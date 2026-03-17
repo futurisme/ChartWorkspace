@@ -25,6 +25,7 @@ export interface BotMakerBot {
   useEmbed: boolean;
   mentionEveryone: boolean;
   stylePreset: BotStylePreset;
+  customCode: string;
 }
 
 export interface BotMakerAuthUser {
@@ -98,6 +99,7 @@ function sanitizeBot(raw: unknown, index: number): BotMakerBot {
     useEmbed: Boolean(source.useEmbed),
     mentionEveryone: Boolean(source.mentionEveryone),
     stylePreset: sanitizePreset(source.stylePreset),
+    customCode: cleanString(source.customCode),
   };
 }
 

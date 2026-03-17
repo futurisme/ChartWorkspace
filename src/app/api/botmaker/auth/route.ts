@@ -17,7 +17,7 @@ function buildCookieOptions() {
     httpOnly: true,
     sameSite: 'lax' as const,
     secure: process.env.NODE_ENV === 'production',
-    path: '/BotMaker',
+    path: '/',
     maxAge: COOKIE_MAX_AGE,
   };
 }
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE() {
   const response = NextResponse.json({ ok: true });
-  response.cookies.set(BOTMAKER_USER_COOKIE, '', { path: '/BotMaker', maxAge: 0 });
-  response.cookies.set(BOTMAKER_COOKIE, '', { path: '/BotMaker', maxAge: 0 });
+  response.cookies.set(BOTMAKER_USER_COOKIE, '', { path: '/', maxAge: 0 });
+  response.cookies.set(BOTMAKER_COOKIE, '', { path: '/', maxAge: 0 });
   return response;
 }
