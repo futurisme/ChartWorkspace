@@ -235,14 +235,14 @@ export default function BotMakerPage() {
     }
   };
 
-  const runAction = async (action: 'deploy' | 'send-now', botId: string) => {
+  const runAction = async (action: 'deploy' | 'send-now', botId: string, runtimeToken?: string) => {
     setIsBusy(true);
     setError('');
     try {
       const response = await fetch('/api/botmaker', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, botId }),
+        body: JSON.stringify({ action, botId, runtimeToken: runtimeToken?.trim() || undefined }),
       });
       const payload = (await response.json()) as ApiPayload | { error?: string; message?: string };
       if (!response.ok) {
@@ -263,9 +263,17 @@ export default function BotMakerPage() {
   };
 
   const saveThenRun = async (action: 'deploy' | 'send-now', botId: string) => {
+    const bot = state.bots.find((entry) => entry.id === botId);
+    const runtimeToken = bot?.token?.trim() || undefined;
+
     const ok = await persist(state);
-    if (!ok) return;
-    await runAction(action, botId);
+    if (!ok && !runtimeToken) return;
+
+    if (!ok && runtimeToken) {
+      setNotice('Database gagal simpan, menggunakan fallback token dari input untuk eksekusi runtime.');
+    }
+
+    await runAction(action, botId, runtimeToken);
   };
 
   const updateBot = (botId: string, patch: Partial<BotMakerBot>) => {
@@ -402,6 +410,7 @@ export default function BotMakerPage() {
                 <span className="rounded bg-slate-800 px-2 py-0.5 text-slate-300">{bot.lastDeployStatus || 'Belum deploy'}</span>
               </div>
 
+              <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-cyan-300">Konfigurasi inti</h3>
               <div className="grid gap-2 md:grid-cols-2">
                 <input value={bot.name} onChange={(e) => updateBot(bot.id, { name: e.target.value })} placeholder="Nama bot" className="rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs" />
                 <input value={bot.token} onChange={(e) => updateBot(bot.id, { token: e.target.value })} placeholder="Discord bot token" className="rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs" />
@@ -422,7 +431,8 @@ export default function BotMakerPage() {
                 <label className="flex items-center gap-2 rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs"><input type="checkbox" checked={bot.mentionEveryone} onChange={(e) => updateBot(bot.id, { mentionEveryone: e.target.checked })} /> @everyone</label>
               </div>
 
-              <div className="mt-2 grid gap-2 lg:grid-cols-[0.9fr_1.1fr]">
+              <h3 className="mt-2 mb-1 text-[11px] font-semibold uppercase tracking-wide text-cyan-300">Workflow visual</h3>
+              <div className="mt-1 grid gap-2 lg:grid-cols-[0.9fr_1.1fr]">
                 <div className="rounded border border-slate-700 bg-slate-950/80 p-2">
                   <p className="mb-2 text-[11px] font-semibold text-cyan-100">Block Palette</p>
                   <div className="grid grid-cols-2 gap-1">
@@ -480,7 +490,8 @@ export default function BotMakerPage() {
                 <pre className="whitespace-pre-wrap break-words text-[11px] text-slate-300">{workflowToPreview(bot.workflow) || bot.messageTemplate}</pre>
               </div>
 
-              <div className="mt-2 grid gap-2 lg:grid-cols-[1fr_1fr]">
+              <h3 className="mt-2 mb-1 text-[11px] font-semibold uppercase tracking-wide text-cyan-300">Hybrid code lanjutan</h3>
+              <div className="mt-1 grid gap-2 lg:grid-cols-[1fr_1fr]">
                 <div className="rounded border border-slate-700 bg-slate-950/70 p-2">
                   <div className="mb-2 flex items-center justify-between gap-2">
                     <p className="text-[11px] font-semibold text-cyan-100">Hybrid Code Editor (Indonesia)</p>

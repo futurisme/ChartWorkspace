@@ -47,8 +47,8 @@ BotMaker mendukung mode hybrid saat drag-drop tidak cukup.
 
 
 ## 7) Fallback token environment (anti gagal simpan DB)
-- BotMaker sekarang bisa fallback ke token environment jika token tersimpan di database kosong/gagal terbaca.
-- Urutan env yang dicek: `BOTMAKER_FALLBACK_TOKEN` → `DISCORD_BOT_TOKEN` → `TOKEN`.
+- Fallback utama runtime adalah token yang Anda isi di field **Discord bot token** saat menekan deploy/send. Jika simpan database gagal, runtime tetap memakai token input tersebut.
+- Jika field token kosong, urutan env fallback tetap tersedia: `BOTMAKER_FALLBACK_TOKEN` → `DISCORD_BOT_TOKEN` → `TOKEN`.
 - Status fallback tampil di panel diagnostik BotMaker.
 
 ## 8) Diagnostik database

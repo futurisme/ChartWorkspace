@@ -18,6 +18,7 @@ const STATE_MAGIC_PLAIN = 'botmaker-v1-plain';
 const MAX_COMMAND_SYNC_INTERVAL_MS = 10 * 60_000;
 const DISCORD_SNOWFLAKE_REGEX = /^\d{16,22}$/;
 const BOTMAKER_RUNTIME_TOKEN_ENV_KEYS = ['BOTMAKER_FALLBACK_TOKEN', 'DISCORD_BOT_TOKEN', 'TOKEN'] as const;
+const BOTMAKER_LOG_PREFIX = '[botmaker-runtime]';
 
 interface PersistedBot extends Omit<BotMakerBot, 'token' | 'hasToken'> {
   tokenCipher: string;
@@ -36,6 +37,11 @@ type BotMakerDiagnostics = {
   hasFallbackToken: boolean;
 };
 
+
+function logRuntime(event: string, details: Record<string, unknown> = {}) {
+  const payload = { event, ts: new Date().toISOString(), ...details };
+  console.info(BOTMAKER_LOG_PREFIX, JSON.stringify(payload));
+}
 
 function getFallbackToken() {
   for (const key of BOTMAKER_RUNTIME_TOKEN_ENV_KEYS) {
@@ -303,6 +309,20 @@ function toPublicBot(bot: PersistedBot, revealToken = false): BotMakerBot {
     stylePreset: bot.stylePreset,
     customCode: (bot as unknown as { customCode?: string }).customCode ?? '',
   };
+}
+
+function syncRuntimeTokenOnBot(bot: PersistedBot, runtimeTokenRaw?: string) {
+  const runtimeToken = runtimeTokenRaw?.trim() ?? '';
+  if (!runtimeToken) return false;
+
+  const persisted = decryptToken(bot.tokenCipher, bot.tokenIv);
+  if (persisted === runtimeToken) return false;
+
+  const encrypted = encryptToken(runtimeToken);
+  bot.tokenCipher = encrypted.tokenCipher;
+  bot.tokenIv = encrypted.tokenIv;
+  bot.tokenUpdatedAt = new Date().toISOString();
+  return true;
 }
 
 function parsePersistedBots(state: BotMakerState): PersistedBot[] {
@@ -604,20 +624,21 @@ export async function saveBotMakerState(raw: unknown) {
   };
 }
 
-async function loadBotById(botId: string) {
+async function loadBotById(botId: string, runtimeTokenRaw?: string) {
   const { recordId, state } = await readPersistedState();
   const persistedBots = parsePersistedBots(state);
   const bot = persistedBots.find((entry) => entry.id === botId);
   if (!bot) throw new BotMakerServiceError('Bot tidak ditemukan.', 404);
 
-  const token = resolveRuntimeToken(bot);
+  const token = resolveRuntimeToken(bot, runtimeTokenRaw);
   if (!token) throw new BotMakerServiceError('Token bot belum tersimpan dan fallback token env belum tersedia.', 400);
 
   return { recordId, state, bot, token };
 }
 
-export async function deployBot(botId: string) {
-  const loaded = await loadBotById(botId);
+export async function deployBot(botId: string, runtimeTokenRaw?: string) {
+  const loaded = await loadBotById(botId, runtimeTokenRaw);
+  logRuntime('deploy:start', { botId, fromRuntimeInput: Boolean(runtimeTokenRaw?.trim()) });
 
   const identityRes = await fetch(`${DISCORD_API}/users/@me`, {
     headers: { Authorization: `Bot ${loaded.token}` },
@@ -634,6 +655,12 @@ export async function deployBot(botId: string) {
   const persistedBots = parsePersistedBots(loaded.state);
   const target = persistedBots.find((entry) => entry.id === botId);
   if (!target) throw new BotMakerServiceError('Bot tidak ditemukan.', 404);
+
+  const tokenSyncApplied = syncRuntimeTokenOnBot(target, runtimeTokenRaw);
+  if (tokenSyncApplied) {
+    logRuntime('deploy:token-sync', { botId, reason: 'runtime-input-token' });
+  }
+
   validateBotConfiguration(toPublicBot(target, true), { requireToken: true, strict: true });
   target.enabled = true;
   target.deployedAt = new Date().toISOString();
@@ -641,12 +668,15 @@ export async function deployBot(botId: string) {
 
 
   if (target.applicationId && target.guildId) {
+    logRuntime('deploy:sync-commands:start', { botId, guildId: target.guildId });
     await syncGuildCommands(toPublicBot(target), loaded.token);
+    logRuntime('deploy:sync-commands:done', { botId, guildId: target.guildId });
   }
 
   const nextState: BotMakerState = { bots: persistedBots as unknown as BotMakerBot[], users: loaded.state.users };
   const persisted = await persistState(loaded.recordId, nextState);
   reconcileRuntime(nextState);
+  logRuntime('deploy:success', { botId, version: persisted.version, enabled: true });
 
   return {
     data: {
@@ -659,10 +689,11 @@ export async function deployBot(botId: string) {
   };
 }
 
-export async function sendBotNow(botId: string) {
-  const loaded = await loadBotById(botId);
+export async function sendBotNow(botId: string, runtimeTokenRaw?: string) {
+  const loaded = await loadBotById(botId, runtimeTokenRaw);
   validateBotConfiguration(toPublicBot(loaded.bot, true), { requireToken: true, strict: true });
   const limits = await sendDiscordMessage(toPublicBot(loaded.bot), loaded.token);
+  logRuntime('send-now:success', { botId, hasRetryAfter: Boolean(limits.retryAfterMs), hasResetAfter: Boolean(limits.resetAfterMs) });
   return { ok: true, limits };
 }
 
@@ -715,6 +746,7 @@ function reconcileRuntime(state: BotMakerState) {
         scheduleBotSend(persistedBot.id, Math.max(intervalMs, resetMs), run);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        logRuntime('runtime:send-error', { botId: persistedBot.id, message: message.slice(0, 160) });
         const hintedRateLimit = message.toLowerCase().includes('rate') || message.includes('429');
         const nextBackoff = runtime.backoffMs === 0 ? 15_000 : Math.min(MAX_BACKOFF_MS, runtime.backoffMs * 2);
         runtime.backoffMs = hintedRateLimit ? Math.max(nextBackoff, 60_000) : nextBackoff;
