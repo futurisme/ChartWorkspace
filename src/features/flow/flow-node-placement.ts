@@ -26,6 +26,8 @@ interface CandidatePosition {
   id: string;
   x: number;
   y: number;
+  width: number;
+  height: number;
 }
 
 function snap(value: number, step: number) {
@@ -45,8 +47,8 @@ function candidateToRect(candidate: CandidatePosition): PlacementRect {
   return {
     x: candidate.x,
     y: candidate.y,
-    width: DEFAULT_NODE_SIZE.width,
-    height: DEFAULT_NODE_SIZE.height,
+    width: candidate.width,
+    height: candidate.height,
   };
 }
 
@@ -112,11 +114,14 @@ function buildClusterCandidates(children: Node[], centerStartX: number, rowY: nu
   const spacing = DEFAULT_NODE_SIZE.width + NODE_GAP;
 
   return children.map((child, index) => {
+    const childSize = getNodeSize(child);
     const centerX = centerStartX + index * spacing;
     return {
       id: child.id,
-      x: snap(centerX - DEFAULT_NODE_SIZE.width / 2, GRID_SIZE),
+      x: snap(centerX - childSize.width / 2, GRID_SIZE),
       y: rowY,
+      width: childSize.width,
+      height: childSize.height,
     };
   });
 }

@@ -250,8 +250,6 @@ function buildNodeFromMap(nodeId: string, nodeData: YRecordMap): Node<ConceptNod
     id: persisted.id,
     type: 'conceptNode',
     dragHandle: NODE_DRAG_HANDLE_SELECTOR,
-    width: DEFAULT_NODE_SIZE.width,
-    height: DEFAULT_NODE_SIZE.height,
     data: {
       label: persisted.label,
       color: persisted.color,
@@ -1311,8 +1309,6 @@ export function FlowWorkspace({
       id: nodeId,
       type: 'conceptNode',
       dragHandle: NODE_DRAG_HANDLE_SELECTOR,
-      width: DEFAULT_NODE_SIZE.width,
-      height: DEFAULT_NODE_SIZE.height,
       data: {
         label: `Concept ${nodeCountRef.current + 1}`,
         variant: 'default',
@@ -1366,8 +1362,6 @@ export function FlowWorkspace({
       id: childId,
       type: 'conceptNode',
       dragHandle: NODE_DRAG_HANDLE_SELECTOR,
-      width: DEFAULT_NODE_SIZE.width,
-      height: DEFAULT_NODE_SIZE.height,
       data: { label: `Concept ${nodeCountRef.current + 1}`, variant: 'default' },
       position: childPos,
     };
@@ -1441,8 +1435,6 @@ export function FlowWorkspace({
       id: siblingId,
       type: 'conceptNode',
       dragHandle: NODE_DRAG_HANDLE_SELECTOR,
-      width: DEFAULT_NODE_SIZE.width,
-      height: DEFAULT_NODE_SIZE.height,
       data: { label: `Concept ${nodeCountRef.current + 1}`, variant: 'default' },
       position: siblingPos,
     };
@@ -1525,8 +1517,6 @@ export function FlowWorkspace({
       id: parentId,
       type: 'conceptNode',
       dragHandle: NODE_DRAG_HANDLE_SELECTOR,
-      width: DEFAULT_NODE_SIZE.width,
-      height: DEFAULT_NODE_SIZE.height,
       data: { label: `Concept ${nodeCountRef.current + 1}`, variant: 'default' },
       position: parentPos,
     };
