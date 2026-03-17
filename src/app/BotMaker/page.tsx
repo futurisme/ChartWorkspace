@@ -1,12 +1,14 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { BotMakerBot, BotStylePreset, BotMakerState, WorkflowBlock, WorkflowBlockType } from '@/features/botmaker/shared/schema';
 
 interface ApiPayload {
   data: BotMakerState;
   version: number;
   updatedAt: string;
+  diagnostics?: { dbHost: string | null; hasFallbackToken: boolean };
+  message?: string;
 }
 
 const PRESET_LIBRARY: Record<BotStylePreset, { label: string; blocks: Array<{ type: WorkflowBlockType; value: string }>; useEmbed: boolean; mentionEveryone: boolean }> = {
@@ -146,21 +148,30 @@ export default function BotMakerPage() {
   const [loginPassword, setLoginPassword] = useState('');
   const [dragBlockId, setDragBlockId] = useState<string | null>(null);
   const [activeBotId, setActiveBotId] = useState<string | null>(null);
+  const [details, setDetails] = useState('');
+  const [diagnostics, setDiagnostics] = useState<{ dbHost: string | null; hasFallbackToken: boolean } | null>(null);
+  const [scrollHint, setScrollHint] = useState({ show: false, up: false, down: false });
+  const contentScrollRef = useRef<HTMLDivElement | null>(null);
 
   const stats = useMemo(() => ({ total: state.bots.length, active: state.bots.filter((bot) => bot.enabled).length }), [state.bots]);
 
   const refresh = async () => {
     setError('');
+    setDetails('');
     try {
       const response = await fetch('/api/botmaker', { cache: 'no-store' });
       if (response.status === 401) {
         setAuthenticated(false);
         return;
       }
-      const payload = (await response.json()) as ApiPayload | { error?: string };
-      if (!response.ok) throw new Error((payload as { error?: string }).error ?? 'Load gagal');
+      const payload = (await response.json()) as ApiPayload | { error?: string; message?: string };
+      if (!response.ok) {
+        setDetails((payload as { message?: string }).message ?? '');
+        throw new Error((payload as { error?: string }).error ?? 'Load gagal');
+      }
       setState((payload as ApiPayload).data);
       setVersion((payload as ApiPayload).version);
+      setDiagnostics((payload as ApiPayload).diagnostics ?? null);
       setAuthenticated(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Load gagal');
@@ -171,19 +182,50 @@ export default function BotMakerPage() {
     void refresh();
   }, []);
 
+  useEffect(() => {
+    const container = contentScrollRef.current;
+    if (!container) return;
+
+    const updateHint = () => {
+      const maxScroll = Math.max(0, container.scrollHeight - container.clientHeight);
+      const top = container.scrollTop;
+      setScrollHint({
+        show: maxScroll > 48,
+        up: top > 10,
+        down: top < maxScroll - 10,
+      });
+    };
+
+    updateHint();
+    container.addEventListener('scroll', updateHint, { passive: true });
+    window.addEventListener('resize', updateHint);
+
+    return () => {
+      container.removeEventListener('scroll', updateHint);
+      window.removeEventListener('resize', updateHint);
+    };
+  }, [state.bots.length, authenticated]);
+
+
   const persist = async (next: BotMakerState) => {
     setIsBusy(true);
     setError('');
+    setDetails('');
+    setDetails('');
     try {
       const response = await fetch('/api/botmaker', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ data: next, expectedVersion: version }),
       });
-      const payload = (await response.json()) as ApiPayload | { error?: string };
-      if (!response.ok) throw new Error((payload as { error?: string }).error ?? 'Simpan gagal');
+      const payload = (await response.json()) as ApiPayload | { error?: string; message?: string };
+      if (!response.ok) {
+        setDetails((payload as { message?: string }).message ?? '');
+        throw new Error((payload as { error?: string }).error ?? 'Simpan gagal');
+      }
       setState((payload as ApiPayload).data);
       setVersion((payload as ApiPayload).version);
+      setDiagnostics((payload as ApiPayload).diagnostics ?? null);
       setNotice('Semua konfigurasi berhasil disimpan.');
       return true;
     } catch (err) {
@@ -203,11 +245,15 @@ export default function BotMakerPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action, botId }),
       });
-      const payload = (await response.json()) as ApiPayload | { error?: string };
-      if (!response.ok) throw new Error((payload as { error?: string }).error ?? `${action} gagal`);
+      const payload = (await response.json()) as ApiPayload | { error?: string; message?: string };
+      if (!response.ok) {
+        setDetails((payload as { message?: string }).message ?? '');
+        throw new Error((payload as { error?: string }).error ?? `${action} gagal`);
+      }
       if ('data' in payload) {
         setState(payload.data);
         setVersion(payload.version);
+        setDiagnostics(payload.diagnostics ?? null);
       }
       setNotice(action === 'deploy' ? 'Bot berhasil deploy + start.' : 'Pesan test berhasil dikirim.');
     } catch (err) {
@@ -317,7 +363,8 @@ export default function BotMakerPage() {
 
   return (
     <main className="min-h-screen overflow-y-auto bg-[#030712] px-2 py-3 pb-28 text-slate-100 sm:px-4">
-      <section className="mx-auto max-w-6xl rounded-2xl border border-cyan-400/25 bg-slate-950/80 p-3 shadow-[0_20px_60px_rgba(6,182,212,0.12)] sm:p-4">
+      <div ref={contentScrollRef} className="botmaker-scroll mx-auto max-h-[calc(100dvh-92px)] max-w-6xl overflow-y-scroll rounded-2xl border border-cyan-400/25 bg-slate-950/80 p-3 shadow-[0_20px_60px_rgba(6,182,212,0.12)] sm:p-4">
+        <section>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div>
             <h1 className="text-lg font-black tracking-tight text-cyan-100 sm:text-3xl">BotMaker No-Code + Hybrid</h1>
@@ -339,7 +386,14 @@ export default function BotMakerPage() {
         </div>
 
         {notice && <div className="mb-3 rounded-lg border border-emerald-500/30 bg-emerald-900/20 px-3 py-2 text-xs text-emerald-200">{notice}</div>}
-        {error && <div className="mb-3 rounded-lg border border-red-500/30 bg-red-900/25 px-3 py-2 text-xs text-red-200">{error}</div>}
+        {error && <div className="mb-3 rounded-lg border border-red-500/30 bg-red-900/25 px-3 py-2 text-xs text-red-200">{error}{details ? ` • ${details}` : ''}</div>}
+
+        {diagnostics && (
+          <div className="mb-3 rounded-lg border border-cyan-500/30 bg-slate-900/80 px-3 py-2 text-[11px] text-cyan-100">
+            <p>DB Host: {diagnostics.dbHost ?? 'tidak terdeteksi'} • Fallback token env: {diagnostics.hasFallbackToken ? 'aktif' : 'tidak aktif'}</p>
+          </div>
+        )}
+
 
         <div className="grid gap-3">
           {state.bots.map((bot) => (
@@ -469,7 +523,45 @@ export default function BotMakerPage() {
           ))}
           {state.bots.length === 0 && <p className="rounded-lg border border-slate-700 bg-slate-900/60 p-3 text-xs text-slate-300">Belum ada bot. Tambah bot untuk mulai konfigurasi.</p>}
         </div>
-      </section>
+        </section>
+      </div>
+
+      {scrollHint.show && (
+        <div className="botmaker-scroll-indicator" aria-hidden="true">
+          <span className={`botmaker-scroll-arrow ${scrollHint.up ? 'on' : ''}`}>▲</span>
+          <span className={`botmaker-scroll-arrow ${scrollHint.down ? 'on' : ''}`}>▼</span>
+        </div>
+      )}
+
+
+      <style jsx>{`
+        .botmaker-scroll {
+          scrollbar-gutter: stable both-edges;
+          -webkit-overflow-scrolling: touch;
+          overscroll-behavior: contain;
+          scroll-behavior: smooth;
+        }
+        .botmaker-scroll-indicator {
+          position: fixed;
+          right: 8px;
+          bottom: 84px;
+          z-index: 15;
+          display: grid;
+          gap: 4px;
+          padding: 6px 4px;
+          border-radius: 999px;
+          border: 1px solid rgba(34, 211, 238, 0.25);
+          background: rgba(2, 6, 23, 0.86);
+        }
+        .botmaker-scroll-arrow {
+          font-size: 10px;
+          color: rgba(148, 163, 184, 0.75);
+          transition: color 160ms ease;
+        }
+        .botmaker-scroll-arrow.on {
+          color: rgba(34, 211, 238, 1);
+        }
+      `}</style>
 
       <div className="fixed bottom-0 left-0 right-0 z-10 border-t border-cyan-400/20 bg-slate-950/95 p-2 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-2">

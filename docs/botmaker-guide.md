@@ -44,3 +44,13 @@ BotMaker mendukung mode hybrid saat drag-drop tidak cukup.
 ## 6) Tips UI Mobile
 - Halaman bisa di-scroll sampai bawah.
 - Tombol save utama dibuat sticky di bagian bawah agar mudah diakses di HP.
+
+
+## 7) Fallback token environment (anti gagal simpan DB)
+- BotMaker sekarang bisa fallback ke token environment jika token tersimpan di database kosong/gagal terbaca.
+- Urutan env yang dicek: `BOTMAKER_FALLBACK_TOKEN` → `DISCORD_BOT_TOKEN` → `TOKEN`.
+- Status fallback tampil di panel diagnostik BotMaker.
+
+## 8) Diagnostik database
+- Panel diagnostik menampilkan `DB Host` aktif dan status fallback token env.
+- Jika DB bermasalah, detail error backend akan ditampilkan lebih lengkap di area error merah agar akar masalah cepat diketahui.

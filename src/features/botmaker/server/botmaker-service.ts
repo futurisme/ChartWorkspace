@@ -17,6 +17,7 @@ const STATE_MAGIC_DEFLATE = 'botmaker-v2-deflate';
 const STATE_MAGIC_PLAIN = 'botmaker-v1-plain';
 const MAX_COMMAND_SYNC_INTERVAL_MS = 10 * 60_000;
 const DISCORD_SNOWFLAKE_REGEX = /^\d{16,22}$/;
+const BOTMAKER_RUNTIME_TOKEN_ENV_KEYS = ['BOTMAKER_FALLBACK_TOKEN', 'DISCORD_BOT_TOKEN', 'TOKEN'] as const;
 
 interface PersistedBot extends Omit<BotMakerBot, 'token' | 'hasToken'> {
   tokenCipher: string;
@@ -29,6 +30,36 @@ type PersistedStateEnvelope =
   | { magic: typeof STATE_MAGIC_PLAIN; payload: string };
 
 type DiscordUserResponse = { id: string; username: string };
+
+type BotMakerDiagnostics = {
+  dbHost: string | null;
+  hasFallbackToken: boolean;
+};
+
+
+function getFallbackToken() {
+  for (const key of BOTMAKER_RUNTIME_TOKEN_ENV_KEYS) {
+    const value = process.env[key];
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return '';
+}
+
+function getBotMakerDiagnostics(): BotMakerDiagnostics {
+  return {
+    dbHost: activeDatabaseHost,
+    hasFallbackToken: Boolean(getFallbackToken()),
+  };
+}
+
+function resolveRuntimeToken(bot: PersistedBot, override?: string) {
+  if (override && override.trim()) return override.trim();
+  const persisted = decryptToken(bot.tokenCipher, bot.tokenIv).trim();
+  if (persisted) return persisted;
+  return getFallbackToken();
+}
 
 class BotMakerServiceError extends Error {
   status: number;
@@ -542,6 +573,7 @@ export async function loadBotMakerState() {
     },
     version,
     updatedAt: new Date().toISOString(),
+    diagnostics: getBotMakerDiagnostics(),
   };
 }
 
@@ -568,6 +600,7 @@ export async function saveBotMakerState(raw: unknown) {
     },
     version: persisted.version,
     updatedAt: persisted.updatedAt,
+    diagnostics: getBotMakerDiagnostics(),
   };
 }
 
@@ -577,8 +610,8 @@ async function loadBotById(botId: string) {
   const bot = persistedBots.find((entry) => entry.id === botId);
   if (!bot) throw new BotMakerServiceError('Bot tidak ditemukan.', 404);
 
-  const token = decryptToken(bot.tokenCipher, bot.tokenIv);
-  if (!token) throw new BotMakerServiceError('Token bot belum tersimpan.', 400);
+  const token = resolveRuntimeToken(bot);
+  if (!token) throw new BotMakerServiceError('Token bot belum tersimpan dan fallback token env belum tersedia.', 400);
 
   return { recordId, state, bot, token };
 }
@@ -622,6 +655,7 @@ export async function deployBot(botId: string) {
     },
     version: persisted.version,
     updatedAt: persisted.updatedAt,
+    diagnostics: getBotMakerDiagnostics(),
   };
 }
 
