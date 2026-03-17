@@ -11,8 +11,17 @@ interface ApiPayload {
   message?: string;
 }
 
+type ActivityLogEntry = {
+  ts: string;
+  event: string;
+  botId: string;
+  level?: 'info' | 'warning' | 'error';
+  source?: 'internal' | 'external';
+  details: Record<string, unknown>;
+};
+
 interface ActivityLogPayload {
-  logs: Array<{ ts: string; event: string; botId: string; details: Record<string, unknown> }>;
+  logs: ActivityLogEntry[];
 }
 
 const PRESET_LIBRARY: Record<BotStylePreset, { label: string; blocks: Array<{ type: WorkflowBlockType; value: string }>; useEmbed: boolean; mentionEveryone: boolean }> = {
@@ -106,6 +115,19 @@ function buildHybridCode(bot: BotMakerBot) {
   return lines.join('\n');
 }
 
+
+function getLogTone(level?: 'info' | 'warning' | 'error') {
+  if (level === 'error') return 'text-red-300';
+  if (level === 'warning') return 'text-amber-300';
+  return 'text-cyan-200';
+}
+
+function getLogBadge(level?: 'info' | 'warning' | 'error') {
+  if (level === 'error') return 'ERR';
+  if (level === 'warning') return 'WRN';
+  return 'INF';
+}
+
 function parseHybridCode(text: string): WorkflowBlock[] {
   const rows = text.split(/\r?\n/).map((row) => row.trim()).filter(Boolean);
   const result: WorkflowBlock[] = [];
@@ -156,7 +178,7 @@ export default function BotMakerPage() {
   const [activeBotId, setActiveBotId] = useState<string | null>(null);
   const [details, setDetails] = useState('');
   const [diagnostics, setDiagnostics] = useState<{ dbHost: string | null; sharedStore: string } | null>(null);
-  const [activityLogs, setActivityLogs] = useState<Array<{ ts: string; event: string; botId: string; details: Record<string, unknown> }>>([]);
+  const [activityLogs, setActivityLogs] = useState<ActivityLogEntry[]>([]);
   const [scrollHint, setScrollHint] = useState({ show: false, up: false, down: false });
   const contentScrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -165,7 +187,9 @@ export default function BotMakerPage() {
   const logsText = useMemo(() => (
     activityLogs.length === 0
       ? '[no-logs-yet]'
-      : activityLogs.map((entry) => `[${entry.ts}] [${entry.botId}] ${entry.event} ${JSON.stringify(entry.details)}`).join('\n')
+      : activityLogs
+        .map((entry) => `[${entry.ts}] [${getLogBadge(entry.level)}] [${entry.botId}] ${entry.event} ${JSON.stringify(entry.details)}`)
+        .join('\n')
   ), [activityLogs]);
 
   const clearCliLogs = async () => {
@@ -412,10 +436,10 @@ export default function BotMakerPage() {
 
   if (!authenticated) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#030712] p-4 text-slate-100">
-        <section className="w-full max-w-sm rounded-xl border border-cyan-400/30 bg-slate-950/85 p-4">
-          <h1 className="text-lg font-black text-cyan-100">BotMaker Login</h1>
-          <p className="mt-1 text-xs text-cyan-200/80">Hanya berlaku di /BotMaker dan tidak memengaruhi area lain.</p>
+      <main className="flex min-h-screen items-center justify-center bg-slate-950 p-4 text-slate-100">
+        <section className="w-full max-w-sm rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-xl">
+          <h1 className="text-lg font-semibold text-slate-100">BotMaker Login</h1>
+          <p className="mt-1 text-xs text-slate-400">Akses khusus area /BotMaker.</p>
           <div className="mt-3 grid gap-2">
             <input value={loginUser} onChange={(e) => setLoginUser(e.target.value)} placeholder="Username" className="rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs" />
             <input type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} placeholder="Password" className="rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs" />
@@ -428,13 +452,13 @@ export default function BotMakerPage() {
   }
 
   return (
-    <main className="min-h-screen overflow-y-auto bg-[#030712] px-2 py-3 pb-28 text-slate-100 sm:px-4">
-      <div ref={contentScrollRef} className="botmaker-scroll mx-auto max-h-[calc(100dvh-92px)] max-w-6xl overflow-y-scroll rounded-2xl border border-cyan-400/25 bg-slate-950/80 p-3 shadow-[0_20px_60px_rgba(6,182,212,0.12)] sm:p-4">
+    <main className="min-h-screen overflow-y-auto bg-slate-950 px-2 py-3 pb-28 text-slate-100 sm:px-4">
+      <div ref={contentScrollRef} className="botmaker-scroll mx-auto max-h-[calc(100dvh-92px)] max-w-6xl overflow-y-scroll rounded-2xl border border-slate-800 bg-slate-900/70 p-3 shadow-xl sm:p-4">
         <section>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h1 className="text-lg font-black tracking-tight text-cyan-100 sm:text-3xl">BotMaker No-Code + Hybrid</h1>
-            <p className="text-[11px] text-cyan-200/80 sm:text-xs">UI lebih ramping, scroll mobile penuh, dan hybrid syntax berbahasa Indonesia.</p>
+            <h1 className="text-lg font-semibold tracking-tight text-slate-100 sm:text-3xl">BotMaker</h1>
+            <p className="text-[11px] text-slate-400 sm:text-xs">Panel modern, fokus ke konfigurasi dan deploy.</p>
           </div>
           <div className="flex items-center gap-2 text-right text-[11px] text-slate-300 sm:text-xs">
             <div>
@@ -452,7 +476,7 @@ export default function BotMakerPage() {
         </div>
 
 
-        <div className="mb-2 rounded border border-slate-700 bg-slate-900/40 px-2 py-1 text-[10px] text-slate-300">Semua warning/error dipusatkan ke panel CLI Terminal Logs.</div>
+        <div className="mb-2 rounded border border-slate-700 bg-slate-900/40 px-2 py-1 text-[10px] text-slate-400">Warning/error tersentralisasi di panel logs.</div>
 
         {diagnostics && (
           <div className="mb-3 rounded-lg border border-cyan-500/30 bg-slate-900/80 px-3 py-2 text-[11px] text-cyan-100">
@@ -595,17 +619,27 @@ export default function BotMakerPage() {
           {state.bots.length === 0 && <p className="rounded-lg border border-slate-700 bg-slate-900/60 p-3 text-xs text-slate-300">Belum ada bot. Tambah bot untuk mulai konfigurasi.</p>}
         </div>
 
-        <section className="mt-3 rounded-xl border border-cyan-400/25 bg-slate-900/60 p-3">
+        <section className="mt-3 rounded-xl border border-slate-800 bg-slate-900/70 p-3">
           <div className="mb-2 flex items-center justify-between gap-2">
-            <h2 className="text-xs font-bold uppercase tracking-wide text-cyan-200">CLI Terminal Build Logs + Activity Logs (Live 24H)</h2>
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-200">CLI Logs</h2>
             <div className="flex items-center gap-1">
-              <button type="button" onClick={() => void navigator.clipboard.writeText(logsText)} className="rounded border border-cyan-500/40 px-2 py-0.5 text-[10px] text-cyan-100">copy all</button>
+              <button type="button" onClick={() => void navigator.clipboard.writeText(logsText)} className="rounded border border-slate-700 px-2 py-0.5 text-[10px] text-slate-200">copy</button>
               <button type="button" onClick={() => void clearCliLogs()} className="rounded border border-red-500/40 px-2 py-0.5 text-[10px] text-red-200">clear</button>
-              <span className="rounded border border-cyan-500/30 px-2 py-0.5 text-[10px] text-cyan-100">auto refresh 3.5s</span>
+              <span className="rounded border border-slate-700 px-2 py-0.5 text-[10px] text-slate-300">3.5s refresh</span>
             </div>
           </div>
-          <p className="mb-1 text-[10px] text-slate-400">Log bersifat historis 24 jam. Gunakan clear untuk menghapus log lama yang sudah tidak relevan.</p>
-          <pre className="max-h-[220px] overflow-y-auto rounded border border-slate-700 bg-[#020617] p-2 font-mono text-[10px] text-emerald-200">{logsText}</pre>
+          <p className="mb-1 text-[10px] text-slate-400">Retensi 24 jam.</p>
+          <div className="max-h-[240px] overflow-y-auto rounded border border-slate-800 bg-[#020617] p-2 font-mono text-[10px]">
+            {activityLogs.length === 0 ? (
+              <p className="text-slate-500">[no-logs-yet]</p>
+            ) : (
+              activityLogs.map((entry, index) => (
+                <p key={`${entry.ts}-${entry.botId}-${index}`} className={getLogTone(entry.level)}>
+                  [{entry.ts}] [{getLogBadge(entry.level)}] [{entry.botId}] {entry.event} {JSON.stringify(entry.details)}
+                </p>
+              ))
+            )}
+          </div>
         </section>
         </section>
       </div>

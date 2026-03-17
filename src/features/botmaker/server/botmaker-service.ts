@@ -41,10 +41,14 @@ type BotMakerDiagnostics = {
   sharedStore: string;
 };
 
+type LogLevel = 'info' | 'warning' | 'error';
+
 type BotActivityLog = {
   ts: string;
   event: string;
   botId: string;
+  level: LogLevel;
+  source: 'internal' | 'external';
   details: Record<string, unknown>;
 };
 
@@ -55,6 +59,28 @@ type CommandSyncResult = {
 };
 
 const ACTIVITY_LOGS: BotActivityLog[] = [];
+
+
+const ANSI_RESET = '\x1b[0m';
+const ANSI_CYAN = '\x1b[36m';
+const ANSI_YELLOW = '\x1b[33m';
+const ANSI_RED = '\x1b[31m';
+
+function resolveLogLevel(event: string, details: Record<string, unknown>): LogLevel {
+  if (details.level === 'warning' || details.level === 'error' || details.level === 'info') {
+    return details.level;
+  }
+
+  if (event.includes('error') || event.includes('failed')) return 'error';
+  if (event.includes('warning')) return 'warning';
+  return 'info';
+}
+
+function getAnsiForLevel(level: LogLevel) {
+  if (level === 'error') return ANSI_RED;
+  if (level === 'warning') return ANSI_YELLOW;
+  return ANSI_CYAN;
+}
 
 
 function pruneActivityLogs(now = Date.now()) {
@@ -68,10 +94,13 @@ function pruneActivityLogs(now = Date.now()) {
 function logRuntime(event: string, details: Record<string, unknown> = {}) {
   const ts = new Date().toISOString();
   const botId = typeof details.botId === 'string' && details.botId ? details.botId : 'system';
-  const payload = { event, ts, ...details };
-  ACTIVITY_LOGS.push({ ts, event, botId, details });
+  const source = details.source === 'external' ? 'external' : 'internal';
+  const level = resolveLogLevel(event, details);
+  const payload = { event, ts, level, source, ...details };
+  ACTIVITY_LOGS.push({ ts, event, botId, level, source, details });
   pruneActivityLogs();
-  console.info(BOTMAKER_LOG_PREFIX, JSON.stringify(payload));
+  const color = getAnsiForLevel(level);
+  console.info(`${color}${BOTMAKER_LOG_PREFIX} [${level.toUpperCase()}]${ANSI_RESET}`, JSON.stringify(payload));
 }
 
 export function getBotActivityLogs(botId: string, limit = 200) {
