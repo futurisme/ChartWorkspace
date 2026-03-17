@@ -646,13 +646,18 @@ export default function GameIdeasPage() {
         return prev;
       }
 
+      const nextFolders = [...categoryFolders, { id: randomId('folder'), name: folderName, items: [] }];
       return {
         ...prev,
         [nav]: {
           ...section,
           folders: {
             ...folders,
-            [currentCategory]: [...categoryFolders, { id: randomId('folder'), name: folderName, items: [] }],
+            [currentCategory]: nextFolders,
+          },
+          rootOrder: {
+            ...(section.rootOrder ?? {}),
+            [currentCategory]: createRootOrder(section.data[currentCategory] ?? [], nextFolders, section.rootOrder?.[currentCategory] ?? []),
           },
         },
       };
@@ -712,6 +717,10 @@ export default function GameIdeasPage() {
         folders[nextName] = folders[oldName] ?? [];
         delete folders[oldName];
 
+        const rootOrder = { ...(section.rootOrder ?? {}) };
+        rootOrder[nextName] = rootOrder[oldName] ?? [];
+        delete rootOrder[oldName];
+
         return {
           ...prev,
           [nav]: {
@@ -719,6 +728,7 @@ export default function GameIdeasPage() {
             categories,
             data,
             folders,
+            rootOrder,
           },
         };
       });
@@ -886,6 +896,8 @@ export default function GameIdeasPage() {
         delete data[target];
         const folders = { ...(section.folders ?? {}) };
         delete folders[target];
+        const rootOrder = { ...(section.rootOrder ?? {}) };
+        delete rootOrder[target];
 
         return {
           ...prev,
@@ -894,6 +906,7 @@ export default function GameIdeasPage() {
             categories,
             data,
             folders,
+            rootOrder,
           },
         };
       });
