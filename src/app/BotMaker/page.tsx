@@ -7,8 +7,12 @@ interface ApiPayload {
   data: BotMakerState;
   version: number;
   updatedAt: string;
-  diagnostics?: { dbHost: string | null; hasFallbackToken: boolean };
+  diagnostics?: { dbHost: string | null; hasFallbackToken: boolean; sharedStore: string };
   message?: string;
+}
+
+interface ActivityLogPayload {
+  logs: Array<{ ts: string; event: string; botId: string; details: Record<string, unknown> }>;
 }
 
 const PRESET_LIBRARY: Record<BotStylePreset, { label: string; blocks: Array<{ type: WorkflowBlockType; value: string }>; useEmbed: boolean; mentionEveryone: boolean }> = {
@@ -149,7 +153,8 @@ export default function BotMakerPage() {
   const [dragBlockId, setDragBlockId] = useState<string | null>(null);
   const [activeBotId, setActiveBotId] = useState<string | null>(null);
   const [details, setDetails] = useState('');
-  const [diagnostics, setDiagnostics] = useState<{ dbHost: string | null; hasFallbackToken: boolean } | null>(null);
+  const [diagnostics, setDiagnostics] = useState<{ dbHost: string | null; hasFallbackToken: boolean; sharedStore: string } | null>(null);
+  const [activityLogs, setActivityLogs] = useState<Array<{ ts: string; event: string; botId: string; details: Record<string, unknown> }>>([]);
   const [scrollHint, setScrollHint] = useState({ show: false, up: false, down: false });
   const contentScrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -206,6 +211,29 @@ export default function BotMakerPage() {
     };
   }, [state.bots.length, authenticated]);
 
+  useEffect(() => {
+    if (!authenticated) return;
+
+    const targetBotId = activeBotId ?? state.bots[0]?.id ?? 'all';
+
+    const loadLogs = async () => {
+      try {
+        const response = await fetch(`/api/botmaker/logs?botId=${encodeURIComponent(targetBotId)}&limit=220`, { cache: 'no-store' });
+        if (!response.ok) return;
+        const payload = (await response.json()) as ActivityLogPayload;
+        setActivityLogs(payload.logs ?? []);
+      } catch {
+        // ignore logs polling failures
+      }
+    };
+
+    void loadLogs();
+    const timer = setInterval(() => {
+      void loadLogs();
+    }, 3500);
+
+    return () => clearInterval(timer);
+  }, [authenticated, activeBotId, state.bots]);
 
   const persist = async (next: BotMakerState) => {
     setIsBusy(true);
@@ -397,7 +425,8 @@ export default function BotMakerPage() {
 
         {diagnostics && (
           <div className="mb-3 rounded-lg border border-cyan-500/30 bg-slate-900/80 px-3 py-2 text-[11px] text-cyan-100">
-            <p>DB Host: {diagnostics.dbHost ?? 'tidak terdeteksi'} • Fallback token env: {diagnostics.hasFallbackToken ? 'aktif' : 'tidak aktif'}</p>
+            <p>DB Host: {diagnostics.dbHost ?? 'tidak terdeteksi'} • Shared store: {diagnostics.sharedStore}</p>
+            <p>Fallback token env: {diagnostics.hasFallbackToken ? 'aktif' : 'tidak aktif'}</p>
           </div>
         )}
 
@@ -533,6 +562,14 @@ export default function BotMakerPage() {
           ))}
           {state.bots.length === 0 && <p className="rounded-lg border border-slate-700 bg-slate-900/60 p-3 text-xs text-slate-300">Belum ada bot. Tambah bot untuk mulai konfigurasi.</p>}
         </div>
+
+        <section className="mt-3 rounded-xl border border-cyan-400/25 bg-slate-900/60 p-3">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <h2 className="text-xs font-bold uppercase tracking-wide text-cyan-200">CLI Terminal Build Logs + Activity Logs (Live 24H)</h2>
+            <span className="rounded border border-cyan-500/30 px-2 py-0.5 text-[10px] text-cyan-100">auto refresh 3.5s</span>
+          </div>
+          <pre className="max-h-[220px] overflow-y-auto rounded border border-slate-700 bg-[#020617] p-2 font-mono text-[10px] text-emerald-200">{activityLogs.length === 0 ? '[no-logs-yet]' : activityLogs.map((entry) => `[${entry.ts}] [${entry.botId}] ${entry.event} ${JSON.stringify(entry.details)}`).join('\n')}</pre>
+        </section>
         </section>
       </div>
 

@@ -19,6 +19,8 @@ const MAX_COMMAND_SYNC_INTERVAL_MS = 10 * 60_000;
 const DISCORD_SNOWFLAKE_REGEX = /^\d{16,22}$/;
 const BOTMAKER_RUNTIME_TOKEN_ENV_KEYS = ['BOTMAKER_FALLBACK_TOKEN', 'DISCORD_BOT_TOKEN', 'TOKEN'] as const;
 const BOTMAKER_LOG_PREFIX = '[botmaker-runtime]';
+const ACTIVITY_LOG_RETENTION_MS = 24 * 60 * 60 * 1000;
+const ACTIVITY_LOG_MAX = 4000;
 
 interface PersistedBot extends Omit<BotMakerBot, 'token' | 'hasToken'> {
   tokenCipher: string;
@@ -35,12 +37,47 @@ type DiscordUserResponse = { id: string; username: string };
 type BotMakerDiagnostics = {
   dbHost: string | null;
   hasFallbackToken: boolean;
+  sharedStore: string;
 };
 
+type BotActivityLog = {
+  ts: string;
+  event: string;
+  botId: string;
+  details: Record<string, unknown>;
+};
+
+type CommandSyncResult = {
+  ok: boolean;
+  status: number;
+  warning?: string;
+};
+
+const ACTIVITY_LOGS: BotActivityLog[] = [];
+
+
+function pruneActivityLogs(now = Date.now()) {
+  while (ACTIVITY_LOGS.length > 0) {
+    const age = now - new Date(ACTIVITY_LOGS[0].ts).getTime();
+    if (age <= ACTIVITY_LOG_RETENTION_MS && ACTIVITY_LOGS.length <= ACTIVITY_LOG_MAX) break;
+    ACTIVITY_LOGS.shift();
+  }
+}
 
 function logRuntime(event: string, details: Record<string, unknown> = {}) {
-  const payload = { event, ts: new Date().toISOString(), ...details };
+  const ts = new Date().toISOString();
+  const botId = typeof details.botId === 'string' && details.botId ? details.botId : 'system';
+  const payload = { event, ts, ...details };
+  ACTIVITY_LOGS.push({ ts, event, botId, details });
+  pruneActivityLogs();
   console.info(BOTMAKER_LOG_PREFIX, JSON.stringify(payload));
+}
+
+export function getBotActivityLogs(botId: string, limit = 200) {
+  pruneActivityLogs();
+  const safeLimit = Math.max(10, Math.min(1000, Math.trunc(limit)));
+  const selected = botId === 'all' ? ACTIVITY_LOGS : ACTIVITY_LOGS.filter((entry) => entry.botId === botId);
+  return selected.slice(-safeLimit);
 }
 
 function getFallbackToken() {
@@ -57,6 +94,7 @@ function getBotMakerDiagnostics(): BotMakerDiagnostics {
   return {
     dbHost: activeDatabaseHost,
     hasFallbackToken: Boolean(getFallbackToken()),
+    sharedStore: 'prisma.map (/Editor,/Game-ideas,/BotMaker)',
   };
 }
 
@@ -409,8 +447,11 @@ function parseLimitHeaders(headers: Headers, body: unknown) {
   };
 }
 
-async function syncGuildCommands(bot: BotMakerBot, token: string) {
-  if (!bot.applicationId || !bot.guildId) return;
+async function syncGuildCommands(bot: BotMakerBot, token: string): Promise<CommandSyncResult> {
+  if (!bot.applicationId || !bot.guildId) {
+    return { ok: false, status: 0, warning: 'Application ID / Guild ID belum diisi, command sync dilewati.' };
+  }
+
   const response = await fetch(`${DISCORD_API}/applications/${bot.applicationId}/guilds/${bot.guildId}/commands`, {
     method: 'PUT',
     headers: {
@@ -427,9 +468,19 @@ async function syncGuildCommands(bot: BotMakerBot, token: string) {
     cache: 'no-store',
   });
 
+  if (response.status === 404) {
+    return { ok: false, status: 404, warning: 'Command sync 404: Application ID/Guild ID tidak cocok atau bot belum ada di guild target.' };
+  }
+
+  if (response.status === 403) {
+    return { ok: false, status: 403, warning: 'Command sync 403: scope atau permission bot belum sesuai.' };
+  }
+
   if (!response.ok) {
     throw new BotMakerServiceError(`Command sync failed (${response.status})`, 502);
   }
+
+  return { ok: true, status: response.status };
 }
 
 async function sendDiscordMessage(bot: BotMakerBot, token: string) {
@@ -669,8 +720,13 @@ export async function deployBot(botId: string, runtimeTokenRaw?: string) {
 
   if (target.applicationId && target.guildId) {
     logRuntime('deploy:sync-commands:start', { botId, guildId: target.guildId });
-    await syncGuildCommands(toPublicBot(target), loaded.token);
-    logRuntime('deploy:sync-commands:done', { botId, guildId: target.guildId });
+    const syncResult = await syncGuildCommands(toPublicBot(target), loaded.token);
+    if (!syncResult.ok && syncResult.warning) {
+      target.lastDeployStatus = `Deployed as ${identity.username} (${identity.id}) • ${syncResult.warning}`;
+      logRuntime('deploy:sync-commands:warning', { botId, status: syncResult.status, warning: syncResult.warning });
+    } else {
+      logRuntime('deploy:sync-commands:done', { botId, guildId: target.guildId });
+    }
   }
 
   const nextState: BotMakerState = { bots: persistedBots as unknown as BotMakerBot[], users: loaded.state.users };
@@ -734,8 +790,11 @@ function reconcileRuntime(state: BotMakerState) {
         }
 
         if (Date.now() - runtime.lastCommandSyncAt > MAX_COMMAND_SYNC_INTERVAL_MS) {
-          await syncGuildCommands(bot, token);
+          const syncResult = await syncGuildCommands(bot, token);
           runtime.lastCommandSyncAt = Date.now();
+          if (!syncResult.ok && syncResult.warning) {
+            logRuntime('runtime:sync-commands:warning', { botId: persistedBot.id, status: syncResult.status, warning: syncResult.warning });
+          }
         }
 
         const limits = await sendDiscordMessage(bot, token);

@@ -54,3 +54,13 @@ BotMaker mendukung mode hybrid saat drag-drop tidak cukup.
 ## 8) Diagnostik database
 - Panel diagnostik menampilkan `DB Host` aktif dan status fallback token env.
 - Jika DB bermasalah, detail error backend akan ditampilkan lebih lengkap di area error merah agar akar masalah cepat diketahui.
+
+
+## 9) Analisa akar masalah Command sync failed (404)
+- Error 404 pada command sync Discord umumnya berasal dari **Application ID / Guild ID tidak cocok**, bot belum join ke guild target, atau endpoint command guild tidak menemukan resource target.
+- Pada perbaikan ini, deploy tetap lanjut (tidak hard-fail) dan status warning ditampilkan agar bot tetap bisa host/send pesan sambil memperbaiki ID.
+
+## 10) Live Logs 24H
+- BotMaker menyediakan panel **CLI Terminal Build Logs + Activity Logs (Live 24H)**.
+- Log mencakup proses deploy start, sinkron token runtime->DB, command sync, deploy success, send success, dan runtime error.
+- Retensi log dijaga 24 jam dengan pruning agar tetap ringan.
