@@ -522,35 +522,40 @@ export function FlowWorkspace({
     return map;
   }, [remoteUsers]);
 
-  const nodesWithPresence = useMemo(
-    () =>
-      nodes.map((node) => {
-        const collaboratorNames = remoteEditorsByNode.get(node.id) ?? [];
-        const hasCollaborators = collaboratorNames.length > 0;
-        const previousNames = node.data.collaboratorNames ?? [];
-        const hasSameCollaborators =
-          previousNames.length === collaboratorNames.length &&
-          previousNames.every((name, index) => name === collaboratorNames[index]);
+  const nodesWithPresence = useMemo(() => {
+    if (remoteEditorsByNode.size === 0) {
+      const hasPresenceDecorations = nodes.some((node) => Boolean(node.data.editedByOthers) || (node.data.collaboratorNames?.length ?? 0) > 0);
+      if (!hasPresenceDecorations) {
+        return nodes;
+      }
+    }
 
-        if (!hasCollaborators && !node.data.editedByOthers && previousNames.length === 0) {
-          return node;
-        }
+    return nodes.map((node) => {
+      const collaboratorNames = remoteEditorsByNode.get(node.id) ?? [];
+      const hasCollaborators = collaboratorNames.length > 0;
+      const previousNames = node.data.collaboratorNames ?? [];
+      const hasSameCollaborators =
+        previousNames.length === collaboratorNames.length &&
+        previousNames.every((name, index) => name === collaboratorNames[index]);
 
-        if (hasCollaborators && node.data.editedByOthers && hasSameCollaborators) {
-          return node;
-        }
+      if (!hasCollaborators && !node.data.editedByOthers && previousNames.length === 0) {
+        return node;
+      }
 
-        return {
-          ...node,
-          data: {
-            ...node.data,
-            collaboratorNames,
-            editedByOthers: hasCollaborators,
-          },
-        };
-      }),
-    [nodes, remoteEditorsByNode]
-  );
+      if (hasCollaborators && node.data.editedByOthers && hasSameCollaborators) {
+        return node;
+      }
+
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          collaboratorNames,
+          editedByOthers: hasCollaborators,
+        },
+      };
+    });
+  }, [nodes, remoteEditorsByNode]);
 
   useEffect(() => {
     latestDeferredEdgesRef.current = deferredEdges;
