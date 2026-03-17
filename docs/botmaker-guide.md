@@ -1,38 +1,46 @@
-# Panduan BotMaker (Login, Editor, dan Optimasi)
+# Panduan BotMaker (Login, Simpan Token, Hybrid Code)
 
 ## 1) Login / Registrasi
 - Buka `/BotMaker`.
 - Isi **username** dan **password**.
-- Tombol **Login / Register** akan:
-  - membuat akun baru saat username belum ada,
-  - login bila username sudah ada dan password cocok.
-- Session disimpan via cookie dan sekarang berlaku untuk route BotMaker + API (`/api/botmaker`) agar tidak loop login.
+- Klik **Login / Register**.
+- Session login tidak akan loop lagi karena cookie auth sekarang berlaku untuk route UI + API BotMaker.
 
-## 2) Workflow Drag & Drop + Custom
-- Gunakan **Block Palette** untuk menambahkan block.
-- Atur urutan dengan drag & drop atau tombol `↑` `↓`.
-- Gunakan **Code Editor (Custom)** untuk logic lanjutan yang tidak bisa ditangani drag & drop.
-- Gunakan **Code Explorer** untuk melihat preview file virtual custom syntax `custom-botmaker-v1`.
+## 2) Menyimpan token bot dengan benar
+1. Isi field **Discord bot token**.
+2. Isi minimal **Nama bot** dan **Channel ID**.
+3. Klik **Save semua konfigurasi** atau langsung **Save + Deploy + Start**.
+4. Token yang sudah tersimpan akan tetap tampil di field token dan status `YA`.
 
-## 3) Optimasi performa storage/compression
-- Penyimpanan state kini memakai strategi adaptif:
-  - payload kecil: plain base64 (tanpa beban kompresi),
-  - payload menengah/besar: brotli cepat,
-  - fallback deflate ringan jika rasio brotli buruk.
-- Tujuan: latency lebih rendah dan beban CPU lebih ringan.
+> Penting: Tombol deploy sekarang otomatis melakukan simpan dahulu agar token terbaru tidak hilang.
 
-## 4) Optimasi Discord API & anti-rate-limit
-- Deploy mengecek token ke `/users/@me` (API v10) lalu sync command.
-- Sync command guild dibatasi periodik saat runtime untuk menghindari request berulang berlebihan.
-- Scheduler runtime memakai:
-  - interval aman minimum,
-  - pembacaan header rate limit,
-  - exponential backoff saat error/429,
-  - proteksi agar job yang sama tidak berjalan paralel.
+## 3) Delete konfigurasi bot saat ini
+- Gunakan tombol **Delete konfigurasi bot ini**.
+- Sistem meminta konfirmasi, lalu menghapus dan langsung menyimpan perubahan.
 
-## 5) Checklist validasi cepat
-1. Login username baru (harus auto register).
-2. Refresh halaman (harus tetap login).
-3. Edit bot + Save all + Reload.
-4. Isi `customCode`, cek tampil di Explorer.
-5. Deploy bot, lalu cek status deploy.
+## 4) Hybrid code (Bahasa Indonesia)
+BotMaker mendukung mode hybrid saat drag-drop tidak cukup.
+
+### Sintaks inti
+- `TEKS: ...`
+- `EMOJI: ...`
+- `TAG_SEMUA`
+- `BARIS_BARU`
+- `WAKTU_RELATIF`
+
+### Alur kerja
+1. Klik **Generate sintaks** untuk membuat template syntax dari workflow saat ini.
+2. Edit syntax di **Hybrid Code Editor (Indonesia)**.
+3. Klik **Terapkan sintaks ke workflow** untuk mengubah syntax menjadi block drag-drop.
+
+## 5) Optimasi performa dan keamanan
+- Kompresi state bersifat adaptif (plain / brotli / deflate) agar ringan di CPU.
+- Validasi Discord ditingkatkan:
+  - format token,
+  - validasi snowflake ID (application/guild/channel),
+  - validasi ketat pada deploy/send.
+- Runtime anti-rate-limit tetap aktif dengan backoff, interval aman, dan pencegahan job paralel.
+
+## 6) Tips UI Mobile
+- Halaman bisa di-scroll sampai bawah.
+- Tombol save utama dibuat sticky di bagian bawah agar mudah diakses di HP.

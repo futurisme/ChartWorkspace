@@ -50,11 +50,11 @@ function createBlock(type: WorkflowBlockType): WorkflowBlock {
 }
 
 function blockLabel(block: WorkflowBlock) {
-  if (block.type === 'text') return `Text: ${block.value || '(empty)'}`;
+  if (block.type === 'text') return `Teks: ${block.value || '(kosong)'}`;
   if (block.type === 'emoji') return `Emoji: ${block.value || '✨'}`;
   if (block.type === 'mentionEveryone') return '@everyone';
-  if (block.type === 'lineBreak') return 'Line break';
-  return 'Relative timestamp';
+  if (block.type === 'lineBreak') return 'Baris baru';
+  return 'Timestamp relatif';
 }
 
 function workflowToPreview(blocks: WorkflowBlock[]) {
@@ -72,11 +72,75 @@ function workflowToPreview(blocks: WorkflowBlock[]) {
     .trim();
 }
 
+function buildHybridCode(bot: BotMakerBot) {
+  const lines = [
+    '# Sintaks Hybrid BotMaker v1 (Bahasa Indonesia)',
+    '# Kata kunci: TEKS:, EMOJI:, TAG_SEMUA, BARIS_BARU, WAKTU_RELATIF',
+    `NAMA_BOT: ${bot.name || 'Bot Tanpa Nama'}`,
+    `INTERVAL_DETIK: ${bot.intervalSeconds}`,
+    `MODE_EMBED: ${bot.useEmbed ? 'AKTIF' : 'NONAKTIF'}`,
+    '',
+    '# Workflow',
+  ];
+
+  for (const block of bot.workflow) {
+    if (block.type === 'text') lines.push(`TEKS: ${block.value}`);
+    if (block.type === 'emoji') lines.push(`EMOJI: ${block.value || '✨'}`);
+    if (block.type === 'mentionEveryone') lines.push('TAG_SEMUA');
+    if (block.type === 'lineBreak') lines.push('BARIS_BARU');
+    if (block.type === 'timestamp') lines.push('WAKTU_RELATIF');
+  }
+
+  if (bot.workflow.length === 0) {
+    lines.push('TEKS: Halo dari BotMaker!');
+  }
+
+  return lines.join('\n');
+}
+
+function parseHybridCode(text: string): WorkflowBlock[] {
+  const rows = text.split(/\r?\n/).map((row) => row.trim()).filter(Boolean);
+  const result: WorkflowBlock[] = [];
+
+  for (const row of rows) {
+    if (row.startsWith('#') || row.startsWith('NAMA_BOT:') || row.startsWith('INTERVAL_DETIK:') || row.startsWith('MODE_EMBED:')) {
+      continue;
+    }
+
+    if (row.startsWith('TEKS:')) {
+      result.push({ id: createBlock('text').id, type: 'text', value: row.slice(5).trim() });
+      continue;
+    }
+
+    if (row.startsWith('EMOJI:')) {
+      result.push({ id: createBlock('emoji').id, type: 'emoji', value: row.slice(6).trim() || '✨' });
+      continue;
+    }
+
+    if (row === 'TAG_SEMUA') {
+      result.push({ id: createBlock('mentionEveryone').id, type: 'mentionEveryone', value: '' });
+      continue;
+    }
+
+    if (row === 'BARIS_BARU') {
+      result.push({ id: createBlock('lineBreak').id, type: 'lineBreak', value: '' });
+      continue;
+    }
+
+    if (row === 'WAKTU_RELATIF') {
+      result.push({ id: createBlock('timestamp').id, type: 'timestamp', value: '' });
+    }
+  }
+
+  return result;
+}
+
 export default function BotMakerPage() {
   const [state, setState] = useState<BotMakerState>({ bots: [], users: [] });
   const [version, setVersion] = useState<number>(0);
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [authenticated, setAuthenticated] = useState(false);
   const [loginUser, setLoginUser] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
@@ -94,12 +158,12 @@ export default function BotMakerPage() {
         return;
       }
       const payload = (await response.json()) as ApiPayload | { error?: string };
-      if (!response.ok) throw new Error((payload as { error?: string }).error ?? 'Load failed');
+      if (!response.ok) throw new Error((payload as { error?: string }).error ?? 'Load gagal');
       setState((payload as ApiPayload).data);
       setVersion((payload as ApiPayload).version);
       setAuthenticated(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Load failed');
+      setError(err instanceof Error ? err.message : 'Load gagal');
     }
   };
 
@@ -117,11 +181,14 @@ export default function BotMakerPage() {
         body: JSON.stringify({ data: next, expectedVersion: version }),
       });
       const payload = (await response.json()) as ApiPayload | { error?: string };
-      if (!response.ok) throw new Error((payload as { error?: string }).error ?? 'Save failed');
+      if (!response.ok) throw new Error((payload as { error?: string }).error ?? 'Simpan gagal');
       setState((payload as ApiPayload).data);
       setVersion((payload as ApiPayload).version);
+      setNotice('Semua konfigurasi berhasil disimpan.');
+      return true;
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Save failed');
+      setError(err instanceof Error ? err.message : 'Simpan gagal');
+      return false;
     } finally {
       setIsBusy(false);
     }
@@ -137,20 +204,35 @@ export default function BotMakerPage() {
         body: JSON.stringify({ action, botId }),
       });
       const payload = (await response.json()) as ApiPayload | { error?: string };
-      if (!response.ok) throw new Error((payload as { error?: string }).error ?? `${action} failed`);
+      if (!response.ok) throw new Error((payload as { error?: string }).error ?? `${action} gagal`);
       if ('data' in payload) {
         setState(payload.data);
         setVersion(payload.version);
       }
+      setNotice(action === 'deploy' ? 'Bot berhasil deploy + start.' : 'Pesan test berhasil dikirim.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : `${action} failed`);
+      setError(err instanceof Error ? err.message : `${action} gagal`);
     } finally {
       setIsBusy(false);
     }
   };
 
+  const saveThenRun = async (action: 'deploy' | 'send-now', botId: string) => {
+    const ok = await persist(state);
+    if (!ok) return;
+    await runAction(action, botId);
+  };
+
   const updateBot = (botId: string, patch: Partial<BotMakerBot>) => {
+    setNotice('');
     setState((prev) => ({ bots: prev.bots.map((bot) => (bot.id === botId ? { ...bot, ...patch } : bot)), users: prev.users }));
+  };
+
+  const deleteBotAndSave = async (botId: string) => {
+    if (!confirm('Hapus konfigurasi bot ini secara permanen?')) return;
+    const next = { users: state.users, bots: state.bots.filter((entry) => entry.id !== botId) };
+    setState(next);
+    await persist(next);
   };
 
   const addBlock = (bot: BotMakerBot, type: WorkflowBlockType) => {
@@ -199,12 +281,12 @@ export default function BotMakerPage() {
         body: JSON.stringify({ username: loginUser, password: loginPassword }),
       });
       const payload = (await response.json()) as { error?: string };
-      if (!response.ok) throw new Error(payload.error ?? 'Login failed');
+      if (!response.ok) throw new Error(payload.error ?? 'Login gagal');
       setAuthenticated(true);
       setLoginPassword('');
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed');
+      setError(err instanceof Error ? err.message : 'Login gagal');
     } finally {
       setIsBusy(false);
     }
@@ -234,12 +316,12 @@ export default function BotMakerPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#030712] px-2 py-3 text-slate-100 sm:px-4">
+    <main className="min-h-screen overflow-y-auto bg-[#030712] px-2 py-3 pb-28 text-slate-100 sm:px-4">
       <section className="mx-auto max-w-6xl rounded-2xl border border-cyan-400/25 bg-slate-950/80 p-3 shadow-[0_20px_60px_rgba(6,182,212,0.12)] sm:p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h1 className="text-lg font-black tracking-tight text-cyan-100 sm:text-3xl">BotMaker No-Code Editor</h1>
-            <p className="text-[11px] text-cyan-200/80 sm:text-xs">Drag & drop block editor (Scratch/Blockly style) optimized for narrow mobile screens, dilengkapi custom code editor.</p>
+            <h1 className="text-lg font-black tracking-tight text-cyan-100 sm:text-3xl">BotMaker No-Code + Hybrid</h1>
+            <p className="text-[11px] text-cyan-200/80 sm:text-xs">UI lebih ramping, scroll mobile penuh, dan hybrid syntax berbahasa Indonesia.</p>
           </div>
           <div className="flex items-center gap-2 text-right text-[11px] text-slate-300 sm:text-xs">
             <div>
@@ -251,11 +333,12 @@ export default function BotMakerPage() {
         </div>
 
         <div className="mb-3 flex flex-wrap gap-2">
-          <button type="button" onClick={() => setState((prev) => ({ users: prev.users, bots: [...prev.bots, { ...EMPTY_BOT, id: createBotId(), name: `Bot ${prev.bots.length + 1}` }] }))} className="rounded-lg border border-cyan-400/40 bg-cyan-500/20 px-3 py-1.5 text-xs font-semibold text-cyan-100">Add bot</button>
-          <button type="button" onClick={() => void persist(state)} disabled={isBusy} className="rounded-lg border border-emerald-400/40 bg-emerald-500/20 px-3 py-1.5 text-xs font-semibold text-emerald-100 disabled:opacity-50">Save all</button>
+          <button type="button" onClick={() => setState((prev) => ({ users: prev.users, bots: [...prev.bots, { ...EMPTY_BOT, id: createBotId(), name: `Bot ${prev.bots.length + 1}` }] }))} className="rounded-lg border border-cyan-400/40 bg-cyan-500/20 px-3 py-1.5 text-xs font-semibold text-cyan-100">Tambah bot</button>
+          <button type="button" onClick={() => void persist(state)} disabled={isBusy} className="rounded-lg border border-emerald-400/40 bg-emerald-500/20 px-3 py-1.5 text-xs font-semibold text-emerald-100 disabled:opacity-50">Save semua konfigurasi</button>
           <button type="button" onClick={() => void refresh()} disabled={isBusy} className="rounded-lg border border-violet-400/40 bg-violet-500/20 px-3 py-1.5 text-xs font-semibold text-violet-100 disabled:opacity-50">Reload</button>
         </div>
 
+        {notice && <div className="mb-3 rounded-lg border border-emerald-500/30 bg-emerald-900/20 px-3 py-2 text-xs text-emerald-200">{notice}</div>}
         {error && <div className="mb-3 rounded-lg border border-red-500/30 bg-red-900/25 px-3 py-2 text-xs text-red-200">{error}</div>}
 
         <div className="grid gap-3">
@@ -263,17 +346,18 @@ export default function BotMakerPage() {
             <article key={bot.id} className="rounded-xl border border-cyan-400/25 bg-slate-900/65 p-3">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs">
                 <strong className="text-cyan-100">{bot.name || bot.id}</strong>
-                <span className="text-slate-300">{bot.lastDeployStatus || 'Not deployed'}</span>
+                <span className="rounded bg-slate-800 px-2 py-0.5 text-slate-300">{bot.lastDeployStatus || 'Belum deploy'}</span>
               </div>
 
               <div className="grid gap-2 md:grid-cols-2">
-                <input value={bot.name} onChange={(e) => updateBot(bot.id, { name: e.target.value })} placeholder="Bot name" className="rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs" />
-                <input value={bot.token} onChange={(e) => updateBot(bot.id, { token: e.target.value })} placeholder={bot.hasToken ? `Token tersimpan (${bot.tokenUpdatedAt ?? '-'}) • isi jika ganti` : 'Discord bot token (sekali input)'} className="rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs" />
+                <input value={bot.name} onChange={(e) => updateBot(bot.id, { name: e.target.value })} placeholder="Nama bot" className="rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs" />
+                <input value={bot.token} onChange={(e) => updateBot(bot.id, { token: e.target.value })} placeholder="Discord bot token" className="rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs" />
                 <input value={bot.applicationId} onChange={(e) => updateBot(bot.id, { applicationId: e.target.value })} placeholder="Application ID" className="rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs" />
                 <input value={bot.guildId} onChange={(e) => updateBot(bot.id, { guildId: e.target.value })} placeholder="Guild ID" className="rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs" />
                 <input value={bot.channelId} onChange={(e) => updateBot(bot.id, { channelId: e.target.value })} placeholder="Channel ID" className="rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs" />
                 <input type="number" min={60} max={86400} value={bot.intervalSeconds} onChange={(e) => updateBot(bot.id, { intervalSeconds: Number(e.target.value) })} placeholder="Interval seconds" className="rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs" />
               </div>
+              <p className="mt-1 text-[10px] text-cyan-200/80">Status token tersimpan: {bot.hasToken ? `YA • update ${bot.tokenUpdatedAt ?? '-'}` : 'BELUM'}</p>
 
               <div className="mt-2 flex flex-wrap gap-2">
                 <select value={bot.stylePreset} onChange={(e) => applyPreset(bot, e.target.value as BotStylePreset)} className="rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs">
@@ -287,18 +371,18 @@ export default function BotMakerPage() {
 
               <div className="mt-2 grid gap-2 lg:grid-cols-[0.9fr_1.1fr]">
                 <div className="rounded border border-slate-700 bg-slate-950/80 p-2">
-                  <p className="mb-2 text-[11px] font-semibold text-cyan-100">Block Palette (tap to add)</p>
+                  <p className="mb-2 text-[11px] font-semibold text-cyan-100">Block Palette</p>
                   <div className="grid grid-cols-2 gap-1">
-                    <button type="button" onClick={() => addBlock(bot, 'text')} className="rounded border border-cyan-400/40 bg-cyan-500/20 px-2 py-1 text-[11px]">+ Text</button>
+                    <button type="button" onClick={() => addBlock(bot, 'text')} className="rounded border border-cyan-400/40 bg-cyan-500/20 px-2 py-1 text-[11px]">+ Teks</button>
                     <button type="button" onClick={() => addBlock(bot, 'emoji')} className="rounded border border-cyan-400/40 bg-cyan-500/20 px-2 py-1 text-[11px]">+ Emoji</button>
-                    <button type="button" onClick={() => addBlock(bot, 'mentionEveryone')} className="rounded border border-cyan-400/40 bg-cyan-500/20 px-2 py-1 text-[11px]">+ Mention</button>
-                    <button type="button" onClick={() => addBlock(bot, 'timestamp')} className="rounded border border-cyan-400/40 bg-cyan-500/20 px-2 py-1 text-[11px]">+ Timestamp</button>
-                    <button type="button" onClick={() => addBlock(bot, 'lineBreak')} className="col-span-2 rounded border border-cyan-400/40 bg-cyan-500/20 px-2 py-1 text-[11px]">+ Line break</button>
+                    <button type="button" onClick={() => addBlock(bot, 'mentionEveryone')} className="rounded border border-cyan-400/40 bg-cyan-500/20 px-2 py-1 text-[11px]">+ Tag semua</button>
+                    <button type="button" onClick={() => addBlock(bot, 'timestamp')} className="rounded border border-cyan-400/40 bg-cyan-500/20 px-2 py-1 text-[11px]">+ Waktu</button>
+                    <button type="button" onClick={() => addBlock(bot, 'lineBreak')} className="col-span-2 rounded border border-cyan-400/40 bg-cyan-500/20 px-2 py-1 text-[11px]">+ Baris baru</button>
                   </div>
                 </div>
 
                 <div className="rounded border border-cyan-500/30 bg-slate-950/70 p-2">
-                  <p className="mb-2 text-[11px] font-semibold text-cyan-100">Drag & Drop Workflow Canvas</p>
+                  <p className="mb-2 text-[11px] font-semibold text-cyan-100">Workflow Canvas</p>
                   <div className="max-h-[280px] space-y-1 overflow-y-auto pr-1">
                     {bot.workflow.map((block) => (
                       <div
@@ -319,15 +403,11 @@ export default function BotMakerPage() {
                           <div className="flex gap-1">
                             <button type="button" onClick={() => {
                               const idx = bot.workflow.findIndex((item) => item.id === block.id);
-                              if (idx > 0) {
-                                moveBlock(bot, block.id, bot.workflow[idx - 1].id);
-                              }
+                              if (idx > 0) moveBlock(bot, block.id, bot.workflow[idx - 1].id);
                             }} className="rounded border border-slate-600 px-1 text-[10px]">↑</button>
                             <button type="button" onClick={() => {
                               const idx = bot.workflow.findIndex((item) => item.id === block.id);
-                              if (idx >= 0 && idx < bot.workflow.length - 1) {
-                                moveBlock(bot, block.id, bot.workflow[idx + 1].id);
-                              }
+                              if (idx >= 0 && idx < bot.workflow.length - 1) moveBlock(bot, block.id, bot.workflow[idx + 1].id);
                             }} className="rounded border border-slate-600 px-1 text-[10px]">↓</button>
                             <button type="button" onClick={() => removeBlock(bot, block.id)} className="rounded border border-red-500/40 px-1 text-[10px] text-red-200">✕</button>
                           </div>
@@ -337,50 +417,66 @@ export default function BotMakerPage() {
                         )}
                       </div>
                     ))}
-                    {bot.workflow.length === 0 && <p className="text-[11px] text-slate-400">Drop blocks here.</p>}
+                    {bot.workflow.length === 0 && <p className="text-[11px] text-slate-400">Belum ada block.</p>}
                   </div>
                 </div>
               </div>
 
               <div className="mt-2 rounded border border-slate-700 bg-slate-950/70 p-2 text-xs">
-                <p className="mb-1 font-semibold text-cyan-100">Preview (no-code output)</p>
+                <p className="mb-1 font-semibold text-cyan-100">Preview output</p>
                 <pre className="whitespace-pre-wrap break-words text-[11px] text-slate-300">{workflowToPreview(bot.workflow) || bot.messageTemplate}</pre>
               </div>
-
 
               <div className="mt-2 grid gap-2 lg:grid-cols-[1fr_1fr]">
                 <div className="rounded border border-slate-700 bg-slate-950/70 p-2">
                   <div className="mb-2 flex items-center justify-between gap-2">
-                    <p className="text-[11px] font-semibold text-cyan-100">Code Editor (Custom)</p>
-                    <button type="button" onClick={() => setActiveBotId((prev) => (prev === bot.id ? null : bot.id))} className="rounded border border-slate-600 px-1.5 py-0.5 text-[10px]">{activeBotId === bot.id ? 'Hide Explorer' : 'Open Explorer'}</button>
+                    <p className="text-[11px] font-semibold text-cyan-100">Hybrid Code Editor (Indonesia)</p>
+                    <button type="button" onClick={() => updateBot(bot.id, { customCode: buildHybridCode(bot) })} className="rounded border border-cyan-500/40 px-1.5 py-0.5 text-[10px]">Generate sintaks</button>
                   </div>
-                  <textarea value={bot.customCode} onChange={(e) => updateBot(bot.id, { customCode: e.target.value })} placeholder="// Tulis custom script di sini untuk logic yang tidak bisa drag-drop" className="min-h-[130px] w-full rounded border border-slate-700 bg-slate-950 p-2 font-mono text-[11px]" />
+                  <textarea value={bot.customCode} onChange={(e) => updateBot(bot.id, { customCode: e.target.value })} placeholder="Tulis sintaks hybrid di sini..." className="min-h-[170px] w-full rounded border border-slate-700 bg-slate-950 p-2 font-mono text-[11px]" />
+                  <button type="button" onClick={() => {
+                    const parsed = parseHybridCode(bot.customCode);
+                    if (parsed.length === 0) {
+                      setError('Sintaks hybrid tidak terbaca. Gunakan TEKS:, EMOJI:, TAG_SEMUA, BARIS_BARU, WAKTU_RELATIF.');
+                      return;
+                    }
+                    updateBot(bot.id, { workflow: parsed });
+                    setNotice('Sintaks hybrid berhasil diterapkan ke workflow drag & drop.');
+                  }} className="mt-2 rounded border border-emerald-400/40 bg-emerald-500/20 px-2 py-1 text-[11px] font-semibold text-emerald-100">Terapkan sintaks ke workflow</button>
                 </div>
                 <div className="rounded border border-slate-700 bg-slate-950/70 p-2">
                   <p className="mb-2 text-[11px] font-semibold text-cyan-100">Code Explorer</p>
-                  <div className="max-h-[170px] overflow-y-auto rounded border border-slate-700 bg-slate-950 p-2 font-mono text-[11px]">
-                    <p className="text-cyan-300">bot://{bot.id}/workflow.bot.ts</p>
-                    <p className="text-violet-300">syntax: custom-botmaker-v1</p>
+                  <div className="max-h-[220px] overflow-y-auto rounded border border-slate-700 bg-slate-950 p-2 font-mono text-[11px]">
+                    <p className="text-cyan-300">bot://{bot.id}/workflow.botmaker.hybrid</p>
+                    <p className="text-violet-300">syntax: indonesia-hybrid-v1</p>
                     <p className="mt-1 text-slate-300">blocks: {bot.workflow.length}</p>
                     <p className="text-slate-300">interval: {bot.intervalSeconds}s</p>
-                    <p className="mt-1 text-slate-300">custom-size: {bot.customCode.length} chars</p>
+                    <p className="mt-1 text-slate-300">ukuran custom: {bot.customCode.length} karakter</p>
+                    <button type="button" onClick={() => setActiveBotId((prev) => (prev === bot.id ? null : bot.id))} className="mt-2 rounded border border-slate-600 px-2 py-0.5 text-[10px]">{activeBotId === bot.id ? 'Sembunyikan isi' : 'Lihat isi'}</button>
                     {activeBotId === bot.id && (
-                      <pre className="mt-2 whitespace-pre-wrap break-words text-[10px] text-emerald-200">{bot.customCode || '// explorer preview kosong'}</pre>
+                      <pre className="mt-2 whitespace-pre-wrap break-words text-[10px] text-emerald-200">{bot.customCode || '# explorer: belum ada custom syntax'}</pre>
                     )}
                   </div>
                 </div>
               </div>
 
               <div className="mt-2 flex flex-wrap gap-2">
-                <button type="button" onClick={() => void runAction('deploy', bot.id)} disabled={isBusy} className="rounded border border-cyan-300/50 bg-cyan-500/20 px-2.5 py-1 text-xs font-semibold text-cyan-100 disabled:opacity-50">Deploy + Host</button>
-                <button type="button" onClick={() => void runAction('send-now', bot.id)} disabled={isBusy} className="rounded border border-amber-300/50 bg-amber-500/20 px-2.5 py-1 text-xs font-semibold text-amber-100 disabled:opacity-50">Send test now</button>
-                <button type="button" onClick={() => setState((prev) => ({ users: prev.users, bots: prev.bots.filter((entry) => entry.id !== bot.id) }))} className="rounded border border-red-400/40 bg-red-500/20 px-2.5 py-1 text-xs font-semibold text-red-100">Delete</button>
+                <button type="button" onClick={() => void saveThenRun('deploy', bot.id)} disabled={isBusy} className="rounded border border-cyan-300/50 bg-cyan-500/20 px-2.5 py-1 text-xs font-semibold text-cyan-100 disabled:opacity-50">Save + Deploy + Start</button>
+                <button type="button" onClick={() => void saveThenRun('send-now', bot.id)} disabled={isBusy} className="rounded border border-amber-300/50 bg-amber-500/20 px-2.5 py-1 text-xs font-semibold text-amber-100 disabled:opacity-50">Save + Send test</button>
+                <button type="button" onClick={() => void deleteBotAndSave(bot.id)} disabled={isBusy} className="rounded border border-red-400/40 bg-red-500/20 px-2.5 py-1 text-xs font-semibold text-red-100 disabled:opacity-50">Delete konfigurasi bot ini</button>
               </div>
             </article>
           ))}
-          {state.bots.length === 0 && <p className="rounded-lg border border-slate-700 bg-slate-900/60 p-3 text-xs text-slate-300">No bot yet. Add bot and start drag-drop editing.</p>}
+          {state.bots.length === 0 && <p className="rounded-lg border border-slate-700 bg-slate-900/60 p-3 text-xs text-slate-300">Belum ada bot. Tambah bot untuk mulai konfigurasi.</p>}
         </div>
       </section>
+
+      <div className="fixed bottom-0 left-0 right-0 z-10 border-t border-cyan-400/20 bg-slate-950/95 p-2 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-2">
+          <p className="text-[11px] text-slate-300">Tombol ini menyimpan seluruh konfigurasi semua bot.</p>
+          <button type="button" onClick={() => void persist(state)} disabled={isBusy} className="rounded-lg border border-emerald-400/40 bg-emerald-500/20 px-3 py-1.5 text-xs font-semibold text-emerald-100 disabled:opacity-50">Save semua konfigurasi</button>
+        </div>
+      </div>
     </main>
   );
 }

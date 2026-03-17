@@ -16,6 +16,7 @@ const STATE_MAGIC_BROTLI = 'botmaker-v3-br';
 const STATE_MAGIC_DEFLATE = 'botmaker-v2-deflate';
 const STATE_MAGIC_PLAIN = 'botmaker-v1-plain';
 const MAX_COMMAND_SYNC_INTERVAL_MS = 10 * 60_000;
+const DISCORD_SNOWFLAKE_REGEX = /^\d{16,22}$/;
 
 interface PersistedBot extends Omit<BotMakerBot, 'token' | 'hasToken'> {
   tokenCipher: string;
@@ -184,6 +185,41 @@ function decompressState(raw: unknown): BotMakerState {
   return sanitizeBotMakerState(raw);
 }
 
+
+function looksLikeDiscordToken(value: string) {
+  const token = value.trim();
+  return token.length >= 40 && token.includes('.');
+}
+
+function validateBotConfiguration(bot: BotMakerBot, options?: { requireToken?: boolean; strict?: boolean }) {
+  const requireToken = Boolean(options?.requireToken);
+  const strict = Boolean(options?.strict);
+
+  if ((strict || bot.enabled) && !bot.name.trim()) {
+    throw new BotMakerServiceError('Nama bot wajib diisi.', 400);
+  }
+
+  if ((strict || bot.enabled) && (!bot.channelId || !DISCORD_SNOWFLAKE_REGEX.test(bot.channelId.trim()))) {
+    throw new BotMakerServiceError('Channel ID tidak valid. Gunakan angka snowflake Discord.', 400);
+  }
+
+  if (bot.guildId && !DISCORD_SNOWFLAKE_REGEX.test(bot.guildId.trim())) {
+    throw new BotMakerServiceError('Guild ID tidak valid. Gunakan angka snowflake Discord.', 400);
+  }
+
+  if (bot.applicationId && !DISCORD_SNOWFLAKE_REGEX.test(bot.applicationId.trim())) {
+    throw new BotMakerServiceError('Application ID tidak valid. Gunakan angka snowflake Discord.', 400);
+  }
+
+  if (requireToken && !bot.token.trim()) {
+    throw new BotMakerServiceError('Token bot belum tersimpan.', 400);
+  }
+
+  if (bot.token.trim() && !looksLikeDiscordToken(bot.token)) {
+    throw new BotMakerServiceError('Format token Discord tidak valid.', 400);
+  }
+}
+
 function toPersistedBot(bot: BotMakerBot, existing?: PersistedBot): PersistedBot {
   const tokenChanged = bot.token.trim().length > 0;
   const encrypted = tokenChanged
@@ -215,11 +251,11 @@ function toPersistedBot(bot: BotMakerBot, existing?: PersistedBot): PersistedBot
   };
 }
 
-function toPublicBot(bot: PersistedBot): BotMakerBot {
+function toPublicBot(bot: PersistedBot, revealToken = false): BotMakerBot {
   return {
     id: bot.id,
     name: bot.name,
-    token: '',
+    token: revealToken ? decryptToken(bot.tokenCipher, bot.tokenIv) : '',
     hasToken: Boolean(bot.tokenCipher),
     tokenUpdatedAt: bot.tokenUpdatedAt,
     applicationId: bot.applicationId,
@@ -501,7 +537,7 @@ export async function loadBotMakerState() {
 
   return {
     data: {
-      bots: persistedBots.map(toPublicBot),
+      bots: persistedBots.map((bot) => toPublicBot(bot, true)),
       users: [],
     },
     version,
@@ -514,6 +550,7 @@ export async function saveBotMakerState(raw: unknown) {
   const { recordId, state } = await readPersistedState();
 
   const existingById = new Map(parsePersistedBots(state).map((bot) => [bot.id, bot]));
+  incoming.bots.forEach((bot) => validateBotConfiguration(bot, { strict: false }));
   const mergedPersistedBots = incoming.bots.map((bot) => toPersistedBot(bot, existingById.get(bot.id)));
 
   const storageState: BotMakerState = {
@@ -526,7 +563,7 @@ export async function saveBotMakerState(raw: unknown) {
 
   return {
     data: {
-      bots: mergedPersistedBots.map(toPublicBot),
+      bots: mergedPersistedBots.map((bot) => toPublicBot(bot, true)),
       users: [],
     },
     version: persisted.version,
@@ -564,6 +601,7 @@ export async function deployBot(botId: string) {
   const persistedBots = parsePersistedBots(loaded.state);
   const target = persistedBots.find((entry) => entry.id === botId);
   if (!target) throw new BotMakerServiceError('Bot tidak ditemukan.', 404);
+  validateBotConfiguration(toPublicBot(target, true), { requireToken: true, strict: true });
   target.enabled = true;
   target.deployedAt = new Date().toISOString();
   target.lastDeployStatus = `Deployed as ${identity.username} (${identity.id})`;
@@ -579,7 +617,7 @@ export async function deployBot(botId: string) {
 
   return {
     data: {
-      bots: persistedBots.map(toPublicBot),
+      bots: persistedBots.map((bot) => toPublicBot(bot, true)),
       users: [],
     },
     version: persisted.version,
@@ -589,6 +627,7 @@ export async function deployBot(botId: string) {
 
 export async function sendBotNow(botId: string) {
   const loaded = await loadBotById(botId);
+  validateBotConfiguration(toPublicBot(loaded.bot, true), { requireToken: true, strict: true });
   const limits = await sendDiscordMessage(toPublicBot(loaded.bot), loaded.token);
   return { ok: true, limits };
 }
