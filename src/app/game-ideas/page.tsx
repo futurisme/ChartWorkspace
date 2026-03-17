@@ -278,7 +278,7 @@ export default function GameIdeasPage() {
   const [renameDraft, setRenameDraft] = useState('');
   const [itemRenameDraft, setItemRenameDraft] = useState<ItemDraft>(emptyDraft());
   const [showFolderModal, setShowFolderModal] = useState(false);
-  const [openFolders, setOpenFolders] = useState<Record<string, boolean>>({});
+  const [openFolderKey, setOpenFolderKey] = useState<string | null>(null);
   const [openFolderItemCards, setOpenFolderItemCards] = useState<Record<string, number | null>>({});
   const [transferAction, setTransferAction] = useState<TransferAction>(null);
   const [navOrder, setNavOrder] = useState<GameIdeaNav[]>([...GAME_IDEA_NAV_ORDER]);
@@ -381,6 +381,7 @@ export default function GameIdeasPage() {
     const firstCategory = db[nav].categories[0] ?? '';
     setCategory((prev) => (db[nav].categories.includes(prev) ? prev : firstCategory));
     setOpenCardIndex(null);
+    setOpenFolderKey(null);
     setOpenFolderItemCards({});
   }, [db, nav]);
 
@@ -1219,14 +1220,34 @@ export default function GameIdeasPage() {
     dragHoldTimerRef.current = setTimeout(() => {
       if (kind === 'root') {
         const draggedRootSlot = currentRootSlots[index];
+        if (draggedRootSlot?.kind === 'item') {
+          const draggedItemIndex = itemIndexById.get(draggedRootSlot.id);
+          if (typeof draggedItemIndex === 'number') {
+            setOpenCardIndex((prev) => (prev === draggedItemIndex ? null : prev));
+          }
+        }
+
         if (draggedRootSlot?.kind === 'folder') {
           const draggedFolderIndex = folderIndexById.get(draggedRootSlot.id);
           const draggedFolder = typeof draggedFolderIndex === 'number' ? currentFolders[draggedFolderIndex] : null;
           if (draggedFolder) {
             const draggedFolderKey = `${nav}:${currentCategory}:${draggedFolder.id}`;
-            setOpenFolders((prev) => (prev[draggedFolderKey] === false ? prev : { ...prev, [draggedFolderKey]: false }));
+            setOpenFolderKey((prev) => (prev === draggedFolderKey ? null : prev));
             setOpenFolderItemCards((prev) => ({ ...prev, [draggedFolderKey]: null }));
           }
+        }
+      }
+
+      if (kind === 'item') {
+        setOpenCardIndex((prev) => (prev === index ? null : prev));
+      }
+
+      if (kind.startsWith('folderItem:')) {
+        const folderIndex = Number.parseInt(kind.split(':')[1] ?? '', 10);
+        const draggedFolder = Number.isFinite(folderIndex) ? currentFolders[folderIndex] : null;
+        if (draggedFolder) {
+          const draggedFolderKey = `${nav}:${currentCategory}:${draggedFolder.id}`;
+          setOpenFolderItemCards((prev) => (prev[draggedFolderKey] === index ? { ...prev, [draggedFolderKey]: null } : prev));
         }
       }
 
@@ -1242,7 +1263,7 @@ export default function GameIdeasPage() {
       });
       dragHoldTimerRef.current = null;
     }, DRAG_HOLD_MS);
-  }, [adminMode, currentCategory, currentFolders, currentRootSlots, folderIndexById, nav]);
+  }, [adminMode, currentCategory, currentFolders, currentRootSlots, folderIndexById, itemIndexById, nav]);
 
   useEffect(() => {
     const onPointerMove = (event: PointerEvent) => {
@@ -1756,7 +1777,7 @@ export default function GameIdeasPage() {
             if (folderIndex === undefined) return null;
             const folder = currentFolders[folderIndex];
             const folderKey = `${nav}:${currentCategory}:${folder.id}`;
-            const isOpenFolder = openFolders[folderKey] ?? true;
+            const isOpenFolder = openFolderKey === folderKey;
             const openFolderItemIndex = openFolderItemCards[folderKey] ?? null;
             const folderDragKind = `folderItem:${folderIndex}` as DragKind;
 
@@ -1785,10 +1806,18 @@ export default function GameIdeasPage() {
                     className="card-head folder-head"
                     onClick={() => {
                       if (activeDrag) return;
-                      setOpenFolders((prev) => ({ ...prev, [folderKey]: !isOpenFolder }));
-                      if (isOpenFolder) {
-                        setOpenFolderItemCards((prev) => ({ ...prev, [folderKey]: null }));
-                      }
+                      const previousOpenFolderKey = openFolderKey;
+                      setOpenFolderKey((prev) => (prev === folderKey ? null : folderKey));
+                      setOpenFolderItemCards((prev) => {
+                        const next = { ...prev };
+                        if (previousOpenFolderKey && previousOpenFolderKey !== folderKey) {
+                          next[previousOpenFolderKey] = null;
+                        }
+                        if (isOpenFolder) {
+                          next[folderKey] = null;
+                        }
+                        return next;
+                      });
                       registerUniversalRenameClick(`folder:${nav}:${currentCategory}:${folder.id}`, () => requestRenameFolder(folderIndex));
                     }}
                   >
