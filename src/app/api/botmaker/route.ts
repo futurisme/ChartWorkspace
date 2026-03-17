@@ -7,6 +7,7 @@ import {
   loadBotMakerState,
   saveBotMakerState,
   sendBotNow,
+  stopBot,
   verifySession,
 } from '@/features/botmaker/server/botmaker-service';
 
@@ -86,6 +87,13 @@ export async function POST(request: NextRequest) {
 
     if (body.action === 'send-now') {
       const payload = await sendBotNow(body.botId, body.runtimeToken);
+      return NextResponse.json(payload, {
+        headers: { 'Cache-Control': NO_STORE },
+      });
+    }
+
+    if (body.action === 'stop') {
+      const payload = await stopBot(body.botId);
       return NextResponse.json(payload, {
         headers: { 'Cache-Control': NO_STORE },
       });

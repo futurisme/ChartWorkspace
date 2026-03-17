@@ -3,6 +3,7 @@ import { createHash, createHmac, createCipheriv, createDecipheriv, randomBytes, 
 import { brotliCompressSync, brotliDecompressSync, constants as zlibConstants, deflateRawSync, inflateRawSync } from 'node:zlib';
 import { activeDatabaseHost, prisma } from '@/lib/prisma';
 import { DEFAULT_BOTMAKER_STATE, sanitizeBotMakerState, type BotMakerBot, type BotMakerState } from '@/features/botmaker/shared/schema';
+import { decodeAlienFramedCandidates, encodeAlienFramed } from '@/features/maps/shared/fadhil-symbol-codec';
 
 const SYSTEM_BOTMAKER_TITLE = '__SYSTEM__BOTMAKER_V1';
 const DISCORD_API = 'https://discord.com/api/v10';
@@ -19,6 +20,7 @@ const MAX_COMMAND_SYNC_INTERVAL_MS = 10 * 60_000;
 const DISCORD_SNOWFLAKE_REGEX = /^\d{16,22}$/;
 const BOTMAKER_RUNTIME_TOKEN_ENV_KEYS = ['BOTMAKER_FALLBACK_TOKEN', 'DISCORD_BOT_TOKEN', 'TOKEN'] as const;
 const BOTMAKER_LOG_PREFIX = '[botmaker-runtime]';
+const TOKEN_CIPHER_FADHIL_PREFIX = 'fAdHiL:';
 const ACTIVITY_LOG_RETENTION_MS = 24 * 60 * 60 * 1000;
 const ACTIVITY_LOG_MAX = 4000;
 
@@ -181,18 +183,34 @@ function encryptToken(token: string) {
   const cipher = createCipheriv('aes-256-gcm', getTokenCryptoKey(), iv);
   const encrypted = Buffer.concat([cipher.update(token, 'utf8'), cipher.final()]);
   const tag = cipher.getAuthTag();
+  const payload = Buffer.concat([encrypted, tag]);
+
+  const packed = deflateRawSync(payload, { level: 1 });
+  const framed = encodeAlienFramed(packed);
+
   return {
-    tokenCipher: Buffer.concat([encrypted, tag]).toString('base64url'),
+    tokenCipher: `${TOKEN_CIPHER_FADHIL_PREFIX}${framed}`,
     tokenIv: iv.toString('base64url'),
   };
 }
 
 function decryptToken(tokenCipher: string, tokenIv: string) {
   if (!tokenCipher || !tokenIv) return '';
-  const source = Buffer.from(tokenCipher, 'base64url');
-  if (source.length <= 16) return '';
-  const data = source.subarray(0, source.length - 16);
-  const tag = source.subarray(source.length - 16);
+
+  let payload = Buffer.alloc(0);
+
+  if (tokenCipher.startsWith(TOKEN_CIPHER_FADHIL_PREFIX)) {
+    const encoded = tokenCipher.slice(TOKEN_CIPHER_FADHIL_PREFIX.length);
+    const candidates = decodeAlienFramedCandidates(encoded);
+    const packed = Buffer.from(candidates[0] ?? new Uint8Array());
+    payload = inflateRawSync(packed);
+  } else {
+    payload = Buffer.from(tokenCipher, 'base64url');
+  }
+
+  if (payload.length <= 16) return '';
+  const data = payload.subarray(0, payload.length - 16);
+  const tag = payload.subarray(payload.length - 16);
   const decipher = createDecipheriv('aes-256-gcm', getTokenCryptoKey(), Buffer.from(tokenIv, 'base64url'));
   decipher.setAuthTag(tag);
   return Buffer.concat([decipher.update(data), decipher.final()]).toString('utf8');
@@ -635,6 +653,7 @@ export async function loginBotMaker(usernameRaw: string, passwordRaw: string) {
 
 export async function loadBotMakerState() {
   const { state, version } = await readPersistedState();
+  reconcileRuntime(state);
   const persistedBots = parsePersistedBots(state);
 
   return {
@@ -707,7 +726,7 @@ export async function deployBot(botId: string, runtimeTokenRaw?: string) {
   const target = persistedBots.find((entry) => entry.id === botId);
   if (!target) throw new BotMakerServiceError('Bot tidak ditemukan.', 404);
 
-  const tokenSyncApplied = syncRuntimeTokenOnBot(target, runtimeTokenRaw);
+  const tokenSyncApplied = syncRuntimeTokenOnBot(target, loaded.token);
   if (tokenSyncApplied) {
     logRuntime('deploy:token-sync', { botId, reason: 'runtime-input-token' });
   }
@@ -715,7 +734,7 @@ export async function deployBot(botId: string, runtimeTokenRaw?: string) {
   validateBotConfiguration(toPublicBot(target, true), { requireToken: true, strict: true });
   target.enabled = true;
   target.deployedAt = new Date().toISOString();
-  target.lastDeployStatus = `Deployed as ${identity.username} (${identity.id})`;
+  target.lastDeployStatus = `Deployed as ${identity.username} (${identity.id}) • scheduler aktif (REST-host mode)`;
 
 
   if (target.applicationId && target.guildId) {
@@ -733,6 +752,32 @@ export async function deployBot(botId: string, runtimeTokenRaw?: string) {
   const persisted = await persistState(loaded.recordId, nextState);
   reconcileRuntime(nextState);
   logRuntime('deploy:success', { botId, version: persisted.version, enabled: true });
+
+  return {
+    data: {
+      bots: persistedBots.map((bot) => toPublicBot(bot, true)),
+      users: [],
+    },
+    version: persisted.version,
+    updatedAt: persisted.updatedAt,
+    diagnostics: getBotMakerDiagnostics(),
+  };
+}
+
+
+export async function stopBot(botId: string) {
+  const { recordId, state } = await readPersistedState();
+  const persistedBots = parsePersistedBots(state);
+  const target = persistedBots.find((entry) => entry.id === botId);
+  if (!target) throw new BotMakerServiceError('Bot tidak ditemukan.', 404);
+
+  target.enabled = false;
+  target.lastDeployStatus = `Stopped manual at ${new Date().toISOString()}`;
+  stopBotTimer(botId);
+  logRuntime('deploy:manual-stop', { botId });
+
+  const nextState: BotMakerState = { bots: persistedBots as unknown as BotMakerBot[], users: state.users };
+  const persisted = await persistState(recordId, nextState);
 
   return {
     data: {

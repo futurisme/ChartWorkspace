@@ -263,7 +263,7 @@ export default function BotMakerPage() {
     }
   };
 
-  const runAction = async (action: 'deploy' | 'send-now', botId: string, runtimeToken?: string) => {
+  const runAction = async (action: 'deploy' | 'send-now' | 'stop', botId: string, runtimeToken?: string) => {
     setIsBusy(true);
     setError('');
     try {
@@ -282,7 +282,7 @@ export default function BotMakerPage() {
         setVersion(payload.version);
         setDiagnostics(payload.diagnostics ?? null);
       }
-      setNotice(action === 'deploy' ? 'Bot berhasil deploy + start.' : 'Pesan test berhasil dikirim.');
+      setNotice(action === 'deploy' ? 'Bot berhasil deploy + start.' : action === 'send-now' ? 'Pesan test berhasil dikirim.' : 'Bot dihentikan manual.');
     } catch (err) {
       setError(err instanceof Error ? err.message : `${action} gagal`);
     } finally {
@@ -448,7 +448,7 @@ export default function BotMakerPage() {
                 <input value={bot.channelId} onChange={(e) => updateBot(bot.id, { channelId: e.target.value })} placeholder="Channel ID" className="rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs" />
                 <input type="number" min={60} max={86400} value={bot.intervalSeconds} onChange={(e) => updateBot(bot.id, { intervalSeconds: Number(e.target.value) })} placeholder="Interval seconds" className="rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs" />
               </div>
-              <p className="mt-1 text-[10px] text-cyan-200/80">Status token tersimpan: {bot.hasToken ? `YA • update ${bot.tokenUpdatedAt ?? '-'}` : 'BELUM'}</p>
+              <p className="mt-1 text-[10px] text-cyan-200/80">Status token tersimpan (AES + .fAdHiL): {bot.hasToken ? `YA • update ${bot.tokenUpdatedAt ?? '-'}` : 'BELUM'}</p>
 
               <div className="mt-2 flex flex-wrap gap-2">
                 <select value={bot.stylePreset} onChange={(e) => applyPreset(bot, e.target.value as BotStylePreset)} className="rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs">
@@ -556,6 +556,7 @@ export default function BotMakerPage() {
               <div className="mt-2 flex flex-wrap gap-2">
                 <button type="button" onClick={() => void saveThenRun('deploy', bot.id)} disabled={isBusy} className="rounded border border-cyan-300/50 bg-cyan-500/20 px-2.5 py-1 text-xs font-semibold text-cyan-100 disabled:opacity-50">Save + Deploy + Start</button>
                 <button type="button" onClick={() => void saveThenRun('send-now', bot.id)} disabled={isBusy} className="rounded border border-amber-300/50 bg-amber-500/20 px-2.5 py-1 text-xs font-semibold text-amber-100 disabled:opacity-50">Save + Send test</button>
+                <button type="button" onClick={() => void runAction('stop', bot.id)} disabled={isBusy} className="rounded border border-slate-400/40 bg-slate-500/20 px-2.5 py-1 text-xs font-semibold text-slate-100 disabled:opacity-50">Stop manual</button>
                 <button type="button" onClick={() => void deleteBotAndSave(bot.id)} disabled={isBusy} className="rounded border border-red-400/40 bg-red-500/20 px-2.5 py-1 text-xs font-semibold text-red-100 disabled:opacity-50">Delete konfigurasi bot ini</button>
               </div>
             </article>

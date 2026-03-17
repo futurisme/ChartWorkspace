@@ -64,3 +64,12 @@ BotMaker mendukung mode hybrid saat drag-drop tidak cukup.
 - BotMaker menyediakan panel **CLI Terminal Build Logs + Activity Logs (Live 24H)**.
 - Log mencakup proses deploy start, sinkron token runtime->DB, command sync, deploy success, send success, dan runtime error.
 - Retensi log dijaga 24 jam dengan pruning agar tetap ringan.
+
+
+## 11) Enkripsi token AES + .fAdHiL
+- Token sekarang disimpan dengan AES-256-GCM lalu dipacking `deflate` + framing `.fAdHiL` sebelum masuk DB.
+- Tujuan: payload aman, kecil, dan tetap kompatibel dengan data lama (base64 lama masih bisa dibaca).
+
+## 12) Mengapa bot dulu hanya jalan sekali?
+- Penyebab umum: scheduler tidak aktif ulang setelah restart runtime, token tidak sinkron saat deploy, atau command sync hard-fail.
+- Perbaikan final: deploy mengaktifkan scheduler, runtime direkonsiliasi saat load, command sync warning tidak mematikan deploy, dan ada tombol **Stop manual** untuk menghentikan host secara sadar.
