@@ -7,8 +7,10 @@ import {
   GAME_IDEA_STORAGE_KEY,
   sanitizeGameIdeaDatabase,
   type GameIdeaDatabase,
+  type GameIdeaFolder,
   type GameIdeaItem,
   type GameIdeaNav,
+  type GameIdeaRootSlot,
 } from '@/features/game-ideas/shared/schema';
 import { decodeFadhilArchive, encodeFadhilArchive } from '@/features/maps/shared/fadhil-archive';
 
@@ -38,7 +40,7 @@ type TransferAction =
   | { source: 'folder'; folderIndex: number; itemIndex: number }
   | null;
 
-type DragKind = 'category' | 'item' | 'nav';
+type DragKind = 'category' | 'item' | 'root' | 'nav' | `folderItem:${number}`;
 
 type ActiveDrag = {
   kind: DragKind;
@@ -64,10 +66,10 @@ const ADMIN_ACCESS_PERSIST_KEY = `${GAME_IDEA_STORAGE_KEY}_ADMIN_GRANTED`;
 
 
 const EMPTY_GAME_IDEA_DATA: GameIdeaDatabase = {
-  govt: { title: 'CODEX: GOVT', categories: [], data: {}, folders: {} },
-  units: { title: 'CODEX: UNITS', categories: [], data: {}, folders: {} },
-  tech: { title: 'CODEX: TECH', categories: [], data: {}, folders: {} },
-  econ: { title: 'CODEX: ECON', categories: [], data: {}, folders: {} },
+  govt: { title: 'CODEX: GOVT', categories: [], data: {}, folders: {}, rootOrder: {} },
+  units: { title: 'CODEX: UNITS', categories: [], data: {}, folders: {}, rootOrder: {} },
+  tech: { title: 'CODEX: TECH', categories: [], data: {}, folders: {}, rootOrder: {} },
+  econ: { title: 'CODEX: ECON', categories: [], data: {}, folders: {}, rootOrder: {} },
 };
 
 
@@ -109,6 +111,42 @@ function normalizeTitleName(value: string) {
 
 function normalizeFolderName(value: string) {
   return value.trim().replace(/\s+/g, ' ').slice(0, 80);
+}
+
+function randomId(prefix: string) {
+  return `${prefix}-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`;
+}
+
+function createRootOrder(items: GameIdeaItem[], folders: GameIdeaFolder[], existing: GameIdeaRootSlot[] = []) {
+  const itemIds = new Set(items.map((item) => item.id));
+  const folderIds = new Set(folders.map((folder) => folder.id));
+  const used = new Set<string>();
+  const slots: GameIdeaRootSlot[] = [];
+
+  existing.forEach((slot) => {
+    const key = `${slot.kind}:${slot.id}`;
+    if (used.has(key)) return;
+    if (slot.kind === 'item' && !itemIds.has(slot.id)) return;
+    if (slot.kind === 'folder' && !folderIds.has(slot.id)) return;
+    used.add(key);
+    slots.push(slot);
+  });
+
+  items.forEach((item) => {
+    const key = `item:${item.id}`;
+    if (used.has(key)) return;
+    used.add(key);
+    slots.push({ kind: 'item', id: item.id });
+  });
+
+  folders.forEach((folder) => {
+    const key = `folder:${folder.id}`;
+    if (used.has(key)) return;
+    used.add(key);
+    slots.push({ kind: 'folder', id: folder.id });
+  });
+
+  return slots;
 }
 
 
@@ -267,6 +305,12 @@ export default function GameIdeasPage() {
   const currentCategory = category || categoryList[0] || '';
   const items = useMemo(() => currentSection.data[currentCategory] ?? [], [currentCategory, currentSection.data]);
   const currentFolders = useMemo(() => currentSection.folders?.[currentCategory] ?? [], [currentCategory, currentSection.folders]);
+  const currentRootSlots = useMemo(
+    () => createRootOrder(items, currentFolders, currentSection.rootOrder?.[currentCategory] ?? []),
+    [currentCategory, currentFolders, currentSection.rootOrder, items]
+  );
+  const itemIndexById = useMemo(() => new Map(items.map((item, index) => [item.id, index])), [items]);
+  const folderIndexById = useMemo(() => new Map(currentFolders.map((folder, index) => [folder.id, index])), [currentFolders]);
 
 
   useEffect(() => {
@@ -522,6 +566,7 @@ export default function GameIdeasPage() {
     if (!name || !currentCategory) return;
 
     const nextItem: GameIdeaItem = {
+      id: randomId('item'),
       name: name.slice(0, 120),
       tag: itemDraft.tag.trim().slice(0, 32),
       desc: itemDraft.desc.trim(),
@@ -531,6 +576,8 @@ export default function GameIdeasPage() {
     setDb((prev) => {
       const section = prev[nav];
       const oldItems = section.data[currentCategory] ?? [];
+      const oldFolders = section.folders?.[currentCategory] ?? [];
+      const nextItems = [...oldItems, nextItem];
 
       return {
         ...prev,
@@ -538,7 +585,11 @@ export default function GameIdeasPage() {
           ...section,
           data: {
             ...section.data,
-            [currentCategory]: [...oldItems, nextItem],
+            [currentCategory]: nextItems,
+          },
+          rootOrder: {
+            ...(section.rootOrder ?? {}),
+            [currentCategory]: createRootOrder(nextItems, oldFolders, section.rootOrder?.[currentCategory] ?? []),
           },
         },
       };
@@ -570,6 +621,10 @@ export default function GameIdeasPage() {
             ...(section.folders ?? {}),
             [categoryName]: [],
           },
+          rootOrder: {
+            ...(section.rootOrder ?? {}),
+            [categoryName]: [],
+          },
         },
       };
     });
@@ -597,7 +652,7 @@ export default function GameIdeasPage() {
           ...section,
           folders: {
             ...folders,
-            [currentCategory]: [...categoryFolders, { name: folderName, items: [] }],
+            [currentCategory]: [...categoryFolders, { id: randomId('folder'), name: folderName, items: [] }],
           },
         },
       };
@@ -796,13 +851,19 @@ export default function GameIdeasPage() {
         const oldItems = section.data[currentCategory] ?? [];
         if (confirmDeleteAction.index < 0 || confirmDeleteAction.index >= oldItems.length) return prev;
 
+        const nextItems = oldItems.filter((_, i) => i !== confirmDeleteAction.index);
+        const nextFolders = section.folders?.[currentCategory] ?? [];
         return {
           ...prev,
           [nav]: {
             ...section,
             data: {
               ...section.data,
-              [currentCategory]: oldItems.filter((_, i) => i !== confirmDeleteAction.index),
+              [currentCategory]: nextItems,
+            },
+            rootOrder: {
+              ...(section.rootOrder ?? {}),
+              [currentCategory]: createRootOrder(nextItems, nextFolders, section.rootOrder?.[currentCategory] ?? []),
             },
           },
         };
@@ -850,13 +911,18 @@ export default function GameIdeasPage() {
         const categoryFolders = folders[currentCategory] ?? [];
         if (confirmDeleteAction.folderIndex < 0 || confirmDeleteAction.folderIndex >= categoryFolders.length) return prev;
 
+        const nextFolders = categoryFolders.filter((_, idx) => idx !== confirmDeleteAction.folderIndex);
         return {
           ...prev,
           [nav]: {
             ...section,
             folders: {
               ...folders,
-              [currentCategory]: categoryFolders.filter((_, idx) => idx !== confirmDeleteAction.folderIndex),
+              [currentCategory]: nextFolders,
+            },
+            rootOrder: {
+              ...(section.rootOrder ?? {}),
+              [currentCategory]: createRootOrder(section.data[currentCategory] ?? [], nextFolders, section.rootOrder?.[currentCategory] ?? []),
             },
           },
         };
@@ -864,7 +930,10 @@ export default function GameIdeasPage() {
 
       setOpenFolderItemCards((prev) => {
         const next = { ...prev };
-        delete next[`${nav}:${currentCategory}:${confirmDeleteAction.folderIndex}`];
+        const removedFolder = currentFolders[confirmDeleteAction.folderIndex];
+        if (removedFolder) {
+          delete next[`${nav}:${currentCategory}:${removedFolder.id}`];
+        }
         return next;
       });
     }
@@ -890,12 +959,18 @@ export default function GameIdeasPage() {
               ...folders,
               [currentCategory]: nextFolders,
             },
+            rootOrder: {
+              ...(section.rootOrder ?? {}),
+              [currentCategory]: createRootOrder(section.data[currentCategory] ?? [], nextFolders, section.rootOrder?.[currentCategory] ?? []),
+            },
           },
         };
       });
 
       setOpenFolderItemCards((prev) => {
-        const key = `${nav}:${currentCategory}:${confirmDeleteAction.folderIndex}`;
+        const folderId = currentFolders[confirmDeleteAction.folderIndex]?.id;
+        if (!folderId) return prev;
+        const key = `${nav}:${currentCategory}:${folderId}`;
         if (prev[key] === confirmDeleteAction.itemIndex) {
           return { ...prev, [key]: null };
         }
@@ -904,7 +979,7 @@ export default function GameIdeasPage() {
     }
 
     setConfirmDeleteAction(null);
-  }, [confirmDeleteAction, currentCategory, nav]);
+  }, [confirmDeleteAction, currentCategory, currentFolders, nav]);
 
   const transferItemToFolder = useCallback((folderIndex: number) => {
     if (!transferAction) return;
@@ -954,6 +1029,10 @@ export default function GameIdeasPage() {
             ...folders,
             [currentCategory]: nextFolders,
           },
+          rootOrder: {
+            ...(section.rootOrder ?? {}),
+            [currentCategory]: createRootOrder(nextItems, nextFolders, section.rootOrder?.[currentCategory] ?? []),
+          },
         },
       };
     });
@@ -961,10 +1040,13 @@ export default function GameIdeasPage() {
     if (transferAction.source === 'root') {
       setOpenCardIndex(null);
     } else {
-      setOpenFolderItemCards((prev) => ({ ...prev, [`${nav}:${currentCategory}:${transferAction.folderIndex}`]: null }));
+      const sourceFolderId = currentFolders[transferAction.folderIndex]?.id;
+      if (sourceFolderId) {
+        setOpenFolderItemCards((prev) => ({ ...prev, [`${nav}:${currentCategory}:${sourceFolderId}`]: null }));
+      }
     }
     setTransferAction(null);
-  }, [currentCategory, nav, transferAction]);
+  }, [currentCategory, currentFolders, nav, transferAction]);
 
   const removeItemFromFolder = useCallback(() => {
     if (!transferAction || transferAction.source !== 'folder') return;
@@ -985,25 +1067,33 @@ export default function GameIdeasPage() {
           : folder
       ));
 
+      const nextItems = [...(section.data[currentCategory] ?? []), picked];
       return {
         ...prev,
         [nav]: {
           ...section,
           data: {
             ...section.data,
-            [currentCategory]: [...(section.data[currentCategory] ?? []), picked],
+            [currentCategory]: nextItems,
           },
           folders: {
             ...folders,
             [currentCategory]: nextFolders,
           },
+          rootOrder: {
+            ...(section.rootOrder ?? {}),
+            [currentCategory]: createRootOrder(nextItems, nextFolders, section.rootOrder?.[currentCategory] ?? []),
+          },
         },
       };
     });
 
-    setOpenFolderItemCards((prev) => ({ ...prev, [`${nav}:${currentCategory}:${transferAction.folderIndex}`]: null }));
+    const sourceFolderId = currentFolders[transferAction.folderIndex]?.id;
+    if (sourceFolderId) {
+      setOpenFolderItemCards((prev) => ({ ...prev, [`${nav}:${currentCategory}:${sourceFolderId}`]: null }));
+    }
     setTransferAction(null);
-  }, [currentCategory, nav, transferAction]);
+  }, [currentCategory, currentFolders, nav, transferAction]);
 
   const handlePointerDown = useCallback((kind: DragKind, index: number, pointerId: number, clientX: number, clientY: number) => {
     if (!adminMode) return;
@@ -1088,6 +1178,28 @@ export default function GameIdeasPage() {
         }
       }
 
+      if (drag.kind === 'root') {
+        setDb((prev) => {
+          const section = prev[nav];
+          const existing = createRootOrder(
+            section.data[currentCategory] ?? [],
+            section.folders?.[currentCategory] ?? [],
+            section.rootOrder?.[currentCategory] ?? []
+          );
+          if (existing.length < 2) return prev;
+          return {
+            ...prev,
+            [nav]: {
+              ...section,
+              rootOrder: {
+                ...(section.rootOrder ?? {}),
+                [currentCategory]: reorderArray(existing, drag.fromIndex, drag.overIndex),
+              },
+            },
+          };
+        });
+      }
+
       if (drag.kind === 'item') {
         setDb((prev) => {
           const section = prev[nav];
@@ -1114,13 +1226,55 @@ export default function GameIdeasPage() {
         });
       }
 
+      if (drag.kind.startsWith('folderItem:')) {
+        const folderIndex = Number.parseInt(drag.kind.split(':')[1] ?? '', 10);
+        if (Number.isFinite(folderIndex)) {
+          setDb((prev) => {
+            const section = prev[nav];
+            const folders = section.folders ?? {};
+            const categoryFolders = folders[currentCategory] ?? [];
+            if (folderIndex < 0 || folderIndex >= categoryFolders.length) return prev;
+            const target = categoryFolders[folderIndex];
+            if (!target || target.items.length < 2) return prev;
+
+            const nextFolders = categoryFolders.map((folder, index) => (
+              index === folderIndex ? { ...folder, items: reorderArray(folder.items, drag.fromIndex, drag.overIndex) } : folder
+            ));
+
+            return {
+              ...prev,
+              [nav]: {
+                ...section,
+                folders: {
+                  ...folders,
+                  [currentCategory]: nextFolders,
+                },
+              },
+            };
+          });
+
+          const folder = currentFolders[folderIndex];
+          const folderKey = folder ? `${nav}:${currentCategory}:${folder.id}` : null;
+          if (folderKey) {
+            setOpenFolderItemCards((prev) => {
+              const current = prev[folderKey];
+              if (current === null || current === undefined) return prev;
+              if (current === drag.fromIndex) return { ...prev, [folderKey]: drag.overIndex };
+              if (drag.fromIndex < drag.overIndex && current > drag.fromIndex && current <= drag.overIndex) return { ...prev, [folderKey]: current - 1 };
+              if (drag.fromIndex > drag.overIndex && current >= drag.overIndex && current < drag.fromIndex) return { ...prev, [folderKey]: current + 1 };
+              return prev;
+            });
+          }
+        }
+      }
+
       if (drag.kind === 'nav') {
         setNavOrder((prev) => reorderArray(prev, drag.fromIndex, drag.overIndex));
       }
 
       return null;
     });
-  }, [categoryList, currentCategory, nav]);
+  }, [categoryList, currentCategory, currentFolders, nav]);
 
   const handlePointerEnd = useCallback((pointerId: number) => {
     if (!dragPointerRef.current || dragPointerRef.current.pointerId !== pointerId) {
@@ -1394,79 +1548,99 @@ export default function GameIdeasPage() {
         </aside>
 
         <section className="content-area" ref={contentAreaRef} style={{ '--dynamic-scroll-spacer': `${dynamicScrollSpacer}px` } as CSSProperties}>
-          {items.map((item, index) => (
-            <div
-              key={`${item.name}-${index}`}
-              className={`slot-shell item-slot-shell ${activeDrag?.kind === 'item' && activeDrag.overIndex === index ? 'slot-shell-target item-slot-target' : ''}`}
-              data-drag-kind="item"
-              data-drag-index={index}
-              data-slot-index={index + 1}
-              data-item-index={index}
-              onPointerDown={(event) => handlePointerDown('item', index, event.pointerId, event.clientX, event.clientY)}
-              onPointerUp={(event) => handlePointerEnd(event.pointerId)}
-              onPointerCancel={(event) => handlePointerEnd(event.pointerId)}
-            >
-            <article
-              className={`card slot-el ${openCardIndex === index ? 'open' : ''} ${dragShiftForIndex(index, activeDrag, 'item')} ${isDraggedIndex(index, activeDrag, 'item') ? 'dragged' : ''}`}
-              style={dragStyle(isDraggedIndex(index, activeDrag, 'item') ? activeDrag : null, 'item')}
-            >
-              {adminMode && (
-                <div className="admin-tools">
-                  <button type="button" className="btn-icon folder" onClick={() => setTransferAction({ source: 'root', itemIndex: index })} disabled={currentFolders.length === 0}>
-                    FOLDER
-                  </button>
-                  <button type="button" className="btn-icon del" onClick={() => requestDeleteItem(index)}>
-                    DELETE
-                  </button>
-                </div>
-              )}
-              <button
-                type="button"
-                className="card-head"
-                onClick={() => {
-                  if (activeDrag) return;
-                  setOpenCardIndex((prev) => (prev === index ? null : index));
-                  registerUniversalRenameClick(`item:${nav}:${currentCategory}:${index}`, () => requestRenameItem(index));
-                }}
-              >
-                <h3>{item.name}</h3>
-                <div className="card-meta">
-                  <span className="tag">{item.tag || 'UNTAGGED'}</span>
-                  <span className="expand-indicator" aria-hidden="true">
-                    {openCardIndex === index ? '▲ Collapse detail' : '▼ Expand detail'}
-                  </span>
-                </div>
-              </button>
-              <div className="card-body-wrapper">
-                <div className="card-body">
-                  {openCardIndex === index ? (
-                    <div className="inner">
-                      <p className="desc desc-content">{item.desc || 'No description.'}</p>
-                      {Object.entries(item.stats).length === 0 ? (
-                        <p className="desc">No stats.</p>
-                      ) : (
-                        Object.entries(item.stats).map(([key, value]) => (
-                          <div key={`${item.name}-${key}`} className="stat">
-                            <span className="stat-label">{key}:</span>
-                            <span className="stat-value">{value}</span>
+          {currentRootSlots.map((slot, slotIndex) => {
+            if (slot.kind === 'item') {
+              const index = itemIndexById.get(slot.id);
+              if (index === undefined) return null;
+              const item = items[index];
+              return (
+                <div
+                  key={`root-item-${item.id}`}
+                  className={`slot-shell item-slot-shell ${activeDrag?.kind === 'root' && activeDrag.overIndex === slotIndex ? 'slot-shell-target item-slot-target' : ''}`}
+                  data-drag-kind="root"
+                  data-drag-index={slotIndex}
+                  data-slot-index={slotIndex + 1}
+                  data-item-index={index}
+                  onPointerDown={(event) => handlePointerDown('root', slotIndex, event.pointerId, event.clientX, event.clientY)}
+                  onPointerUp={(event) => handlePointerEnd(event.pointerId)}
+                  onPointerCancel={(event) => handlePointerEnd(event.pointerId)}
+                >
+                  <article
+                    className={`card slot-el ${openCardIndex === index ? 'open' : ''} ${dragShiftForIndex(slotIndex, activeDrag, 'root')} ${isDraggedIndex(slotIndex, activeDrag, 'root') ? 'dragged' : ''}`}
+                    style={dragStyle(isDraggedIndex(slotIndex, activeDrag, 'root') ? activeDrag : null, 'root')}
+                  >
+                    {adminMode && (
+                      <div className="admin-tools">
+                        <button type="button" className="btn-icon folder" onClick={() => setTransferAction({ source: 'root', itemIndex: index })} disabled={currentFolders.length === 0}>
+                          FOLDER
+                        </button>
+                        <button type="button" className="btn-icon del" onClick={() => requestDeleteItem(index)}>
+                          DELETE
+                        </button>
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      className="card-head"
+                      onClick={() => {
+                        if (activeDrag) return;
+                        setOpenCardIndex((prev) => (prev === index ? null : index));
+                        registerUniversalRenameClick(`item:${nav}:${currentCategory}:${index}`, () => requestRenameItem(index));
+                      }}
+                    >
+                      <h3>{item.name}</h3>
+                      <div className="card-meta">
+                        <span className="tag">{item.tag || 'UNTAGGED'}</span>
+                        <span className="expand-indicator" aria-hidden="true">
+                          {openCardIndex === index ? '▲ Collapse detail' : '▼ Expand detail'}
+                        </span>
+                      </div>
+                    </button>
+                    <div className="card-body-wrapper">
+                      <div className="card-body">
+                        {openCardIndex === index ? (
+                          <div className="inner">
+                            <p className="desc desc-content">{item.desc || 'No description.'}</p>
+                            {Object.entries(item.stats).length === 0 ? (
+                              <p className="desc">No stats.</p>
+                            ) : (
+                              Object.entries(item.stats).map(([key, value]) => (
+                                <div key={`${item.name}-${key}`} className="stat">
+                                  <span className="stat-label">{key}:</span>
+                                  <span className="stat-value">{value}</span>
+                                </div>
+                              ))
+                            )}
                           </div>
-                        ))
-                      )}
+                        ) : null}
+                      </div>
                     </div>
-                  ) : null}
+                  </article>
                 </div>
-              </div>
-            </article>
-            </div>
-          ))}
+              );
+            }
 
-          {currentFolders.map((folder, folderIndex) => {
-            const folderKey = `${nav}:${currentCategory}:${folderIndex}`;
+            const folderIndex = folderIndexById.get(slot.id);
+            if (folderIndex === undefined) return null;
+            const folder = currentFolders[folderIndex];
+            const folderKey = `${nav}:${currentCategory}:${folder.id}`;
             const isOpenFolder = openFolders[folderKey] ?? true;
             const openFolderItemIndex = openFolderItemCards[folderKey] ?? null;
+            const folderDragKind = `folderItem:${folderIndex}` as DragKind;
+
             return (
-              <div key={`folder-slot-${folder.name}-${folderIndex}`} className="slot-shell item-slot-shell folder-slot-shell">
-                <article className={`card folder-card ${isOpenFolder ? 'open' : ''}`}>
+              <div
+                key={`root-folder-${folder.id}`}
+                className={`slot-shell item-slot-shell folder-slot-shell ${activeDrag?.kind === 'root' && activeDrag.overIndex === slotIndex ? 'slot-shell-target item-slot-target' : ''}`}
+                data-drag-kind="root"
+                data-drag-index={slotIndex}
+                data-slot-index={slotIndex + 1}
+                onPointerDown={(event) => handlePointerDown('root', slotIndex, event.pointerId, event.clientX, event.clientY)}
+                onPointerUp={(event) => handlePointerEnd(event.pointerId)}
+                onPointerCancel={(event) => handlePointerEnd(event.pointerId)}
+              >
+                <article className={`card folder-card slot-el ${isOpenFolder ? 'open' : ''} ${dragShiftForIndex(slotIndex, activeDrag, 'root')} ${isDraggedIndex(slotIndex, activeDrag, 'root') ? 'dragged' : ''}`}
+                  style={dragStyle(isDraggedIndex(slotIndex, activeDrag, 'root') ? activeDrag : null, 'root')}>
                   {adminMode ? (
                     <div className="folder-admin-tools">
                       <button type="button" className="btn-icon del folder-del" onClick={() => requestDeleteFolder(folderIndex)}>
@@ -1478,6 +1652,7 @@ export default function GameIdeasPage() {
                     type="button"
                     className="card-head folder-head"
                     onClick={() => {
+                      if (activeDrag) return;
                       setOpenFolders((prev) => ({ ...prev, [folderKey]: !isOpenFolder }));
                       if (isOpenFolder) {
                         setOpenFolderItemCards((prev) => ({ ...prev, [folderKey]: null }));
@@ -1504,53 +1679,67 @@ export default function GameIdeasPage() {
                             folder.items.map((item, itemIndex) => {
                               const itemOpen = openFolderItemIndex === itemIndex;
                               return (
-                                <article key={`folder-item-${folder.name}-${item.name}-${itemIndex}`} className={`card folder-item-card ${itemOpen ? 'open' : ''}`}>
-                                  {adminMode ? (
-                                    <div className="admin-tools folder-item-tools">
-                                      <button type="button" className="btn-icon folder" onClick={() => setTransferAction({ source: 'folder', folderIndex, itemIndex })}>
-                                        FOLDER
-                                      </button>
-                                      <button type="button" className="btn-icon del" onClick={() => requestDeleteFolderItem(folderIndex, itemIndex)}>
-                                        DELETE
-                                      </button>
+                                <div
+                                  key={`folder-item-slot-${folder.id}-${item.id}`}
+                                  className={`slot-shell item-slot-shell folder-item-slot ${activeDrag?.kind === folderDragKind && activeDrag.overIndex === itemIndex ? 'slot-shell-target item-slot-target' : ''}`}
+                                  data-drag-kind={folderDragKind}
+                                  data-drag-index={itemIndex}
+                                  onPointerDown={(event) => handlePointerDown(folderDragKind, itemIndex, event.pointerId, event.clientX, event.clientY)}
+                                  onPointerUp={(event) => handlePointerEnd(event.pointerId)}
+                                  onPointerCancel={(event) => handlePointerEnd(event.pointerId)}
+                                >
+                                  <article className={`card folder-item-card slot-el ${itemOpen ? 'open' : ''} ${dragShiftForIndex(itemIndex, activeDrag, folderDragKind)} ${isDraggedIndex(itemIndex, activeDrag, folderDragKind) ? 'dragged' : ''}`}
+                                    style={dragStyle(isDraggedIndex(itemIndex, activeDrag, folderDragKind) ? activeDrag : null, folderDragKind)}>
+                                    {adminMode ? (
+                                      <div className="admin-tools folder-item-tools">
+                                        <button type="button" className="btn-icon folder" onClick={() => setTransferAction({ source: 'folder', folderIndex, itemIndex })}>
+                                          FOLDER
+                                        </button>
+                                        <button type="button" className="btn-icon del" onClick={() => requestDeleteFolderItem(folderIndex, itemIndex)}>
+                                          DELETE
+                                        </button>
+                                      </div>
+                                    ) : null}
+                                    <button
+                                      type="button"
+                                      className="card-head folder-item-head"
+                                      onClick={() => {
+                                        if (activeDrag) return;
+                                        setOpenFolderItemCards((prev) => ({
+                                          ...prev,
+                                          [folderKey]: prev[folderKey] === itemIndex ? null : itemIndex,
+                                        }));
+                                      }}
+                                    >
+                                      <h4>{item.name}</h4>
+                                      <div className="card-meta">
+                                        <span className="tag">{item.tag || 'UNTAGGED'}</span>
+                                        <span className="expand-indicator" aria-hidden="true">
+                                          {itemOpen ? '▲ Collapse detail' : '▼ Expand detail'}
+                                        </span>
+                                      </div>
+                                    </button>
+                                    <div className="card-body-wrapper folder-item-body-wrapper">
+                                      <div className="card-body">
+                                        {itemOpen ? (
+                                          <div className="inner folder-item-inner">
+                                            <p className="desc desc-content">{item.desc || 'No description.'}</p>
+                                            {Object.entries(item.stats).length === 0 ? (
+                                              <p className="desc">No stats.</p>
+                                            ) : (
+                                              Object.entries(item.stats).map(([key, value]) => (
+                                                <div key={`${folder.name}-${item.name}-${key}`} className="stat">
+                                                  <span className="stat-label">{key}:</span>
+                                                  <span className="stat-value">{value}</span>
+                                                </div>
+                                              ))
+                                            )}
+                                          </div>
+                                        ) : null}
+                                      </div>
                                     </div>
-                                  ) : null}
-                                  <button
-                                    type="button"
-                                    className="card-head folder-item-head"
-                                    onClick={() => setOpenFolderItemCards((prev) => ({
-                                      ...prev,
-                                      [folderKey]: prev[folderKey] === itemIndex ? null : itemIndex,
-                                    }))}
-                                  >
-                                    <h4>{item.name}</h4>
-                                    <div className="card-meta">
-                                      <span className="tag">{item.tag || 'UNTAGGED'}</span>
-                                      <span className="expand-indicator" aria-hidden="true">
-                                        {itemOpen ? '▲ Collapse detail' : '▼ Expand detail'}
-                                      </span>
-                                    </div>
-                                  </button>
-                                  <div className="card-body-wrapper folder-item-body-wrapper">
-                                    <div className="card-body">
-                                      {itemOpen ? (
-                                        <div className="inner folder-item-inner">
-                                          <p className="desc desc-content">{item.desc || 'No description.'}</p>
-                                          {Object.entries(item.stats).length === 0 ? (
-                                            <p className="desc">No stats.</p>
-                                          ) : (
-                                            Object.entries(item.stats).map(([key, value]) => (
-                                              <div key={`${folder.name}-${item.name}-${key}`} className="stat">
-                                                <span className="stat-label">{key}:</span>
-                                                <span className="stat-value">{value}</span>
-                                              </div>
-                                            ))
-                                          )}
-                                        </div>
-                                      ) : null}
-                                    </div>
-                                  </div>
-                                </article>
+                                  </article>
+                                </div>
                               );
                             })
                           )}

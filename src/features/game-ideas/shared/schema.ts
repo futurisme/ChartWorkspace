@@ -3,6 +3,7 @@ export const GAME_IDEA_STORAGE_KEY = 'CODEX_V5_DATA';
 export type GameIdeaNav = 'govt' | 'units' | 'tech' | 'econ';
 
 export interface GameIdeaItem {
+  id: string;
   name: string;
   tag: string;
   desc: string;
@@ -11,15 +12,22 @@ export interface GameIdeaItem {
 }
 
 export interface GameIdeaFolder {
+  id: string;
   name: string;
   items: GameIdeaItem[];
 }
+
+export type GameIdeaRootSlot = {
+  kind: 'item' | 'folder';
+  id: string;
+};
 
 export interface GameIdeaSection {
   title: string;
   categories: string[];
   data: Record<string, GameIdeaItem[]>;
   folders?: Record<string, GameIdeaFolder[]>;
+  rootOrder?: Record<string, GameIdeaRootSlot[]>;
   navGradient?: string;
   categoryGradients?: Record<string, string>;
 }
@@ -29,28 +37,11 @@ export type GameIdeaDatabase = Record<GameIdeaNav, GameIdeaSection>;
 export const GAME_IDEA_NAV_ORDER: GameIdeaNav[] = ['govt', 'units', 'tech', 'econ'];
 
 export const DEFAULT_GAME_IDEA_DATA: GameIdeaDatabase = {
-  govt: {
-    title: 'CODEX: GOVT',
-    categories: [],
-    data: {},
-  },
-  units: {
-    title: 'CODEX: UNITS',
-    categories: [],
-    data: {},
-  },
-  tech: {
-    title: 'CODEX: TECH',
-    categories: [],
-    data: {},
-  },
-  econ: {
-    title: 'CODEX: ECON',
-    categories: [],
-    data: {},
-  },
+  govt: { title: 'CODEX: GOVT', categories: [], data: {} },
+  units: { title: 'CODEX: UNITS', categories: [], data: {} },
+  tech: { title: 'CODEX: TECH', categories: [], data: {} },
+  econ: { title: 'CODEX: ECON', categories: [], data: {} },
 };
-
 
 const ALLOWED_GRADIENTS = new Set([
   'linear-gradient(135deg,#00f5ff 0%,#0066ff 100%)',
@@ -70,7 +61,13 @@ function sanitizeGradient(value: unknown) {
   return ALLOWED_GRADIENTS.has(normalized) ? normalized : undefined;
 }
 
-function sanitizeItem(value: unknown): GameIdeaItem | null {
+function sanitizeId(value: unknown, fallback: string) {
+  if (typeof value !== 'string') return fallback;
+  const normalized = value.trim();
+  return normalized ? normalized.slice(0, 96) : fallback;
+}
+
+function sanitizeItem(value: unknown, fallbackId: string): GameIdeaItem | null {
   if (!isRecord(value)) return null;
   const name = typeof value.name === 'string' ? value.name.trim() : '';
   if (!name) return null;
@@ -91,6 +88,7 @@ function sanitizeItem(value: unknown): GameIdeaItem | null {
   const colorGradient = sanitizeGradient(value.colorGradient);
 
   return {
+    id: sanitizeId(value.id, fallbackId),
     name: name.slice(0, 120),
     tag,
     desc,
@@ -99,15 +97,57 @@ function sanitizeItem(value: unknown): GameIdeaItem | null {
   };
 }
 
-function sanitizeFolder(value: unknown): GameIdeaFolder | null {
+function sanitizeFolder(value: unknown, fallbackId: string): GameIdeaFolder | null {
   if (!isRecord(value)) return null;
   const name = typeof value.name === 'string' ? value.name.trim().slice(0, 80) : '';
   if (!name) return null;
 
+  const folderId = sanitizeId(value.id, fallbackId);
   const rawItems = Array.isArray(value.items) ? value.items : [];
-  const items = rawItems.map(sanitizeItem).filter((item): item is GameIdeaItem => Boolean(item)).slice(0, 500);
+  const items = rawItems
+    .map((item, index) => sanitizeItem(item, `item-${folderId}-${index + 1}`))
+    .filter((item): item is GameIdeaItem => Boolean(item))
+    .slice(0, 500);
 
-  return { name, items };
+  return { id: folderId, name, items };
+}
+
+function buildRootOrderForCategory(items: GameIdeaItem[], folders: GameIdeaFolder[], incoming: unknown): GameIdeaRootSlot[] {
+  const itemIds = new Set(items.map((item) => item.id));
+  const folderIds = new Set(folders.map((folder) => folder.id));
+  const used = new Set<string>();
+  const next: GameIdeaRootSlot[] = [];
+
+  const incomingSlots = Array.isArray(incoming) ? incoming : [];
+  incomingSlots.forEach((slot) => {
+    if (!isRecord(slot)) return;
+    const kind = slot.kind === 'item' || slot.kind === 'folder' ? slot.kind : null;
+    if (!kind) return;
+    const id = typeof slot.id === 'string' ? slot.id.trim() : '';
+    if (!id) return;
+    const key = `${kind}:${id}`;
+    if (used.has(key)) return;
+    if (kind === 'item' && !itemIds.has(id)) return;
+    if (kind === 'folder' && !folderIds.has(id)) return;
+    used.add(key);
+    next.push({ kind, id });
+  });
+
+  items.forEach((item) => {
+    const key = `item:${item.id}`;
+    if (used.has(key)) return;
+    used.add(key);
+    next.push({ kind: 'item', id: item.id });
+  });
+
+  folders.forEach((folder) => {
+    const key = `folder:${folder.id}`;
+    if (used.has(key)) return;
+    used.add(key);
+    next.push({ kind: 'folder', id: folder.id });
+  });
+
+  return next;
 }
 
 function sanitizeSection(value: unknown, fallback: GameIdeaSection): GameIdeaSection {
@@ -123,41 +163,47 @@ function sanitizeSection(value: unknown, fallback: GameIdeaSection): GameIdeaSec
     )
   ).slice(0, 60);
 
-  const safeCategories = categories;
-  const rawData = isRecord(sectionObj.data) ? sectionObj.data : {};
   const data: Record<string, GameIdeaItem[]> = {};
-
-  safeCategories.forEach((category) => {
+  const rawData = isRecord(sectionObj.data) ? sectionObj.data : {};
+  categories.forEach((category) => {
     const incoming = Array.isArray(rawData[category]) ? rawData[category] : [];
-    data[category] = incoming.map(sanitizeItem).filter((item): item is GameIdeaItem => Boolean(item)).slice(0, 500);
+    data[category] = incoming
+      .map((item, index) => sanitizeItem(item, `item-${category}-${index + 1}`))
+      .filter((item): item is GameIdeaItem => Boolean(item))
+      .slice(0, 500);
   });
 
-  const rawFolders = isRecord(sectionObj.folders) ? sectionObj.folders : {};
   const folders: Record<string, GameIdeaFolder[]> = {};
-  safeCategories.forEach((category) => {
-    const incomingFolders = Array.isArray(rawFolders[category]) ? rawFolders[category] : [];
-    folders[category] = incomingFolders
-      .map(sanitizeFolder)
+  const rawFolders = isRecord(sectionObj.folders) ? sectionObj.folders : {};
+  categories.forEach((category) => {
+    const incoming = Array.isArray(rawFolders[category]) ? rawFolders[category] : [];
+    folders[category] = incoming
+      .map((folder, index) => sanitizeFolder(folder, `folder-${category}-${index + 1}`))
       .filter((folder): folder is GameIdeaFolder => Boolean(folder))
       .slice(0, 120);
   });
 
+  const rootOrder: Record<string, GameIdeaRootSlot[]> = {};
+  const rawRootOrder = isRecord(sectionObj.rootOrder) ? sectionObj.rootOrder : {};
+  categories.forEach((category) => {
+    rootOrder[category] = buildRootOrderForCategory(data[category] ?? [], folders[category] ?? [], rawRootOrder[category]);
+  });
+
   const categoryGradientsRaw = isRecord(sectionObj.categoryGradients) ? sectionObj.categoryGradients : {};
   const categoryGradients: Record<string, string> = {};
-  safeCategories.forEach((category) => {
+  categories.forEach((category) => {
     const gradient = sanitizeGradient(categoryGradientsRaw[category]);
-    if (gradient) {
-      categoryGradients[category] = gradient;
-    }
+    if (gradient) categoryGradients[category] = gradient;
   });
 
   const navGradient = sanitizeGradient(sectionObj.navGradient);
 
   return {
     title,
-    categories: safeCategories,
+    categories,
     data,
     folders,
+    rootOrder,
     ...(Object.keys(categoryGradients).length > 0 ? { categoryGradients } : {}),
     ...(navGradient ? { navGradient } : {}),
   };
