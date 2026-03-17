@@ -85,6 +85,20 @@ export function appendBotActivityLog(botId: string, level: 'info' | 'warning' | 
   logRuntime('client-log', { botId, level, source, message, ...(details ?? {}) });
 }
 
+
+export function clearBotActivityLogs(botId: string) {
+  if (botId === 'all') {
+    ACTIVITY_LOGS.length = 0;
+    return;
+  }
+
+  for (let index = ACTIVITY_LOGS.length - 1; index >= 0; index -= 1) {
+    if (ACTIVITY_LOGS[index].botId === botId) {
+      ACTIVITY_LOGS.splice(index, 1);
+    }
+  }
+}
+
 function getBotMakerDiagnostics(): BotMakerDiagnostics {
   return {
     dbHost: activeDatabaseHost,

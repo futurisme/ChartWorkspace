@@ -162,6 +162,22 @@ export default function BotMakerPage() {
 
   const stats = useMemo(() => ({ total: state.bots.length, active: state.bots.filter((bot) => bot.enabled).length }), [state.bots]);
 
+  const logsText = useMemo(() => (
+    activityLogs.length === 0
+      ? '[no-logs-yet]'
+      : activityLogs.map((entry) => `[${entry.ts}] [${entry.botId}] ${entry.event} ${JSON.stringify(entry.details)}`).join('\n')
+  ), [activityLogs]);
+
+  const clearCliLogs = async () => {
+    const botId = activeBotId ?? state.bots[0]?.id ?? 'all';
+    try {
+      await fetch(`/api/botmaker/logs?botId=${encodeURIComponent(botId)}`, { method: 'DELETE' });
+      setActivityLogs([]);
+    } catch {
+      // ignore clear log failures
+    }
+  };
+
   const pushCliLog = async (payload: { botId?: string; level?: 'info' | 'warning' | 'error'; source?: 'internal' | 'external'; message: string; details?: Record<string, unknown> }) => {
     try {
       await fetch('/api/botmaker/logs', {
@@ -463,7 +479,7 @@ export default function BotMakerPage() {
                 <input value={bot.channelId} onChange={(e) => updateBot(bot.id, { channelId: e.target.value })} placeholder="Channel ID" className="rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs" />
                 <input type="number" min={60} max={86400} value={bot.intervalSeconds} onChange={(e) => updateBot(bot.id, { intervalSeconds: Number(e.target.value) })} placeholder="Interval seconds" className="rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs" />
               </div>
-              <p className="mt-1 text-[10px] text-cyan-200/80">Status token tersimpan (AES + .fAdHiL): {bot.hasToken ? `YA • update ${bot.tokenUpdatedAt ?? '-'}` : 'BELUM'}</p>
+              <p className="mt-1 text-[10px] text-cyan-200/80">Status token tersimpan (.fAdHiL): {bot.hasToken ? `YA • update ${bot.tokenUpdatedAt ?? '-'}` : 'BELUM'}</p>
 
               <div className="mt-2 flex flex-wrap gap-2">
                 <select value={bot.stylePreset} onChange={(e) => applyPreset(bot, e.target.value as BotStylePreset)} className="rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs">
@@ -582,9 +598,14 @@ export default function BotMakerPage() {
         <section className="mt-3 rounded-xl border border-cyan-400/25 bg-slate-900/60 p-3">
           <div className="mb-2 flex items-center justify-between gap-2">
             <h2 className="text-xs font-bold uppercase tracking-wide text-cyan-200">CLI Terminal Build Logs + Activity Logs (Live 24H)</h2>
-            <span className="rounded border border-cyan-500/30 px-2 py-0.5 text-[10px] text-cyan-100">auto refresh 3.5s</span>
+            <div className="flex items-center gap-1">
+              <button type="button" onClick={() => void navigator.clipboard.writeText(logsText)} className="rounded border border-cyan-500/40 px-2 py-0.5 text-[10px] text-cyan-100">copy all</button>
+              <button type="button" onClick={() => void clearCliLogs()} className="rounded border border-red-500/40 px-2 py-0.5 text-[10px] text-red-200">clear</button>
+              <span className="rounded border border-cyan-500/30 px-2 py-0.5 text-[10px] text-cyan-100">auto refresh 3.5s</span>
+            </div>
           </div>
-          <pre className="max-h-[220px] overflow-y-auto rounded border border-slate-700 bg-[#020617] p-2 font-mono text-[10px] text-emerald-200">{activityLogs.length === 0 ? '[no-logs-yet]' : activityLogs.map((entry) => `[${entry.ts}] [${entry.botId}] ${entry.event} ${JSON.stringify(entry.details)}`).join('\n')}</pre>
+          <p className="mb-1 text-[10px] text-slate-400">Log bersifat historis 24 jam. Gunakan clear untuk menghapus log lama yang sudah tidak relevan.</p>
+          <pre className="max-h-[220px] overflow-y-auto rounded border border-slate-700 bg-[#020617] p-2 font-mono text-[10px] text-emerald-200">{logsText}</pre>
         </section>
         </section>
       </div>

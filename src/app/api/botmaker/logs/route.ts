@@ -4,6 +4,7 @@ import {
   BOTMAKER_USER_COOKIE,
   BotMakerServiceError,
   appendBotActivityLog,
+  clearBotActivityLogs,
   getBotActivityLogs,
   verifySession,
 } from '@/features/botmaker/server/botmaker-service';
@@ -50,5 +51,22 @@ export async function POST(request: NextRequest) {
 
     const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ error: 'Failed to append logs', message }, { status: 500 });
+  }
+}
+
+
+export async function DELETE(request: NextRequest) {
+  try {
+    ensureAuth(request);
+    const botId = request.nextUrl.searchParams.get('botId') ?? 'all';
+    clearBotActivityLogs(botId);
+    return NextResponse.json({ ok: true, botId });
+  } catch (error) {
+    if (error instanceof BotMakerServiceError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+
+    const message = error instanceof Error ? error.message : String(error);
+    return NextResponse.json({ error: 'Failed to clear logs', message }, { status: 500 });
   }
 }
