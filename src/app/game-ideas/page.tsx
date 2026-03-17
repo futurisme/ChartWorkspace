@@ -2269,6 +2269,7 @@ export default function GameIdeasPage() {
           --border: rgba(0, 242, 255, 0.3);
           --neon: 0 0 7px rgba(0, 242, 255, 0.4), 0 0 20px rgba(0, 242, 255, 0.2);
           --neon-intense: 0 0 10px #00f2ff, 0 0 30px rgba(0, 242, 255, 0.5), 0 0 60px rgba(0, 242, 255, 0.2);
+          --retro-strip-gradient: repeating-linear-gradient(112deg, #e8fcff 0 8px, #7df9ff 8px 12px, #bc13fe 12px 16px, #00f2ff 16px 22px);
           height: 100dvh;
           min-height: 100dvh;
           display: flex;
@@ -2353,6 +2354,32 @@ export default function GameIdeasPage() {
           cursor: pointer;
           font-size: 10px;
           line-height: 1.2;
+        }
+
+        .tab-btn,
+        .nav-item,
+        .admin-action,
+        .card-head h3,
+        .folder-item-head h4 {
+          background-image: var(--retro-strip-gradient);
+          background-size: 220% 220%;
+          -webkit-background-clip: text;
+          background-clip: text;
+          -webkit-text-fill-color: transparent;
+          text-shadow: 0 0 7px rgba(0, 242, 255, 0.22), 0 0 11px rgba(188, 19, 254, 0.15);
+        }
+
+        .tab-btn,
+        .nav-item,
+        .admin-action {
+          letter-spacing: 0.05em;
+          text-transform: uppercase;
+        }
+
+        .tab-btn.active,
+        .nav-item.active {
+          background-size: 150% 150%;
+          text-shadow: 0 0 10px rgba(0, 242, 255, 0.4), 0 0 16px rgba(188, 19, 254, 0.22);
         }
         .tab-btn.active {
           color: #e8fbff;
@@ -2639,6 +2666,19 @@ export default function GameIdeasPage() {
         }
         .nav-item { border: 0; background: transparent; color: #ddf7ff; padding: 6px 10px; cursor: pointer; font-size: 10px; font-weight: 800; max-width: 24vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: none; touch-action: pan-y; }
         .nav-item.active { color: var(--accent); text-shadow: var(--neon); }
+
+        @supports not ((-webkit-background-clip: text) or (background-clip: text)) {
+          .tab-btn,
+          .nav-item,
+          .admin-action,
+          .card-head h3,
+          .folder-item-head h4 {
+            -webkit-text-fill-color: currentColor;
+            background-image: none;
+            text-shadow: var(--neon);
+          }
+        }
+
         .empty-hint,
         .error-hint { font-size: 12px; color: #9ca3af; }
         .error-hint { color: #fb7185; }
