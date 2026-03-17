@@ -1,7 +1,11 @@
+export type BotStylePreset = 'minimal' | 'alert' | 'release' | 'community';
+
 export interface BotMakerBot {
   id: string;
   name: string;
   token: string;
+  hasToken: boolean;
+  tokenUpdatedAt: string | null;
   applicationId: string;
   guildId: string;
   channelId: string;
@@ -10,14 +14,27 @@ export interface BotMakerBot {
   enabled: boolean;
   deployedAt: string | null;
   lastDeployStatus: string;
+  useEmbed: boolean;
+  mentionEveryone: boolean;
+  stylePreset: BotStylePreset;
+}
+
+export interface BotMakerAuthUser {
+  id: string;
+  username: string;
+  passHash: string;
+  createdAt: string;
+  lastLoginAt: string | null;
 }
 
 export interface BotMakerState {
   bots: BotMakerBot[];
+  users: BotMakerAuthUser[];
 }
 
 export const DEFAULT_BOTMAKER_STATE: BotMakerState = {
   bots: [],
+  users: [],
 };
 
 function cleanString(value: unknown, fallback = '') {
@@ -27,7 +44,12 @@ function cleanString(value: unknown, fallback = '') {
 function clampInterval(value: unknown) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return 300;
-  return Math.max(30, Math.min(86_400, Math.round(numeric)));
+  return Math.max(60, Math.min(86_400, Math.round(numeric)));
+}
+
+function sanitizePreset(value: unknown): BotStylePreset {
+  if (value === 'alert' || value === 'release' || value === 'community') return value;
+  return 'minimal';
 }
 
 function sanitizeBot(raw: unknown, index: number): BotMakerBot {
@@ -37,6 +59,8 @@ function sanitizeBot(raw: unknown, index: number): BotMakerBot {
     id,
     name: cleanString(source.name, `Discord Bot ${index + 1}`),
     token: cleanString(source.token),
+    hasToken: Boolean(source.hasToken) || cleanString(source.token).length > 0,
+    tokenUpdatedAt: typeof source.tokenUpdatedAt === 'string' && source.tokenUpdatedAt ? source.tokenUpdatedAt : null,
     applicationId: cleanString(source.applicationId),
     guildId: cleanString(source.guildId),
     channelId: cleanString(source.channelId),
@@ -45,20 +69,44 @@ function sanitizeBot(raw: unknown, index: number): BotMakerBot {
     enabled: Boolean(source.enabled),
     deployedAt: typeof source.deployedAt === 'string' && source.deployedAt ? source.deployedAt : null,
     lastDeployStatus: cleanString(source.lastDeployStatus),
+    useEmbed: Boolean(source.useEmbed),
+    mentionEveryone: Boolean(source.mentionEveryone),
+    stylePreset: sanitizePreset(source.stylePreset),
+  };
+}
+
+function sanitizeUser(raw: unknown, index: number): BotMakerAuthUser {
+  const source = (raw && typeof raw === 'object' ? raw : {}) as Partial<BotMakerAuthUser>;
+  const id = cleanString(source.id, `user-${index + 1}`);
+  return {
+    id,
+    username: cleanString(source.username, `operator-${index + 1}`).toLowerCase(),
+    passHash: cleanString(source.passHash),
+    createdAt: cleanString(source.createdAt, new Date(0).toISOString()),
+    lastLoginAt: typeof source.lastLoginAt === 'string' && source.lastLoginAt ? source.lastLoginAt : null,
   };
 }
 
 export function sanitizeBotMakerState(raw: unknown): BotMakerState {
   const source = (raw && typeof raw === 'object' ? raw : {}) as Partial<BotMakerState>;
   const bots = Array.isArray(source.bots) ? source.bots.map((entry, index) => sanitizeBot(entry, index)) : [];
+  const users = Array.isArray(source.users) ? source.users.map((entry, index) => sanitizeUser(entry, index)) : [];
 
-  const deduped = new Map<string, BotMakerBot>();
+  const dedupedBots = new Map<string, BotMakerBot>();
   bots.forEach((bot, index) => {
     const id = bot.id || `bot-${index + 1}`;
-    if (!deduped.has(id)) {
-      deduped.set(id, { ...bot, id });
+    if (!dedupedBots.has(id)) {
+      dedupedBots.set(id, { ...bot, id });
     }
   });
 
-  return { bots: [...deduped.values()] };
+  const dedupedUsers = new Map<string, BotMakerAuthUser>();
+  users.forEach((user, index) => {
+    const id = user.id || `user-${index + 1}`;
+    if (!dedupedUsers.has(id)) {
+      dedupedUsers.set(id, { ...user, id });
+    }
+  });
+
+  return { bots: [...dedupedBots.values()], users: [...dedupedUsers.values()] };
 }

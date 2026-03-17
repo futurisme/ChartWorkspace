@@ -1,10 +1,13 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import {
+  BOTMAKER_COOKIE,
+  BOTMAKER_USER_COOKIE,
   BotMakerServiceError,
   deployBot,
   loadBotMakerState,
   saveBotMakerState,
   sendBotNow,
+  verifySession,
 } from '@/features/botmaker/server/botmaker-service';
 
 export const dynamic = 'force-dynamic';
@@ -22,8 +25,17 @@ function createErrorResponse(error: string, status: number, details?: string) {
   );
 }
 
-export async function GET() {
+function ensureAuth(request: NextRequest) {
+  const userId = request.cookies.get(BOTMAKER_USER_COOKIE)?.value ?? null;
+  const sig = request.cookies.get(BOTMAKER_COOKIE)?.value ?? null;
+  if (!verifySession(userId, sig)) {
+    throw new BotMakerServiceError('Unauthorized BotMaker session.', 401);
+  }
+}
+
+export async function GET(request: NextRequest) {
   try {
+    ensureAuth(request);
     const payload = await loadBotMakerState();
     return NextResponse.json(payload, {
       headers: { 'Cache-Control': NO_STORE },
@@ -38,8 +50,9 @@ export async function GET() {
   }
 }
 
-export async function PUT(request: Request) {
+export async function PUT(request: NextRequest) {
   try {
+    ensureAuth(request);
     const body = (await request.json()) as { data?: unknown };
     const payload = await saveBotMakerState(body.data);
     return NextResponse.json(payload, {
@@ -55,8 +68,9 @@ export async function PUT(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
+    ensureAuth(request);
     const body = (await request.json()) as { action?: string; botId?: string };
 
     if (!body.botId) {
