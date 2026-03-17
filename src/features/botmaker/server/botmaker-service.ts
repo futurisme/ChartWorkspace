@@ -40,6 +40,7 @@ type DiscordUserResponse = { id: string; username: string };
 type BotMakerDiagnostics = {
   dbHost: string | null;
   hasFallbackToken: boolean;
+  tokenSecretSource: 'BOTMAKER_TOKEN_SECRET' | 'BOTMAKER_TOKEN_SECRET_PREVIOUS' | 'DATABASE_URL_FALLBACK' | 'default-dev-secret';
   sharedStore: string;
 };
 
@@ -97,10 +98,34 @@ function getFallbackToken() {
   return '';
 }
 
+
+function getTokenKeyCandidates() {
+  const direct = process.env.BOTMAKER_TOKEN_SECRET?.trim();
+  const previous = process.env.BOTMAKER_TOKEN_SECRET_PREVIOUS?.split(',').map((entry) => entry.trim()).filter(Boolean) ?? [];
+  const dbFallback = process.env.DATABASE_URL?.trim();
+
+  const ordered = [
+    ...(direct ? [direct] : []),
+    ...previous,
+    ...(!direct && dbFallback ? [dbFallback] : []),
+    ...(!direct && !dbFallback ? ['botmaker-dev-secret'] : []),
+  ];
+
+  return [...new Set(ordered)].map((value) => createHash('sha256').update(value).digest());
+}
+
+function getTokenSecretSource(): BotMakerDiagnostics['tokenSecretSource'] {
+  if (process.env.BOTMAKER_TOKEN_SECRET?.trim()) return 'BOTMAKER_TOKEN_SECRET';
+  if (process.env.BOTMAKER_TOKEN_SECRET_PREVIOUS?.trim()) return 'BOTMAKER_TOKEN_SECRET_PREVIOUS';
+  if (process.env.DATABASE_URL?.trim()) return 'DATABASE_URL_FALLBACK';
+  return 'default-dev-secret';
+}
+
 function getBotMakerDiagnostics(): BotMakerDiagnostics {
   return {
     dbHost: activeDatabaseHost,
     hasFallbackToken: Boolean(getFallbackToken()),
+    tokenSecretSource: getTokenSecretSource(),
     sharedStore: 'prisma.map (/Editor,/Game-ideas,/BotMaker)',
   };
 }
@@ -180,7 +205,7 @@ async function findSystemRecord() {
 }
 
 function getTokenCryptoKey() {
-  return createHash('sha256').update(process.env.BOTMAKER_TOKEN_SECRET ?? process.env.DATABASE_URL ?? 'botmaker-dev-secret').digest();
+  return getTokenKeyCandidates()[0];
 }
 
 function encryptToken(token: string) {
@@ -202,23 +227,38 @@ function encryptToken(token: string) {
 function decryptToken(tokenCipher: string, tokenIv: string) {
   if (!tokenCipher || !tokenIv) return '';
 
-  let payload = Buffer.alloc(0);
+  try {
+    let payload = Buffer.alloc(0);
 
-  if (tokenCipher.startsWith(TOKEN_CIPHER_FADHIL_PREFIX)) {
-    const encoded = tokenCipher.slice(TOKEN_CIPHER_FADHIL_PREFIX.length);
-    const candidates = decodeAlienFramedCandidates(encoded);
-    const packed = Buffer.from(candidates[0] ?? new Uint8Array());
-    payload = inflateRawSync(packed);
-  } else {
-    payload = Buffer.from(tokenCipher, 'base64url');
+    if (tokenCipher.startsWith(TOKEN_CIPHER_FADHIL_PREFIX)) {
+      const encoded = tokenCipher.slice(TOKEN_CIPHER_FADHIL_PREFIX.length);
+      const candidates = decodeAlienFramedCandidates(encoded);
+      const packed = Buffer.from(candidates[0] ?? new Uint8Array());
+      payload = inflateRawSync(packed);
+    } else {
+      payload = Buffer.from(tokenCipher, 'base64url');
+    }
+
+    if (payload.length <= 16) return '';
+    const data = payload.subarray(0, payload.length - 16);
+    const tag = payload.subarray(payload.length - 16);
+
+    for (const key of getTokenKeyCandidates()) {
+      try {
+        const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(tokenIv, 'base64url'));
+        decipher.setAuthTag(tag);
+        return Buffer.concat([decipher.update(data), decipher.final()]).toString('utf8');
+      } catch {
+        // try next legacy key
+      }
+    }
+
+    logRuntime('token:decrypt-failed', { reason: 'no-valid-key' });
+    return '';
+  } catch {
+    logRuntime('token:decrypt-failed', { reason: 'invalid-payload' });
+    return '';
   }
-
-  if (payload.length <= 16) return '';
-  const data = payload.subarray(0, payload.length - 16);
-  const tag = payload.subarray(payload.length - 16);
-  const decipher = createDecipheriv('aes-256-gcm', getTokenCryptoKey(), Buffer.from(tokenIv, 'base64url'));
-  decipher.setAuthTag(tag);
-  return Buffer.concat([decipher.update(data), decipher.final()]).toString('utf8');
 }
 
 function compressState(state: BotMakerState): PersistedStateEnvelope {
@@ -389,10 +429,17 @@ function syncRuntimeTokenOnBot(bot: PersistedBot, runtimeTokenRaw?: string) {
 function parsePersistedBots(state: BotMakerState): PersistedBot[] {
   return state.bots.map((bot) => {
     const source = bot as unknown as Partial<PersistedBot>;
+    const tokenCipher = typeof source.tokenCipher === 'string' ? source.tokenCipher : '';
+    const tokenIv = typeof source.tokenIv === 'string' ? source.tokenIv : '';
+
+    if (source.hasToken && (!tokenCipher || !tokenIv)) {
+      logRuntime('token:metadata-missing', { botId: source.id ?? 'unknown' });
+    }
+
     return {
       ...bot,
-      tokenCipher: typeof source.tokenCipher === 'string' ? source.tokenCipher : '',
-      tokenIv: typeof source.tokenIv === 'string' ? source.tokenIv : '',
+      tokenCipher,
+      tokenIv,
     };
   });
 }

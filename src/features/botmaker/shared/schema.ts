@@ -13,6 +13,8 @@ export interface BotMakerBot {
   token: string;
   hasToken: boolean;
   tokenUpdatedAt: string | null;
+  tokenCipher?: string;
+  tokenIv?: string;
   applicationId: string;
   guildId: string;
   channelId: string;
@@ -85,8 +87,10 @@ function sanitizeBot(raw: unknown, index: number): BotMakerBot {
     id,
     name: cleanString(source.name, `Discord Bot ${index + 1}`),
     token: cleanString(source.token),
-    hasToken: Boolean(source.hasToken) || cleanString(source.token).length > 0,
+    hasToken: Boolean(source.hasToken) || cleanString(source.token).length > 0 || cleanString(source.tokenCipher).length > 0,
     tokenUpdatedAt: typeof source.tokenUpdatedAt === 'string' && source.tokenUpdatedAt ? source.tokenUpdatedAt : null,
+    tokenCipher: cleanString(source.tokenCipher),
+    tokenIv: cleanString(source.tokenIv),
     applicationId: cleanString(source.applicationId),
     guildId: cleanString(source.guildId),
     channelId: cleanString(source.channelId),

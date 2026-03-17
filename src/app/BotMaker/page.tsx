@@ -7,7 +7,7 @@ interface ApiPayload {
   data: BotMakerState;
   version: number;
   updatedAt: string;
-  diagnostics?: { dbHost: string | null; hasFallbackToken: boolean; sharedStore: string };
+  diagnostics?: { dbHost: string | null; hasFallbackToken: boolean; tokenSecretSource: string; sharedStore: string };
   message?: string;
 }
 
@@ -155,7 +155,7 @@ export default function BotMakerPage() {
   const [dragBlockId, setDragBlockId] = useState<string | null>(null);
   const [activeBotId, setActiveBotId] = useState<string | null>(null);
   const [details, setDetails] = useState('');
-  const [diagnostics, setDiagnostics] = useState<{ dbHost: string | null; hasFallbackToken: boolean; sharedStore: string } | null>(null);
+  const [diagnostics, setDiagnostics] = useState<{ dbHost: string | null; hasFallbackToken: boolean; tokenSecretSource: string; sharedStore: string } | null>(null);
   const [activityLogs, setActivityLogs] = useState<Array<{ ts: string; event: string; botId: string; details: Record<string, unknown> }>>([]);
   const [scrollHint, setScrollHint] = useState({ show: false, up: false, down: false });
   const contentScrollRef = useRef<HTMLDivElement | null>(null);
@@ -449,7 +449,7 @@ export default function BotMakerPage() {
         {diagnostics && (
           <div className="mb-3 rounded-lg border border-cyan-500/30 bg-slate-900/80 px-3 py-2 text-[11px] text-cyan-100">
             <p>DB Host: {diagnostics.dbHost ?? 'tidak terdeteksi'} • Shared store: {diagnostics.sharedStore}</p>
-            <p>Fallback token env: {diagnostics.hasFallbackToken ? 'aktif' : 'tidak aktif'}</p>
+            <p>Fallback token env: {diagnostics.hasFallbackToken ? 'aktif' : 'tidak aktif'} • Token secret source: {diagnostics.tokenSecretSource}</p>
           </div>
         )}
 

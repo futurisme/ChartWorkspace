@@ -87,3 +87,28 @@ BotMaker mendukung mode hybrid saat drag-drop tidak cukup.
 
 ## 15) Startup bot lebih cepat
 - Scheduler startup dipercepat (boot delay kecil) lalu tetap memakai interval aman untuk menjaga performa dan rate limit.
+
+## 16) Analisa akar masalah token "selalu tidak tersimpan"
+Akar masalah utama ada pada alur sanitasi state sebelum data disimpan ulang:
+- Snapshot state dari DB dibaca lalu disanitasi menjadi `BotMakerState`.
+- Sanitizer sebelumnya **membuang field internal** `tokenCipher` dan `tokenIv`.
+- Saat user menekan save tanpa isi token baru (field token kosong karena mode aman), sistem menganggap token lama tidak ada, lalu menyimpan state baru tanpa cipher.
+- Efek akhirnya terlihat seperti: "token selalu hilang / tidak terdeteksi tersimpan".
+
+Perbaikan yang diterapkan:
+- Sanitizer kini mempertahankan field internal `tokenCipher` + `tokenIv` agar token terenkripsi tidak ikut terhapus pada save berikutnya.
+- Runtime menambahkan log `token:metadata-missing` jika status `hasToken` ada tapi metadata cipher hilang.
+
+## 17) Analisa akar Railway/secret key mismatch
+Masalah lain yang sering mirip gejalanya adalah key enkripsi berubah antar deploy:
+- Enkripsi token memakai key turunan secret.
+- Jika secret berubah, token lama tetap ada di DB tapi **gagal didekripsi**, sehingga runtime bisa membaca seolah token kosong.
+
+Perbaikan yang diterapkan:
+- Decrypt sekarang mencoba beberapa kandidat key (utama + legacy) agar data lama tetap bisa dibaca.
+- Diagnostik sekarang menampilkan `tokenSecretSource` supaya cepat tahu aplikasi sedang memakai secret dari mana.
+
+Rekomendasi Railway/Vercel:
+1. Set **BOTMAKER_TOKEN_SECRET** yang stabil (jangan bergantung `DATABASE_URL`).
+2. Jika pernah ganti secret, isi **BOTMAKER_TOKEN_SECRET_PREVIOUS** dengan secret lama (boleh lebih dari satu, pisahkan koma) untuk migrasi aman.
+3. Pastikan DB URL public dipakai di runtime Vercel (hindari host `*.railway.internal` untuk akses dari luar Railway private network).
