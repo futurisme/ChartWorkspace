@@ -30,6 +30,8 @@ type ConfirmDeleteAction =
 
 type RenameAction =
   | { type: 'item'; index: number; currentName: string }
+  | { type: 'folder'; folderIndex: number; currentName: string }
+  | { type: 'folderItem'; folderIndex: number; itemIndex: number; currentName: string }
   | { type: 'category'; currentName: string }
   | { type: 'nav'; navKey: GameIdeaNav; currentName: string }
   | null;
@@ -693,6 +695,28 @@ export default function GameIdeasPage() {
     setRenameDraft(navTitle);
   }, [db]);
 
+  const requestRenameFolder = useCallback((folderIndex: number) => {
+    const folder = currentFolders[folderIndex];
+    if (!folder) return;
+    setRenameAction({ type: 'folder', folderIndex, currentName: folder.name });
+    setRenameDraft(folder.name);
+  }, [currentFolders]);
+
+  const requestRenameFolderItem = useCallback((folderIndex: number, itemIndex: number) => {
+    const folder = currentFolders[folderIndex];
+    const item = folder?.items[itemIndex];
+    if (!folder || !item) return;
+
+    setRenameAction({ type: 'folderItem', folderIndex, itemIndex, currentName: item.name });
+    setRenameDraft(item.name);
+    setItemRenameDraft({
+      name: item.name,
+      tag: item.tag,
+      desc: item.desc,
+      stats: formatStats(item.stats),
+    });
+  }, [currentFolders]);
+
 
   const confirmRename = useCallback(() => {
     if (!renameAction) return;
@@ -766,6 +790,82 @@ export default function GameIdeasPage() {
             data: {
               ...section.data,
               [currentCategory]: nextItems,
+            },
+          },
+        };
+      });
+    }
+
+    if (renameAction.type === 'folder') {
+      const nextFolderName = normalizeFolderName(renameDraft);
+      if (!nextFolderName) return;
+
+      setDb((prev) => {
+        const section = prev[nav];
+        const folders = section.folders ?? {};
+        const existingFolders = folders[currentCategory] ?? [];
+        if (renameAction.folderIndex < 0 || renameAction.folderIndex >= existingFolders.length) return prev;
+        if (existingFolders.some((folder, index) => (
+          index !== renameAction.folderIndex && folder.name.toLowerCase() === nextFolderName.toLowerCase()
+        ))) {
+          return prev;
+        }
+
+        const nextFolders = existingFolders.map((folder, index) => (
+          index === renameAction.folderIndex ? { ...folder, name: nextFolderName } : folder
+        ));
+
+        return {
+          ...prev,
+          [nav]: {
+            ...section,
+            folders: {
+              ...folders,
+              [currentCategory]: nextFolders,
+            },
+          },
+        };
+      });
+    }
+
+    if (renameAction.type === 'folderItem') {
+      const nextName = itemRenameDraft.name.trim().slice(0, 120);
+      if (!nextName) return;
+
+      setDb((prev) => {
+        const section = prev[nav];
+        const folders = section.folders ?? {};
+        const existingFolders = folders[currentCategory] ?? [];
+        if (renameAction.folderIndex < 0 || renameAction.folderIndex >= existingFolders.length) return prev;
+
+        const targetFolder = existingFolders[renameAction.folderIndex];
+        if (renameAction.itemIndex < 0 || renameAction.itemIndex >= targetFolder.items.length) return prev;
+
+        const nextFolders = existingFolders.map((folder, folderIndex) => {
+          if (folderIndex !== renameAction.folderIndex) return folder;
+          return {
+            ...folder,
+            items: folder.items.map((item, itemIndex) => (
+              itemIndex === renameAction.itemIndex
+                ? {
+                    ...item,
+                    name: nextName,
+                    tag: itemRenameDraft.tag.trim().slice(0, 32),
+                    desc: itemRenameDraft.desc.trim(),
+                    stats: parseStats(itemRenameDraft.stats),
+                  }
+                : item
+            )),
+          };
+        });
+
+        return {
+          ...prev,
+          [nav]: {
+            ...section,
+            folders: {
+              ...folders,
+              [currentCategory]: nextFolders,
             },
           },
         };
@@ -1415,27 +1515,33 @@ export default function GameIdeasPage() {
       if (cancelled || liveSyncInFlightRef.current || document.visibilityState !== 'visible') return;
       liveSyncInFlightRef.current = true;
       try {
-        const res = await fetch('/api/game-ideas', { cache: 'no-store' });
-        if (!res.ok) return;
-        const payload = (await res.json()) as { data?: unknown; version?: number };
-        const remoteVersion = typeof payload.version === 'number' ? payload.version : null;
+        const metaRes = await fetch('/api/game-ideas?meta=1', { cache: 'no-store' });
+        if (!metaRes.ok) return;
+
+        const metaPayload = (await metaRes.json()) as { version?: number };
+        const remoteVersion = typeof metaPayload.version === 'number' ? metaPayload.version : null;
         if (remoteVersion === null) return;
 
         const hasRemoteUpdate = serverVersionRef.current === null || remoteVersion > serverVersionRef.current;
         if (!hasRemoteUpdate) return;
 
+        const localUnsynced = lastSyncedHashRef.current !== dbHash;
+        if (localUnsynced) return;
+
+        const res = await fetch('/api/game-ideas', { cache: 'no-store' });
+        if (!res.ok) return;
+        const payload = (await res.json()) as { data?: unknown; version?: number };
+        const fullRemoteVersion = typeof payload.version === 'number' ? payload.version : remoteVersion;
+
         const remote = sanitizeGameIdeaDatabase(payload.data);
         const remoteSerialized = JSON.stringify(remote);
         const remoteHash = hashDb(remoteSerialized);
-        const localUnsynced = lastSyncedHashRef.current !== dbHash;
 
-        if (!localUnsynced) {
-          serverVersionRef.current = remoteVersion;
-          lastSyncedHashRef.current = remoteHash;
-          lastLocalCacheHashRef.current = remoteHash;
-          setDb(remote);
-          localStorage.setItem(GAME_IDEA_STORAGE_KEY, remoteSerialized);
-        }
+        serverVersionRef.current = fullRemoteVersion;
+        lastSyncedHashRef.current = remoteHash;
+        lastLocalCacheHashRef.current = remoteHash;
+        setDb(remote);
+        localStorage.setItem(GAME_IDEA_STORAGE_KEY, remoteSerialized);
       } catch {
         // silent: polling should never block local operations
       } finally {
@@ -1670,6 +1776,7 @@ export default function GameIdeasPage() {
                       if (isOpenFolder) {
                         setOpenFolderItemCards((prev) => ({ ...prev, [folderKey]: null }));
                       }
+                      registerUniversalRenameClick(`folder:${nav}:${currentCategory}:${folder.id}`, () => requestRenameFolder(folderIndex));
                     }}
                   >
                     <div>
@@ -1722,6 +1829,7 @@ export default function GameIdeasPage() {
                                           ...prev,
                                           [folderKey]: prev[folderKey] === itemIndex ? null : itemIndex,
                                         }));
+                                        registerUniversalRenameClick(`folder-item:${nav}:${currentCategory}:${folder.id}:${item.id}`, () => requestRenameFolderItem(folderIndex, itemIndex));
                                       }}
                                     >
                                       <h4>{item.name}</h4>
@@ -2006,8 +2114,16 @@ export default function GameIdeasPage() {
       {renameAction && (
         <div className="modal-overlay" role="dialog" aria-modal="true">
           <div className="modal">
-            <h2>{renameAction.type === 'category' ? 'RENAME CATEGORY' : renameAction.type === 'nav' ? 'RENAME BOTTOM SECTION' : 'RENAME ITEM CARD'}</h2>
-            {renameAction.type === 'item' ? (
+            <h2>
+              {renameAction.type === 'category'
+                ? 'RENAME CATEGORY'
+                : renameAction.type === 'nav'
+                  ? 'RENAME BOTTOM SECTION'
+                  : renameAction.type === 'folder'
+                    ? 'RENAME FOLDER'
+                    : 'RENAME ITEM CARD'}
+            </h2>
+            {renameAction.type === 'item' || renameAction.type === 'folderItem' ? (
               <>
                 <div className="input-group">
                   <label>TITLE</label>
@@ -2028,11 +2144,17 @@ export default function GameIdeasPage() {
               </>
             ) : (
               <div className="input-group">
-                <label>{renameAction.type === 'category' ? 'NAMA KATEGORI BARU' : 'NAMA SECTION BARU'}</label>
+                <label>
+                  {renameAction.type === 'category'
+                    ? 'NAMA KATEGORI BARU'
+                    : renameAction.type === 'folder'
+                      ? 'NAMA FOLDER BARU'
+                      : 'NAMA SECTION BARU'}
+                </label>
                 <input
                   value={renameDraft}
                   onChange={(e) => setRenameDraft(e.target.value)}
-                  maxLength={renameAction.type === 'category' ? 32 : 64}
+                  maxLength={renameAction.type === 'category' ? 32 : renameAction.type === 'folder' ? 80 : 64}
                 />
               </div>
             )}

@@ -3,6 +3,7 @@ import {
   GameIdeasConflictError,
   GameIdeasServiceError,
   loadGameIdeas,
+  loadGameIdeasMeta,
   saveGameIdeas,
 } from '@/features/game-ideas/server/game-ideas-service';
 
@@ -21,8 +22,16 @@ function createErrorResponse(error: string, status: number, details?: string) {
   );
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const { searchParams } = new URL(request.url);
+    if (searchParams.get('meta') === '1') {
+      const payload = await loadGameIdeasMeta();
+      return NextResponse.json(payload, {
+        headers: { 'Cache-Control': NO_STORE },
+      });
+    }
+
     const payload = await loadGameIdeas();
     return NextResponse.json(payload, {
       headers: { 'Cache-Control': NO_STORE },

@@ -127,6 +127,36 @@ export async function loadGameIdeas() {
   };
 }
 
+export async function loadGameIdeasMeta() {
+  const existing = await findSystemRecord();
+
+  if (!existing) {
+    const created = await withDatabaseRecovery(() =>
+      prisma.map.create({
+        data: {
+          title: SYSTEM_GAME_IDEA_TITLE,
+          snapshot: toInputJson(DEFAULT_GAME_IDEA_DATA),
+          version: 1,
+        },
+        select: {
+          version: true,
+          updatedAt: true,
+        },
+      })
+    );
+
+    return {
+      version: created.version,
+      updatedAt: created.updatedAt,
+    };
+  }
+
+  return {
+    version: existing.version,
+    updatedAt: existing.updatedAt,
+  };
+}
+
 export async function saveGameIdeas(rawData: unknown, expectedVersion?: number | null) {
   const sanitized: GameIdeaDatabase = sanitizeGameIdeaDatabase(rawData);
   const existing = await findSystemRecord();
