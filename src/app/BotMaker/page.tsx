@@ -211,7 +211,6 @@ export default function BotMakerPage() {
     setIsBusy(true);
     setError('');
     setDetails('');
-    setDetails('');
     try {
       const response = await fetch('/api/botmaker', {
         method: 'PUT',
