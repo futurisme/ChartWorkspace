@@ -285,6 +285,7 @@ export default function GameIdeasPage() {
   const [activeDrag, setActiveDrag] = useState<ActiveDrag | null>(null);
   const [scrollHint, setScrollHint] = useState({ show: false, up: false, down: false });
   const [dynamicScrollSpacer, setDynamicScrollSpacer] = useState(CONTENT_SCROLL_EXTRA_SPACE_PX);
+  const [interactionLockedUi, setInteractionLockedUi] = useState(false);
 
   const hydratedRef = useRef(false);
   const dbRef = useRef(DEFAULT_GAME_IDEA_DATA);
@@ -299,7 +300,8 @@ export default function GameIdeasPage() {
   const dragPointerRef = useRef<{ kind: DragKind; pointerId: number; startX: number; startY: number } | null>(null);
   const importFileRef = useRef<HTMLInputElement | null>(null);
   const liveSyncInFlightRef = useRef(false);
-  const dragClickGuardRef = useRef(false);
+  const interactionLockRef = useRef(false);
+  const interactionLockTimerRef = useRef<number | null>(null);
 
   const serializedDb = useMemo(() => JSON.stringify(db), [db]);
   const dbHash = useMemo(() => hashDb(serializedDb), [serializedDb]);
@@ -1211,7 +1213,7 @@ export default function GameIdeasPage() {
   }, [currentCategory, currentFolders, nav, transferAction]);
 
   const handlePointerDown = useCallback((kind: DragKind, index: number, pointerId: number, clientX: number, clientY: number) => {
-    if (!adminMode) return;
+    if (!adminMode || interactionLockRef.current) return;
 
     if (dragHoldTimerRef.current) {
       clearTimeout(dragHoldTimerRef.current);
@@ -1301,7 +1303,18 @@ export default function GameIdeasPage() {
         return null;
       }
 
-      dragClickGuardRef.current = true;
+      if (interactionLockTimerRef.current) {
+        clearTimeout(interactionLockTimerRef.current);
+        interactionLockTimerRef.current = null;
+      }
+      interactionLockRef.current = true;
+      setInteractionLockedUi(true);
+      interactionLockTimerRef.current = window.setTimeout(() => {
+        interactionLockRef.current = false;
+    setInteractionLockedUi(false);
+        setInteractionLockedUi(false);
+        interactionLockTimerRef.current = null;
+      }, 1000);
 
       if (drag.kind === 'category') {
         const fromCategory = categoryList[drag.fromIndex];
@@ -1438,9 +1451,6 @@ export default function GameIdeasPage() {
 
     dragPointerRef.current = null;
     commitDrag();
-    window.setTimeout(() => {
-      dragClickGuardRef.current = false;
-    }, 220);
   }, [commitDrag]);
 
   useEffect(() => {
@@ -1463,6 +1473,12 @@ export default function GameIdeasPage() {
       clearTimeout(dragHoldTimerRef.current);
       dragHoldTimerRef.current = null;
     }
+    if (interactionLockTimerRef.current) {
+      clearTimeout(interactionLockTimerRef.current);
+      interactionLockTimerRef.current = null;
+    }
+    interactionLockRef.current = false;
+    setInteractionLockedUi(false);
     dragPointerRef.current = null;
   }, []);
 
@@ -1547,11 +1563,7 @@ export default function GameIdeasPage() {
   }, [loading, saveState]);
 
 
-  const consumeDragClickGuard = useCallback(() => {
-    if (!dragClickGuardRef.current) return false;
-    dragClickGuardRef.current = false;
-    return true;
-  }, []);
+  const isInteractionLocked = useCallback(() => interactionLockRef.current, []);
 
 
   useEffect(() => {
@@ -1663,7 +1675,7 @@ export default function GameIdeasPage() {
   }, [openCardIndex, items.length, currentCategory, nav]);
 
   return (
-    <main className={`architect-shell ${adminMode ? 'with-admin-panel' : ''}`}>
+    <main className={`architect-shell ${adminMode ? 'with-admin-panel' : ''} ${interactionLockedUi ? 'interaction-locked' : ''}`}> 
       <header className="architect-header">
         <h1>Created by Fadhil Akbar</h1>
         <div className="header-actions">
@@ -1701,7 +1713,7 @@ export default function GameIdeasPage() {
                   className={`tab-btn slot-el ${cat === currentCategory ? 'active' : ''} ${dragShiftForIndex(index, activeDrag, 'category')} ${isDraggedIndex(index, activeDrag, 'category') ? 'dragged' : ''}`}
                   style={dragStyle(isDraggedIndex(index, activeDrag, 'category') ? activeDrag : null, 'category')}
                   onClick={() => {
-                    if (activeDrag || consumeDragClickGuard()) return;
+                    if (activeDrag || isInteractionLocked()) return;
                     setCategory(cat);
                     registerUniversalRenameClick(`category:${nav}:${cat}`, () => requestRenameCategory(cat));
                   }}
@@ -1749,7 +1761,7 @@ export default function GameIdeasPage() {
                       type="button"
                       className="card-head"
                       onClick={() => {
-                        if (activeDrag || consumeDragClickGuard()) return;
+                        if (activeDrag || isInteractionLocked()) return;
                         setOpenCardIndex((prev) => (prev === index ? null : index));
                         registerUniversalRenameClick(`item:${nav}:${currentCategory}:${index}`, () => requestRenameItem(index));
                       }}
@@ -1818,7 +1830,7 @@ export default function GameIdeasPage() {
                     type="button"
                     className="card-head folder-head"
                     onClick={() => {
-                      if (activeDrag || consumeDragClickGuard()) return;
+                      if (activeDrag || isInteractionLocked()) return;
                       const previousOpenFolderKey = openFolderKey;
                       setOpenFolderKey((prev) => (prev === folderKey ? null : folderKey));
                       setOpenFolderItemCards((prev) => {
@@ -1888,7 +1900,7 @@ export default function GameIdeasPage() {
                                       type="button"
                                       className="card-head folder-item-head"
                                       onClick={() => {
-                                        if (activeDrag || consumeDragClickGuard()) return;
+                                        if (activeDrag || isInteractionLocked()) return;
                                         setOpenFolderItemCards((prev) => ({
                                           ...prev,
                                           [folderKey]: prev[folderKey] === itemIndex ? null : itemIndex,
@@ -1968,7 +1980,7 @@ export default function GameIdeasPage() {
             className={`nav-item slot-el ${nav === key ? 'active' : ''} ${dragShiftForIndex(index, activeDrag, 'nav')} ${isDraggedIndex(index, activeDrag, 'nav') ? 'dragged' : ''}`}
             style={dragStyle(isDraggedIndex(index, activeDrag, 'nav') ? activeDrag : null, 'nav')}
             onClick={() => {
-              if (activeDrag || consumeDragClickGuard()) return;
+              if (activeDrag || isInteractionLocked()) return;
               setNav(key);
               registerUniversalRenameClick(`nav:${key}`, () => requestRenameNav(key));
             }}
@@ -2273,6 +2285,11 @@ export default function GameIdeasPage() {
           font-weight: 700;
           overflow: hidden;
         }
+        .architect-shell.interaction-locked {
+          pointer-events: none;
+          cursor: progress;
+        }
+
         .architect-shell.with-admin-panel {
           --admin-h: 56px;
         }
@@ -2703,7 +2720,12 @@ export default function GameIdeasPage() {
             --footer-h: 48px;
             --shell-v-pad: 16px;
           }
-          .architect-shell.with-admin-panel {
+          .architect-shell.interaction-locked {
+          pointer-events: none;
+          cursor: progress;
+        }
+
+        .architect-shell.with-admin-panel {
             --admin-h: 54px;
           }
           .architect-header { padding: 6px 8px; gap: 6px; }
