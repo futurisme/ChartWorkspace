@@ -1217,6 +1217,19 @@ export default function GameIdeasPage() {
 
     dragPointerRef.current = { kind, pointerId, startX: clientX, startY: clientY };
     dragHoldTimerRef.current = setTimeout(() => {
+      if (kind === 'root') {
+        const draggedRootSlot = currentRootSlots[index];
+        if (draggedRootSlot?.kind === 'folder') {
+          const draggedFolderIndex = folderIndexById.get(draggedRootSlot.id);
+          const draggedFolder = typeof draggedFolderIndex === 'number' ? currentFolders[draggedFolderIndex] : null;
+          if (draggedFolder) {
+            const draggedFolderKey = `${nav}:${currentCategory}:${draggedFolder.id}`;
+            setOpenFolders((prev) => (prev[draggedFolderKey] === false ? prev : { ...prev, [draggedFolderKey]: false }));
+            setOpenFolderItemCards((prev) => ({ ...prev, [draggedFolderKey]: null }));
+          }
+        }
+      }
+
       setActiveDrag({
         kind,
         fromIndex: index,
@@ -1229,7 +1242,7 @@ export default function GameIdeasPage() {
       });
       dragHoldTimerRef.current = null;
     }, DRAG_HOLD_MS);
-  }, [adminMode]);
+  }, [adminMode, currentCategory, currentFolders, currentRootSlots, folderIndexById, nav]);
 
   useEffect(() => {
     const onPointerMove = (event: PointerEvent) => {
@@ -1804,9 +1817,18 @@ export default function GameIdeasPage() {
                                   className={`slot-shell item-slot-shell folder-item-slot ${activeDrag?.kind === folderDragKind && activeDrag.overIndex === itemIndex ? 'slot-shell-target item-slot-target' : ''}`}
                                   data-drag-kind={folderDragKind}
                                   data-drag-index={itemIndex}
-                                  onPointerDown={(event) => handlePointerDown(folderDragKind, itemIndex, event.pointerId, event.clientX, event.clientY)}
-                                  onPointerUp={(event) => handlePointerEnd(event.pointerId)}
-                                  onPointerCancel={(event) => handlePointerEnd(event.pointerId)}
+                                  onPointerDown={(event) => {
+                                    event.stopPropagation();
+                                    handlePointerDown(folderDragKind, itemIndex, event.pointerId, event.clientX, event.clientY);
+                                  }}
+                                  onPointerUp={(event) => {
+                                    event.stopPropagation();
+                                    handlePointerEnd(event.pointerId);
+                                  }}
+                                  onPointerCancel={(event) => {
+                                    event.stopPropagation();
+                                    handlePointerEnd(event.pointerId);
+                                  }}
                                 >
                                   <article className={`card folder-item-card slot-el ${itemOpen ? 'open' : ''} ${dragShiftForIndex(itemIndex, activeDrag, folderDragKind)} ${isDraggedIndex(itemIndex, activeDrag, folderDragKind) ? 'dragged' : ''}`}
                                     style={dragStyle(isDraggedIndex(itemIndex, activeDrag, folderDragKind) ? activeDrag : null, folderDragKind)}>
