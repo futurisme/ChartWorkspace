@@ -299,6 +299,7 @@ export default function GameIdeasPage() {
   const dragPointerRef = useRef<{ kind: DragKind; pointerId: number; startX: number; startY: number } | null>(null);
   const importFileRef = useRef<HTMLInputElement | null>(null);
   const liveSyncInFlightRef = useRef(false);
+  const dragClickGuardRef = useRef(false);
 
   const serializedDb = useMemo(() => JSON.stringify(db), [db]);
   const dbHash = useMemo(() => hashDb(serializedDb), [serializedDb]);
@@ -1300,6 +1301,8 @@ export default function GameIdeasPage() {
         return null;
       }
 
+      dragClickGuardRef.current = true;
+
       if (drag.kind === 'category') {
         const fromCategory = categoryList[drag.fromIndex];
         const toCategory = categoryList[drag.overIndex];
@@ -1435,6 +1438,9 @@ export default function GameIdeasPage() {
 
     dragPointerRef.current = null;
     commitDrag();
+    window.setTimeout(() => {
+      dragClickGuardRef.current = false;
+    }, 220);
   }, [commitDrag]);
 
   useEffect(() => {
@@ -1539,6 +1545,13 @@ export default function GameIdeasPage() {
     if (saveState === 'error') return 'SYNC ERROR';
     return loading ? 'BOOTING...' : 'READY';
   }, [loading, saveState]);
+
+
+  const consumeDragClickGuard = useCallback(() => {
+    if (!dragClickGuardRef.current) return false;
+    dragClickGuardRef.current = false;
+    return true;
+  }, []);
 
 
   useEffect(() => {
@@ -1688,7 +1701,7 @@ export default function GameIdeasPage() {
                   className={`tab-btn slot-el ${cat === currentCategory ? 'active' : ''} ${dragShiftForIndex(index, activeDrag, 'category')} ${isDraggedIndex(index, activeDrag, 'category') ? 'dragged' : ''}`}
                   style={dragStyle(isDraggedIndex(index, activeDrag, 'category') ? activeDrag : null, 'category')}
                   onClick={() => {
-                    if (activeDrag) return;
+                    if (activeDrag || consumeDragClickGuard()) return;
                     setCategory(cat);
                     registerUniversalRenameClick(`category:${nav}:${cat}`, () => requestRenameCategory(cat));
                   }}
@@ -1736,7 +1749,7 @@ export default function GameIdeasPage() {
                       type="button"
                       className="card-head"
                       onClick={() => {
-                        if (activeDrag) return;
+                        if (activeDrag || consumeDragClickGuard()) return;
                         setOpenCardIndex((prev) => (prev === index ? null : index));
                         registerUniversalRenameClick(`item:${nav}:${currentCategory}:${index}`, () => requestRenameItem(index));
                       }}
@@ -1805,7 +1818,7 @@ export default function GameIdeasPage() {
                     type="button"
                     className="card-head folder-head"
                     onClick={() => {
-                      if (activeDrag) return;
+                      if (activeDrag || consumeDragClickGuard()) return;
                       const previousOpenFolderKey = openFolderKey;
                       setOpenFolderKey((prev) => (prev === folderKey ? null : folderKey));
                       setOpenFolderItemCards((prev) => {
@@ -1875,7 +1888,7 @@ export default function GameIdeasPage() {
                                       type="button"
                                       className="card-head folder-item-head"
                                       onClick={() => {
-                                        if (activeDrag) return;
+                                        if (activeDrag || consumeDragClickGuard()) return;
                                         setOpenFolderItemCards((prev) => ({
                                           ...prev,
                                           [folderKey]: prev[folderKey] === itemIndex ? null : itemIndex,
@@ -1955,7 +1968,7 @@ export default function GameIdeasPage() {
             className={`nav-item slot-el ${nav === key ? 'active' : ''} ${dragShiftForIndex(index, activeDrag, 'nav')} ${isDraggedIndex(index, activeDrag, 'nav') ? 'dragged' : ''}`}
             style={dragStyle(isDraggedIndex(index, activeDrag, 'nav') ? activeDrag : null, 'nav')}
             onClick={() => {
-              if (activeDrag) return;
+              if (activeDrag || consumeDragClickGuard()) return;
               setNav(key);
               registerUniversalRenameClick(`nav:${key}`, () => requestRenameNav(key));
             }}
