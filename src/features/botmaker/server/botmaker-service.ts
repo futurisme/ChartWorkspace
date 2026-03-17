@@ -10,7 +10,7 @@ const DISCORD_API = 'https://discord.com/api/v10';
 const BOTMAKER_COOKIE = 'botmaker_session';
 const BOTMAKER_USER_COOKIE = 'botmaker_user';
 const ACTIVE_TIMERS = new Map<string, ReturnType<typeof setTimeout>>();
-const BOT_RUNTIME_STATE = new Map<string, { running: boolean; nextAllowedAt: number; backoffMs: number; lastCommandSyncAt: number }>();
+const BOT_RUNTIME_STATE = new Map<string, { running: boolean; nextAllowedAt: number; backoffMs: number; lastCommandSyncAt: number; lastSeenMessageId: string }>();
 const MIN_SAFE_DISCORD_INTERVAL_MS = 60_000;
 const MAX_BACKOFF_MS = 15 * 60_000;
 const STATE_MAGIC_BROTLI = 'botmaker-v3-br';
@@ -23,6 +23,7 @@ const BOTMAKER_LOG_PREFIX = '[botmaker-runtime]';
 const TOKEN_CIPHER_FADHIL_PREFIX = 'fAdHiL:';
 const ACTIVITY_LOG_RETENTION_MS = 24 * 60 * 60 * 1000;
 const ACTIVITY_LOG_MAX = 4000;
+const STARTUP_BOOT_DELAY_MS = 3_000;
 
 interface PersistedBot extends Omit<BotMakerBot, 'token' | 'hasToken'> {
   tokenCipher: string;
@@ -80,6 +81,10 @@ export function getBotActivityLogs(botId: string, limit = 200) {
   const safeLimit = Math.max(10, Math.min(1000, Math.trunc(limit)));
   const selected = botId === 'all' ? ACTIVITY_LOGS : ACTIVITY_LOGS.filter((entry) => entry.botId === botId);
   return selected.slice(-safeLimit);
+}
+
+export function appendBotActivityLog(botId: string, level: 'info' | 'warning' | 'error', source: 'internal' | 'external', message: string, details?: Record<string, unknown>) {
+  logRuntime('client-log', { botId, level, source, message, ...(details ?? {}) });
 }
 
 function getFallbackToken() {
@@ -533,6 +538,79 @@ async function sendDiscordMessage(bot: BotMakerBot, token: string) {
   return limits;
 }
 
+
+type KeywordRule = { keyword: string; response: string };
+
+type DiscordChannelMessage = {
+  id: string;
+  content?: string;
+  author?: { bot?: boolean };
+};
+
+function parseKeywordRules(customCode: string): KeywordRule[] {
+  const rows = customCode.split(/\r?\n/).map((row) => row.trim()).filter(Boolean);
+  const rules: KeywordRule[] = [];
+
+  for (const row of rows) {
+    if (row.startsWith('#')) continue;
+    const match = row.match(/^(RESPON_KATA|ON_KATA)\s*:\s*(.+?)\s*=>\s*(.+)$/i);
+    if (!match) continue;
+
+    const keyword = match[2].trim().toLowerCase();
+    const response = match[3].trim();
+    if (!keyword || !response) continue;
+    rules.push({ keyword, response });
+  }
+
+  return rules;
+}
+
+function isMessageNewer(nextId: string, lastSeenId: string) {
+  if (!lastSeenId) return true;
+  try {
+    return BigInt(nextId) > BigInt(lastSeenId);
+  } catch {
+    return nextId > lastSeenId;
+  }
+}
+
+async function processKeywordResponses(bot: BotMakerBot, token: string, runtime: { lastSeenMessageId: string }, botId: string) {
+  const rules = parseKeywordRules(bot.customCode);
+  if (rules.length === 0) return;
+
+  const response = await fetch(`${DISCORD_API}/channels/${bot.channelId}/messages?limit=5`, {
+    headers: { Authorization: `Bot ${token}` },
+    cache: 'no-store',
+  });
+
+  if (!response.ok) return;
+
+  const messages = (await response.json()) as DiscordChannelMessage[];
+  const ordered = [...messages].reverse();
+
+  for (const message of ordered) {
+    if (!message.id || !isMessageNewer(message.id, runtime.lastSeenMessageId)) continue;
+    runtime.lastSeenMessageId = message.id;
+    if (message.author?.bot) continue;
+
+    const content = (message.content ?? '').toLowerCase();
+    const matched = rules.find((rule) => content.includes(rule.keyword));
+    if (!matched) continue;
+
+    const quick: BotMakerBot = {
+      ...bot,
+      workflow: [{ id: 'rule-hit', type: 'text', value: matched.response }],
+      messageTemplate: matched.response,
+      mentionEveryone: false,
+      useEmbed: false,
+    };
+
+    await sendDiscordMessage(quick, token);
+    logRuntime('keyword-response:sent', { botId, keyword: matched.keyword });
+  }
+}
+
+
 function scheduleBotSend(botId: string, delayMs: number, runner: () => Promise<void>) {
   const existing = ACTIVE_TIMERS.get(botId);
   if (existing) {
@@ -817,7 +895,7 @@ function reconcileRuntime(state: BotMakerState) {
     const token = decryptToken(persistedBot.tokenCipher, persistedBot.tokenIv);
     if (!token) return;
 
-    const runtime = BOT_RUNTIME_STATE.get(persistedBot.id) ?? { running: false, nextAllowedAt: 0, backoffMs: 0, lastCommandSyncAt: 0 };
+    const runtime = BOT_RUNTIME_STATE.get(persistedBot.id) ?? { running: false, nextAllowedAt: 0, backoffMs: 0, lastCommandSyncAt: 0, lastSeenMessageId: '' };
     BOT_RUNTIME_STATE.set(persistedBot.id, runtime);
 
     const run = async () => {
@@ -842,6 +920,8 @@ function reconcileRuntime(state: BotMakerState) {
           }
         }
 
+        await processKeywordResponses(bot, token, runtime, persistedBot.id);
+
         const limits = await sendDiscordMessage(bot, token);
         const intervalMs = Math.max(MIN_SAFE_DISCORD_INTERVAL_MS, bot.intervalSeconds * 1000);
         const resetMs = limits.resetAfterMs ?? 0;
@@ -861,7 +941,7 @@ function reconcileRuntime(state: BotMakerState) {
       }
     };
 
-    const firstDelay = Math.max(MIN_SAFE_DISCORD_INTERVAL_MS, bot.intervalSeconds * 1000);
+    const firstDelay = STARTUP_BOOT_DELAY_MS;
     if (!ACTIVE_TIMERS.has(persistedBot.id)) {
       scheduleBotSend(persistedBot.id, firstDelay, run);
     }

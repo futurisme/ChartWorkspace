@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { BotMakerBot, BotStylePreset, BotMakerState, WorkflowBlock, WorkflowBlockType } from '@/features/botmaker/shared/schema';
 
 interface ApiPayload {
@@ -87,6 +87,8 @@ function buildHybridCode(bot: BotMakerBot) {
     `MODE_EMBED: ${bot.useEmbed ? 'AKTIF' : 'NONAKTIF'}`,
     '',
     '# Workflow',
+    '# Keyword response (contoh):',
+    '# RESPON_KATA: halo => Halo juga 👋',
   ];
 
   for (const block of bot.workflow) {
@@ -160,7 +162,20 @@ export default function BotMakerPage() {
 
   const stats = useMemo(() => ({ total: state.bots.length, active: state.bots.filter((bot) => bot.enabled).length }), [state.bots]);
 
-  const refresh = async () => {
+  const pushCliLog = async (payload: { botId?: string; level?: 'info' | 'warning' | 'error'; source?: 'internal' | 'external'; message: string; details?: Record<string, unknown> }) => {
+    try {
+      await fetch('/api/botmaker/logs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    } catch {
+      // swallow logging errors to keep UI lightweight
+    }
+  };
+
+
+  const refresh = useCallback(async () => {
     setError('');
     setDetails('');
     try {
@@ -179,13 +194,15 @@ export default function BotMakerPage() {
       setDiagnostics((payload as ApiPayload).diagnostics ?? null);
       setAuthenticated(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Load gagal');
+      const message = err instanceof Error ? err.message : 'Load gagal';
+      setError(message);
+      void pushCliLog({ level: 'error', source: 'internal', message: 'refresh-gagal', details: { message } });
     }
-  };
+  }, []);
 
   useEffect(() => {
     void refresh();
-  }, []);
+  }, [refresh]);
 
   useEffect(() => {
     const container = contentScrollRef.current;
@@ -256,7 +273,9 @@ export default function BotMakerPage() {
       setNotice('Semua konfigurasi berhasil disimpan.');
       return true;
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Simpan gagal');
+      const message = err instanceof Error ? err.message : 'Simpan gagal';
+      setError(message);
+      void pushCliLog({ level: 'error', source: 'internal', message: 'persist-gagal', details: { message } });
       return false;
     } finally {
       setIsBusy(false);
@@ -284,7 +303,9 @@ export default function BotMakerPage() {
       }
       setNotice(action === 'deploy' ? 'Bot berhasil deploy + start.' : action === 'send-now' ? 'Pesan test berhasil dikirim.' : 'Bot dihentikan manual.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : `${action} gagal`);
+      const message = err instanceof Error ? err.message : `${action} gagal`;
+      setError(message);
+      void pushCliLog({ level: 'error', source: 'external', botId, message: `${action}-gagal`, details: { message } });
     } finally {
       setIsBusy(false);
     }
@@ -367,7 +388,9 @@ export default function BotMakerPage() {
       setLoginPassword('');
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login gagal');
+      const message = err instanceof Error ? err.message : 'Login gagal';
+      setError(message);
+      void pushCliLog({ level: 'error', source: 'internal', message: 'login-gagal', details: { message } });
     } finally {
       setIsBusy(false);
     }
@@ -390,7 +413,7 @@ export default function BotMakerPage() {
             <input type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} placeholder="Password" className="rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs" />
             <button type="button" onClick={() => void doLogin()} disabled={isBusy} className="rounded border border-cyan-400/40 bg-cyan-500/20 px-3 py-1.5 text-xs font-semibold text-cyan-100 disabled:opacity-50">Login / Register</button>
           </div>
-          {error && <p className="mt-2 rounded border border-red-500/30 bg-red-900/30 p-2 text-xs text-red-200">{error}</p>}
+
         </section>
       </main>
     );
@@ -420,8 +443,8 @@ export default function BotMakerPage() {
           <button type="button" onClick={() => void refresh()} disabled={isBusy} className="rounded-lg border border-violet-400/40 bg-violet-500/20 px-3 py-1.5 text-xs font-semibold text-violet-100 disabled:opacity-50">Reload</button>
         </div>
 
-        {notice && <div className="mb-3 rounded-lg border border-emerald-500/30 bg-emerald-900/20 px-3 py-2 text-xs text-emerald-200">{notice}</div>}
-        {error && <div className="mb-3 rounded-lg border border-red-500/30 bg-red-900/25 px-3 py-2 text-xs text-red-200">{error}{details ? ` • ${details}` : ''}</div>}
+
+        <div className="mb-2 rounded border border-slate-700 bg-slate-900/40 px-2 py-1 text-[10px] text-slate-300">Semua warning/error dipusatkan ke panel CLI Terminal Logs.</div>
 
         {diagnostics && (
           <div className="mb-3 rounded-lg border border-cyan-500/30 bg-slate-900/80 px-3 py-2 text-[11px] text-cyan-100">
@@ -475,7 +498,7 @@ export default function BotMakerPage() {
 
                 <div className="rounded border border-cyan-500/30 bg-slate-950/70 p-2">
                   <p className="mb-2 text-[11px] font-semibold text-cyan-100">Workflow Canvas</p>
-                  <div className="max-h-[280px] space-y-1 overflow-y-auto pr-1">
+                  <div className="max-h-[160px] space-y-1 overflow-y-auto rounded border border-slate-700/80 bg-slate-950/60 p-1 pr-1">
                     {bot.workflow.map((block) => (
                       <div
                         key={block.id}
@@ -530,11 +553,11 @@ export default function BotMakerPage() {
                   <button type="button" onClick={() => {
                     const parsed = parseHybridCode(bot.customCode);
                     if (parsed.length === 0) {
-                      setError('Sintaks hybrid tidak terbaca. Gunakan TEKS:, EMOJI:, TAG_SEMUA, BARIS_BARU, WAKTU_RELATIF.');
+                      void pushCliLog({ level: 'warning', source: 'internal', botId: bot.id, message: 'syntax-parse-warning', details: { reason: 'format-invalid' } });
                       return;
                     }
                     updateBot(bot.id, { workflow: parsed });
-                    setNotice('Sintaks hybrid berhasil diterapkan ke workflow drag & drop.');
+                    void pushCliLog({ level: 'info', source: 'internal', botId: bot.id, message: 'syntax-applied' });
                   }} className="mt-2 rounded border border-emerald-400/40 bg-emerald-500/20 px-2 py-1 text-[11px] font-semibold text-emerald-100">Terapkan sintaks ke workflow</button>
                 </div>
                 <div className="rounded border border-slate-700 bg-slate-950/70 p-2">

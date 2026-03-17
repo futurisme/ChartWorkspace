@@ -3,6 +3,7 @@ import {
   BOTMAKER_COOKIE,
   BOTMAKER_USER_COOKIE,
   BotMakerServiceError,
+  appendBotActivityLog,
   getBotActivityLogs,
   verifySession,
 } from '@/features/botmaker/server/botmaker-service';
@@ -32,5 +33,22 @@ export async function GET(request: NextRequest) {
 
     const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ error: 'Failed to load logs', message }, { status: 500 });
+  }
+}
+
+
+export async function POST(request: NextRequest) {
+  try {
+    ensureAuth(request);
+    const body = (await request.json()) as { botId?: string; level?: 'info' | 'warning' | 'error'; source?: 'internal' | 'external'; message?: string; details?: Record<string, unknown> };
+    appendBotActivityLog(body.botId ?? 'client', body.level ?? 'info', body.source ?? 'internal', body.message ?? '-', body.details);
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    if (error instanceof BotMakerServiceError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+
+    const message = error instanceof Error ? error.message : String(error);
+    return NextResponse.json({ error: 'Failed to append logs', message }, { status: 500 });
   }
 }

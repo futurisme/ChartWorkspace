@@ -73,3 +73,17 @@ BotMaker mendukung mode hybrid saat drag-drop tidak cukup.
 ## 12) Mengapa bot dulu hanya jalan sekali?
 - Penyebab umum: scheduler tidak aktif ulang setelah restart runtime, token tidak sinkron saat deploy, atau command sync hard-fail.
 - Perbaikan final: deploy mengaktifkan scheduler, runtime direkonsiliasi saat load, command sync warning tidak mematikan deploy, dan ada tombol **Stop manual** untuk menghentikan host secara sadar.
+
+
+## 13) Custom syntax respon kata channel
+- Tambahkan baris syntax di Hybrid Code:
+  - `RESPON_KATA: halo => Halo juga 👋`
+  - `ON_KATA: bantu => Perintah bantuan aktif.`
+- Runtime akan memantau pesan terbaru channel, lalu membalas saat kata kunci cocok.
+
+## 14) Sentralisasi warning/error ke CLI Logs
+- Warning dan error dipusatkan ke panel **CLI Terminal Build Logs + Activity Logs** agar terstruktur.
+- Log client/server/internal/external masuk ke alur yang sama melalui endpoint `/api/botmaker/logs`.
+
+## 15) Startup bot lebih cepat
+- Scheduler startup dipercepat (boot delay kecil) lalu tetap memakai interval aman untuk menjaga performa dan rate limit.

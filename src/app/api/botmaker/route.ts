@@ -3,6 +3,7 @@ import {
   BOTMAKER_COOKIE,
   BOTMAKER_USER_COOKIE,
   BotMakerServiceError,
+  appendBotActivityLog,
   deployBot,
   loadBotMakerState,
   saveBotMakerState,
@@ -43,6 +44,7 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     if (error instanceof BotMakerServiceError) {
+      appendBotActivityLog('api', 'error', 'internal', 'api-put-failed', { message: error.message, status: error.status });
       return createErrorResponse(error.message, error.status);
     }
 
@@ -61,6 +63,7 @@ export async function PUT(request: NextRequest) {
     });
   } catch (error) {
     if (error instanceof BotMakerServiceError) {
+      appendBotActivityLog('api', 'error', 'internal', 'api-get-failed', { message: error.message, status: error.status });
       return createErrorResponse(error.message, error.status);
     }
 
@@ -102,6 +105,7 @@ export async function POST(request: NextRequest) {
     return createErrorResponse('Unsupported action', 400);
   } catch (error) {
     if (error instanceof BotMakerServiceError) {
+      appendBotActivityLog('api', 'error', 'external', 'api-post-failed', { message: error.message, status: error.status });
       return createErrorResponse(error.message, error.status);
     }
 

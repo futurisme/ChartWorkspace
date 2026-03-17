@@ -3,6 +3,7 @@ import {
   BOTMAKER_COOKIE,
   BOTMAKER_USER_COOKIE,
   BotMakerServiceError,
+  appendBotActivityLog,
   loginBotMaker,
   verifySession,
 } from '@/features/botmaker/server/botmaker-service';
@@ -44,6 +45,7 @@ export async function POST(request: NextRequest) {
     return response;
   } catch (error) {
     if (error instanceof BotMakerServiceError) {
+      appendBotActivityLog('auth', 'error', 'internal', 'auth-failed', { message: error.message, status: error.status });
       return NextResponse.json({ authenticated: false, error: error.message }, { status: error.status });
     }
 
