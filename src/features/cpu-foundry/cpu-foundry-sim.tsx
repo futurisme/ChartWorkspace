@@ -2097,8 +2097,19 @@ function getNpcReleasePressure(game: GameState, npc: NpcInvestor, company: Compa
   const cashReserveGap = clamp((management.cashReserveTarget - company.cash) / Math.max(1, management.cashReserveTarget), 0, 2.4);
   const severeCashCrisis = company.cash <= Math.max(5.5, management.cashReserveTarget * 0.1);
   const nearZeroCash = company.cash <= 1.6;
-  const baseReleaseWindow = clamp(Math.round(24 - npc.boldness * 7 - npc.intelligence * 4), 8, 24);
-  const releaseWindow = cashEmergency > 0.7 ? Math.max(6, baseReleaseWindow - 7) : cashEmergency > 0.45 ? Math.max(7, baseReleaseWindow - 4) : baseReleaseWindow;
+  const baseReleaseWindow = clamp(Math.round(24 - npc.boldness * 7 - npc.intelligence * 4), 8, 30);
+  const releaseCadenceTarget = cpuDelta > 28
+    ? 7
+    : cpuDelta > 18
+      ? 12
+      : cpuDelta > 10
+        ? 18
+        : cpuDelta > 4
+          ? 24
+          : 30;
+  const momentumWindowBias = clamp(Math.round((releaseCadenceTarget - baseReleaseWindow) * 0.8), -10, 10);
+  const tunedReleaseWindow = clamp(baseReleaseWindow + momentumWindowBias, 7, 30);
+  const releaseWindow = cashEmergency > 0.7 ? Math.max(6, tunedReleaseWindow - 7) : cashEmergency > 0.45 ? Math.max(7, tunedReleaseWindow - 4) : tunedReleaseWindow;
   const canForceRelease = severeCashCrisis || nearZeroCash || (cashEmergency > 1.1 && cashReserveGap > 0.9);
   const releaseDistance =
     Math.max(0, cpuDelta) * 0.68
@@ -2114,6 +2125,7 @@ function getNpcReleasePressure(game: GameState, npc: NpcInvestor, company: Compa
     cashReserveGap,
     nearZeroCash,
     releaseWindow,
+    releaseCadenceTarget,
     canForceRelease,
     releaseDistance,
   };
@@ -2130,6 +2142,7 @@ function scoreNpcReleaseAction(game: GameState, npc: NpcInvestor, company: Compa
     cashReserveGap,
     nearZeroCash,
     releaseWindow,
+    releaseCadenceTarget,
     canForceRelease,
     releaseDistance,
   } = pressure;
@@ -2153,6 +2166,7 @@ function scoreNpcReleaseAction(game: GameState, npc: NpcInvestor, company: Compa
   const pricePreset = PRICE_PRESETS[priceIndex];
   const launchRevenue = calculateLaunchRevenue(currentCpuScore, company.teams, company.marketShare, company.reputation, pricePreset.factor);
   const releaseCadencePressure = clamp((daysSinceRelease - releaseWindow) / Math.max(8, releaseWindow), 0, 2.4);
+  const upgradeMomentumPressure = clamp((releaseCadenceTarget - daysSinceRelease) / Math.max(6, releaseCadenceTarget), 0, 1.2) * (cpuDelta > 6 ? 1 : 0);
   const urgentCashPressure = Math.max(cashEmergency, cashReserveGap * 0.9);
   const crisisBoost = canForceRelease ? 11 + Math.max(0, 1.8 - company.cash) * 0.8 : 0;
   const score = (
@@ -2160,6 +2174,7 @@ function scoreNpcReleaseAction(game: GameState, npc: NpcInvestor, company: Compa
     + cpuDelta * 0.042
     + staleness * 1.65
     + releaseCadencePressure * 2.1
+    + upgradeMomentumPressure * 1.7
     + marketNeed * 1.4
     + reputationNeed * 0.8
     + management.researchOverflow * 0.32
@@ -2191,7 +2206,7 @@ function scoreNpcReleaseAction(game: GameState, npc: NpcInvestor, company: Compa
     priceIndex,
     releaseSeries,
     releaseCpuName,
-    releasePriorityBoost: releaseCadencePressure + urgentCashPressure * 1.6 + (canForceRelease ? 9 : 0),
+    releasePriorityBoost: releaseCadencePressure + upgradeMomentumPressure * 0.9 + urgentCashPressure * 1.6 + (canForceRelease ? 9 : 0),
     forceImmediate: canForceRelease || nearZeroCash,
   };
 }
@@ -2316,8 +2331,19 @@ function chooseNpcCompanyActionByDomain(game: GameState, npc: NpcInvestor, compa
   const hasResearchOverflow = company.research > management.researchReserveTarget;
   const hasCashOverflow = company.cash > management.cashReserveTarget;
 
+  const reservePolicy = getManagementResourceContext(company);
+  const requiredCashBuffer = Math.max(5, reservePolicy.cashReserveTarget * 0.16);
+  const requiredResearchBuffer = Math.max(10, reservePolicy.researchReserveTarget * 0.08);
   const affordable = candidates
-    .filter((action) => action.cost <= (action.resource === 'research' ? company.research : company.cash))
+    .filter((action) => {
+      if (action.resource === 'research') {
+        const remaining = company.research - action.cost;
+        return action.cost <= company.research && (action.type === 'release' || remaining >= requiredResearchBuffer || action.type === 'upgrade');
+      }
+      const remaining = company.cash - action.cost;
+      if (action.type === 'release' || action.type === 'payout') return action.cost <= company.cash;
+      return action.cost <= company.cash && remaining >= requiredCashBuffer;
+    })
     .sort((left, right) => {
       const leftBoost = left.resource === 'research'
         ? management.researchOverflow * 0.7 + management.researchUrgency * 0.12
@@ -2374,7 +2400,13 @@ function runNpcChiefExecutiveTurn(current: GameState) {
     const company = next.companies[companyKey];
     const ceoNpc = getNpcById(next, company.ceoId);
     if (!ceoNpc) return;
-    if (next.elapsedDays < company.nextManagementReviewDay) return;
+    const releasePressure = getNpcReleasePressure(next, ceoNpc, company);
+    const isEmergencyReview =
+      releasePressure.canForceRelease
+      || (company.cash <= Math.max(3.5, releasePressure.management.cashReserveTarget * 0.12))
+      || (releasePressure.cpuDelta > 8 && releasePressure.daysSinceRelease >= 8)
+      || (releasePressure.cpuDelta > 3 && releasePressure.daysSinceRelease >= 26);
+    if (next.elapsedDays < company.nextManagementReviewDay && !isEmergencyReview) return;
 
     let workingGame = next;
     let workingCompany = workingGame.companies[companyKey];
