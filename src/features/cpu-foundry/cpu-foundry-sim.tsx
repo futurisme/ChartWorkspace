@@ -662,47 +662,80 @@ function runNpcTurn(current: GameState) {
   let next = { ...current, companies: { ...current.companies }, npcs: current.npcs.map((npc) => ({ ...npc })) };
 
   next.npcs.forEach((npc) => {
-    const analyses = (Object.entries(next.companies) as [CompanyKey, CompanyState][]).map(([key, company]) => {
-      const score = calculateCpuScore(company.upgrades);
-      const ownedPercent = getOwnershipPercent(company, npc.id);
-      const sharePrice = getSharePrice(company);
-      const valuation = getCompanyValuation(company);
-      const efficiency = score / Math.max(1, sharePrice);
-      const momentum = company.marketShare / 18 + company.reputation / 42 + company.researchPerSecond / 9;
-      const controlBias = ownedPercent / 12 + (company.ceoName === npc.name ? 0.45 : 0);
-      const valueGap = valuation / Math.max(1, sharePrice * 10);
-      const finalScore = efficiency * 0.34 + momentum * 0.3 + controlBias * 0.22 + valueGap * 0.14;
+    const analyses = (Object.entries(next.companies) as [CompanyKey, CompanyState][])
+      .map(([key, company]) => {
+        const score = calculateCpuScore(company.upgrades);
+        const ownedPercent = getOwnershipPercent(company, npc.id);
+        const sharePrice = getSharePrice(company);
+        const valuation = getCompanyValuation(company);
+        const efficiency = score / Math.max(1, sharePrice);
+        const growth = company.marketShare / 20 + company.researchPerSecond / 10 + company.revenuePerSecond / 22;
+        const stability = company.reputation / 38 + company.cash / 680;
+        const controlPressure = ownedPercent / 10 + (company.ceoName === npc.name ? 0.55 : 0);
+        const valueSignal = valuation / Math.max(1, sharePrice * 11);
+        const finalScore = efficiency * (0.22 + npc.boldness * 0.1) + growth * 0.27 + stability * 0.2 + controlPressure * 0.18 + valueSignal * 0.13;
 
-      return {
-        key,
-        company,
-        finalScore,
-        ownedPercent,
-        sharePrice,
-        score,
-      };
-    }).sort((left, right) => right.finalScore - left.finalScore);
+        return {
+          key,
+          company,
+          finalScore,
+          ownedPercent,
+          sharePrice,
+          score,
+          valuation,
+          growth,
+          stability,
+        };
+      })
+      .sort((left, right) => right.finalScore - left.finalScore);
 
     const best = analyses[0];
-    const fallback = analyses[1];
-    npc.focusCompany = best.key;
-    npc.analysisNote = `${best.company.name} dipilih karena kombinasi efisiensi skor ${formatNumber(best.score, 0)}, momentum pasar, dan peluang kendali ${formatNumber(best.ownedPercent, 1)}%.`;
+    const second = analyses[1];
+    const currentHolding = analyses.find((entry) => entry.key === npc.focusCompany) ?? best;
+    const reserveTarget = 28 + npc.patience * 28;
+    const conviction = best.finalScore - (second?.finalScore ?? 0);
+    const defendCurrent = currentHolding.ownedPercent >= 12 && currentHolding.finalScore >= best.finalScore * 0.94;
+    const diversify = Boolean(second && second.finalScore >= best.finalScore * (0.9 + npc.patience * 0.04));
+    const chosen = defendCurrent ? currentHolding : best;
 
-    const conviction = best.finalScore - (fallback?.finalScore ?? 0);
-    const shouldInvest = npc.cash > 20 && best.finalScore > 2.05;
+    npc.focusCompany = chosen.key;
 
-    if (!shouldInvest) {
-      npc.cash += 4 + 5 * npc.patience;
-      npc.analysisNote = `${best.company.name} masih dipantau. ${npc.name} menahan dana sambil menunggu valuasi lebih menarik.`;
+    const affordable = Math.max(0, npc.cash - reserveTarget);
+    const wantsToWait = affordable < 18 || conviction < 0.08;
+    if (wantsToWait) {
+      npc.cash += 3 + 4 * npc.patience;
+      npc.analysisNote = `${chosen.company.name} masih terlihat sehat, tetapi ${npc.name} memilih menahan kas $${formatNumber(npc.cash, 1)}M sambil menunggu harga yang lebih nyaman.`;
       return;
     }
 
-    const spend = clamp(Math.round(best.sharePrice * (0.65 + npc.boldness + conviction)), 18, Math.min(86, npc.cash));
+    const baseSpend = chosen.sharePrice * (0.55 + npc.boldness * 0.75);
+    const convictionSpend = conviction * 18;
+    const ownershipDefense = defendCurrent ? 10 : 0;
+    const spend = clamp(Math.round(baseSpend + convictionSpend + ownershipDefense), 18, Math.min(Math.round(affordable), 84));
+
+    if (spend < 18) {
+      npc.analysisNote = `${chosen.company.name} dipantau dekat, tetapi kas yang siap dipakai belum cukup untuk langkah berarti.`;
+      return;
+    }
+
     npc.cash -= spend;
-    best.company.cash += spend;
-    best.company.investors[npc.id] = (best.company.investors[npc.id] ?? 0) + spend;
-    npc.analysisNote = `${best.company.name} dianalisis paling efisien, jadi ${npc.name} menambah posisi $${formatNumber(spend)}M.`;
-    next.activityFeed = addFeedEntry(next.activityFeed, `${next.year}: ${npc.name} menganalisis seluruh pasar lalu menambah investasi $${formatNumber(spend)}M ke ${best.company.name}.`);
+    chosen.company.cash += spend;
+    chosen.company.investors[npc.id] = (chosen.company.investors[npc.id] ?? 0) + spend;
+
+    if (diversify && second && npc.cash > reserveTarget + 20) {
+      const sideSpend = clamp(Math.round(second.sharePrice * 0.35), 10, Math.min(28, Math.round(npc.cash - reserveTarget)));
+      if (sideSpend >= 10) {
+        npc.cash -= sideSpend;
+        second.company.cash += sideSpend;
+        second.company.investors[npc.id] = (second.company.investors[npc.id] ?? 0) + sideSpend;
+        npc.analysisNote = `${chosen.company.name} tetap prioritas utama, namun ${npc.name} juga membuka posisi kecil di ${second.company.name} untuk diversifikasi.`;
+        next.activityFeed = addFeedEntry(next.activityFeed, `${next.year}: ${npc.name} membeli $${formatNumber(spend)}M di ${chosen.company.name} dan $${formatNumber(sideSpend)}M di ${second.company.name} setelah membaca momentum pasar.`);
+        return;
+      }
+    }
+
+    npc.analysisNote = `${chosen.company.name} dipilih setelah membandingkan efisiensi, pertumbuhan, valuasi, dan posisi kepemilikan tanpa info tersembunyi.`;
+    next.activityFeed = addFeedEntry(next.activityFeed, `${next.year}: ${npc.name} menambah investasi $${formatNumber(spend)}M ke ${chosen.company.name} setelah analisis pasar internal.`);
   });
 
   return resolveLeadership(next);

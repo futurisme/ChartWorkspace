@@ -3,9 +3,9 @@
   padding: 10px 10px 22px;
   overflow-x: hidden;
   background:
-    radial-gradient(circle at top, rgba(56, 189, 248, 0.12), transparent 32%),
-    linear-gradient(180deg, #040816 0%, #070d1b 52%, #02040c 100%);
-  color: #eff6ff;
+    radial-gradient(circle at top, rgba(148, 163, 184, 0.18), transparent 30%),
+    linear-gradient(180deg, #ffffff 0%, #f8fafc 52%, #ffffff 100%);
+  color: #0f172a;
   font-family: Inter, Arial, sans-serif;
 }
 
@@ -22,9 +22,9 @@
 .heroMiniCard,
 .companyCard,
 .feedItem {
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  background: rgba(8, 12, 26, 0.92);
-  box-shadow: 0 10px 24px rgba(2, 6, 23, 0.28);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: #ffffff;
+  box-shadow: 0 12px 28px rgba(148, 163, 184, 0.18);
 }
 
 .heroCard,
@@ -54,7 +54,7 @@
   text-transform: uppercase;
   letter-spacing: 0.11em;
   font-size: 0.64rem;
-  color: #94a3b8;
+  color: #64748b;
 }
 
 .heroHeader {
@@ -85,7 +85,7 @@
   margin-top: 8px;
   font-size: 0.84rem;
   line-height: 1.38;
-  color: #dbeafe;
+  color: #334155;
 }
 
 .topStrip,
@@ -180,8 +180,8 @@
 
 .ghostButton,
 .quickButton {
-  background: rgba(148, 163, 184, 0.12);
-  color: #e2e8f0;
+  background: rgba(148, 163, 184, 0.14);
+  color: #334155;
 }
 
 .primaryButton:disabled,
@@ -230,8 +230,8 @@
   flex-shrink: 0;
   border-radius: 999px;
   padding: 4px 8px;
-  background: rgba(148, 163, 184, 0.12);
-  color: #cbd5e1;
+  background: rgba(148, 163, 184, 0.14);
+  color: #475569;
   font-size: 0.74rem;
 }
 
@@ -255,7 +255,7 @@
 .memoCard p,
 .itemDescription {
   margin-top: 6px;
-  color: #dbeafe;
+  color: #334155;
   line-height: 1.35;
   font-size: 0.84rem;
 }
@@ -271,8 +271,8 @@
   flex-shrink: 0;
   border-radius: 999px;
   padding: 5px 8px;
-  background: rgba(34, 211, 238, 0.12);
-  color: #67e8f9;
+  background: rgba(14, 165, 233, 0.12);
+  color: #0369a1;
   font-size: 0.72rem;
   font-weight: 700;
 }
@@ -285,7 +285,7 @@
   align-items: flex-end;
   justify-content: center;
   padding: 14px 10px calc(14px + env(safe-area-inset-bottom));
-  background: rgba(2, 6, 23, 0.72);
+  background: rgba(255, 255, 255, 0.78);
 }
 
 .screenFrameOverlay {
@@ -295,7 +295,7 @@
   display: flex;
   justify-content: center;
   padding: 0;
-  background: rgba(2, 6, 23, 0.84);
+  background: rgba(241, 245, 249, 0.92);
 }
 
 .screenFrameCard {
@@ -316,7 +316,7 @@
   gap: 10px;
   align-items: flex-start;
   padding: 12px 12px 10px;
-  background: rgba(8, 12, 26, 0.96);
+  background: rgba(255, 255, 255, 0.98);
   border-bottom: 1px solid rgba(148, 163, 184, 0.14);
 }
 
@@ -356,8 +356,8 @@
   width: 34px;
   height: 34px;
   border-radius: 999px;
-  background: rgba(148, 163, 184, 0.12);
-  color: #eff6ff;
+  background: rgba(148, 163, 184, 0.14);
+  color: #0f172a;
 }
 
 .modalBody {
@@ -371,11 +371,11 @@
 
 .field input {
   width: 100%;
-  border: 1px solid rgba(148, 163, 184, 0.16);
+  border: 1px solid rgba(148, 163, 184, 0.22);
   border-radius: 10px;
   padding: 10px 11px;
-  background: rgba(15, 23, 42, 0.9);
-  color: #eff6ff;
+  background: #ffffff;
+  color: #0f172a;
   outline: none;
 }
 
@@ -399,7 +399,7 @@
 }
 
 .sliderHeader small {
-  color: #93c5fd;
+  color: #475569;
   font-size: 0.76rem;
   text-align: right;
 }
@@ -424,7 +424,7 @@
 }
 
 .feedItem {
-  color: #dbeafe;
+  color: #334155;
   line-height: 1.35;
   font-size: 0.82rem;
 }
