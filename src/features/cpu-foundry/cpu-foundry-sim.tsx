@@ -1349,25 +1349,30 @@ export function CpuFoundrySim() {
     setReleaseDraft((current) => ({ ...current, series: `${game.companies[company].name} Prime` }));
   };
 
-  const openCompaniesFrame = () => {
-    setFocusedCompanyKey(null);
+  const closeTransientLayers = () => {
+    setIsReleaseMenuOpen(false);
+    setIsInvestmentMenuOpen(false);
+    setIsCompaniesFrameOpen(false);
     setIsInvestorFrameOpen(false);
+    setFocusedCompanyKey(null);
+  };
+
+  const openCompaniesFrame = () => {
+    closeTransientLayers();
     setIsCompaniesFrameOpen(true);
   };
 
   const openInvestorFrame = (company: CompanyKey) => {
-    setFocusedCompanyKey(null);
-    setIsCompaniesFrameOpen(false);
+    closeTransientLayers();
     setInvestorFrameCompanyKey(company);
     setIsInvestorFrameOpen(true);
   };
 
   const openCompanyDetail = (company: CompanyKey) => {
     switchCompany(company);
-    setFocusedCompanyKey(company);
+    closeTransientLayers();
     setCompanyDetailPanels(DEFAULT_COMPANY_DETAIL_PANELS);
-    setIsCompaniesFrameOpen(false);
-    setIsInvestorFrameOpen(false);
+    setFocusedCompanyKey(company);
   };
 
   const closeCompanyDetail = () => {
@@ -1695,7 +1700,7 @@ export function CpuFoundrySim() {
                   <button type="button" className={styles.primaryButton} onClick={openCompaniesFrame}>
                     Companies
                   </button>
-                  <button type="button" className={styles.secondaryButton} onClick={() => setIsInvestmentMenuOpen(true)}>
+                  <button type="button" className={styles.secondaryButton} onClick={() => { closeTransientLayers(); setIsInvestmentMenuOpen(true); }}>
                     Beli / jual saham
                   </button>
                   <button type="button" className={styles.ghostButton} onClick={() => activeCompany && openInvestorFrame(activeCompany.key)}>
@@ -1908,10 +1913,10 @@ export function CpuFoundrySim() {
                   <button type="button" className={styles.ghostButton} onClick={closeCompanyDetail}>
                     Go back
                   </button>
-                  <button type="button" className={styles.secondaryButton} onClick={() => { switchCompany(focusedCompany.key); setInvestmentDraft((current) => ({ ...current, company: focusedCompany.key })); setFocusedCompanyKey(null); setIsInvestmentMenuOpen(true); }}>
+                  <button type="button" className={styles.secondaryButton} onClick={() => { switchCompany(focusedCompany.key); setInvestmentDraft((current) => ({ ...current, company: focusedCompany.key })); closeTransientLayers(); setIsInvestmentMenuOpen(true); }}>
                     Beli / jual saham
                   </button>
-                  <button type="button" className={styles.primaryButton} onClick={() => { switchCompany(focusedCompany.key); setFocusedCompanyKey(null); setIsReleaseMenuOpen(true); }} disabled={!focusedPlayerIsCeo}>
+                  <button type="button" className={styles.primaryButton} onClick={() => { switchCompany(focusedCompany.key); closeTransientLayers(); setIsReleaseMenuOpen(true); }} disabled={!focusedPlayerIsCeo}>
                     {focusedPlayerIsCeo ? 'Release CPU' : 'Harus jadi CEO'}
                   </button>
                   <button type="button" className={styles.ghostButton} onClick={() => openInvestorFrame(focusedCompany.key)}>
