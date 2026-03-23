@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import { ServiceWorkerRegistration } from '@/components/service-worker-registration';
-import { PerformanceMetrics } from '@/components/performance-metrics';
+import { GlobalRuntime } from '@/components/global-runtime';
 
 const siteUrl = 'https://mindmapper.qzz.io';
 const siteName = 'MindMapper Workspace';
@@ -69,8 +68,7 @@ export default function RootLayout({
         `}</style>
       </head>
       <body>
-        <ServiceWorkerRegistration />
-        <PerformanceMetrics />
+        <GlobalRuntime />
         {children}
       </body>
     </html>

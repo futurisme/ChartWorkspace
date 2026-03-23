@@ -1,0 +1,255 @@
+.shell {
+  min-height: 100vh;
+  padding: 40px 28px 56px;
+  background:
+    radial-gradient(circle at top, rgba(86, 28, 148, 0.35), transparent 32%),
+    radial-gradient(circle at right, rgba(59, 130, 246, 0.22), transparent 26%),
+    linear-gradient(180deg, #050816 0%, #090d1f 50%, #03050d 100%);
+  color: #eff6ff;
+  font-family: Inter, Arial, sans-serif;
+}
+
+.hero,
+.panel,
+.signalCard,
+.resourceCard,
+.messageBox,
+.itemCard {
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(8, 15, 30, 0.78);
+  box-shadow: 0 18px 55px rgba(2, 6, 23, 0.45);
+  backdrop-filter: blur(18px);
+}
+
+.hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 28px;
+  border-radius: 28px;
+}
+
+.eyebrow,
+.sectionLabel,
+.itemLabel,
+.heroStats span,
+.signalCard span,
+.resourceCard span,
+.headerMeta {
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+.hero h1 {
+  margin: 10px 0 12px;
+  font-size: clamp(2.5rem, 5vw, 4.5rem);
+  line-height: 0.96;
+}
+
+.subtitle {
+  max-width: 760px;
+  margin: 0;
+  color: #cbd5e1;
+  line-height: 1.7;
+  font-size: 1.02rem;
+}
+
+.heroStats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(110px, 1fr));
+  gap: 14px;
+  min-width: min(100%, 360px);
+}
+
+.heroStats div,
+.resourceCard,
+.signalCard {
+  border-radius: 20px;
+  padding: 18px;
+  background: rgba(15, 23, 42, 0.84);
+}
+
+.heroStats strong,
+.signalCard strong,
+.resourceCard strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 1.5rem;
+}
+
+.signalGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 18px;
+  margin: 22px 0;
+}
+
+.signalCard {
+  min-height: 112px;
+}
+
+.toneCyan {
+  box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.24), 0 18px 45px rgba(8, 47, 73, 0.25);
+}
+
+.toneAmber {
+  box-shadow: inset 0 0 0 1px rgba(251, 191, 36, 0.24), 0 18px 45px rgba(120, 53, 15, 0.24);
+}
+
+.tonePurple {
+  box-shadow: inset 0 0 0 1px rgba(168, 85, 247, 0.24), 0 18px 45px rgba(76, 29, 149, 0.24);
+}
+
+.toneEmerald {
+  box-shadow: inset 0 0 0 1px rgba(52, 211, 153, 0.24), 0 18px 45px rgba(6, 78, 59, 0.24);
+}
+
+.columns {
+  display: grid;
+  grid-template-columns: 1.12fr 1fr 1fr;
+  gap: 18px;
+}
+
+.panel {
+  border-radius: 26px;
+  padding: 24px;
+}
+
+.panelHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.panelHeader h2,
+.itemCard h3 {
+  margin: 6px 0 0;
+}
+
+.launchButton,
+.itemFooter button {
+  border: none;
+  border-radius: 999px;
+  padding: 12px 18px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 160ms ease, opacity 160ms ease, box-shadow 160ms ease;
+}
+
+.launchButton {
+  background: linear-gradient(135deg, #f59e0b 0%, #fb7185 100%);
+  color: #111827;
+  box-shadow: 0 16px 30px rgba(251, 113, 133, 0.28);
+}
+
+.launchButton:hover,
+.itemFooter button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.resourceGrid,
+.stack {
+  display: grid;
+  gap: 16px;
+}
+
+.resourceGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.resourceCard,
+.messageBox,
+.itemCard {
+  border-radius: 22px;
+}
+
+.resourceCard small,
+.messageBox p,
+.itemDescription {
+  color: #cbd5e1;
+  line-height: 1.6;
+}
+
+.messageBox {
+  margin-top: 16px;
+  padding: 18px;
+}
+
+.itemCard {
+  padding: 18px;
+}
+
+.itemDescription {
+  margin: 10px 0 0;
+  font-size: 0.96rem;
+}
+
+.itemFooter {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.itemFooter span {
+  color: #94a3b8;
+  font-size: 0.92rem;
+}
+
+.itemFooter button {
+  background: linear-gradient(135deg, #38bdf8 0%, #8b5cf6 100%);
+  color: white;
+}
+
+.itemFooter button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@media (max-width: 1180px) {
+  .signalGrid,
+  .columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .columns > :first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 760px) {
+  .shell {
+    padding: 24px 16px 40px;
+  }
+
+  .hero,
+  .signalGrid,
+  .columns,
+  .resourceGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .hero {
+    flex-direction: column;
+  }
+
+  .heroStats {
+    grid-template-columns: 1fr;
+  }
+
+  .panelHeader,
+  .itemFooter {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .launchButton,
+  .itemFooter button {
+    width: 100%;
+  }
+}
