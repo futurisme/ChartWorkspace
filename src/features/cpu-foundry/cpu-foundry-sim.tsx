@@ -64,6 +64,7 @@ type NpcInvestor = {
   focusCompany: CompanyKey;
   boldness: number;
   patience: number;
+  analysisNote: string;
 };
 
 type GameState = {
@@ -125,6 +126,99 @@ const DEFAULT_RELEASE_DRAFT: ReleaseDraft = {
   cpuName: 'N-01',
   priceIndex: 1,
 };
+const NPC_FIRST_NAMES = ['Iris', 'Marco', 'Sora', 'Nadia', 'Riven', 'Kael', 'Tala', 'Vera', 'Noel', 'Zane'];
+const NPC_LAST_NAMES = ['Vale', 'Zhen', 'Kim', 'Torres', 'Hale', 'Morrow', 'Ishida', 'Quill', 'Sato', 'Reyes'];
+const NPC_PERSONAS = [
+  'fund manager adaptif',
+  'angel investor oportunis',
+  'tech whale pemburu efisiensi',
+  'operator pasar yang disiplin',
+  'pengumpul saham berbasis data',
+  'analis growth berani',
+] as const;
+
+function createSeededRandom(seed: string) {
+  let state = 2166136261;
+  for (let index = 0; index < seed.length; index += 1) {
+    state ^= seed.charCodeAt(index);
+    state = Math.imul(state, 16777619);
+  }
+
+  return () => {
+    state += 0x6d2b79f5;
+    let value = state;
+    value = Math.imul(value ^ (value >>> 15), value | 1);
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function randomBetween(random: () => number, min: number, max: number) {
+  return min + random() * (max - min);
+}
+
+function randomInt(random: () => number, min: number, max: number) {
+  return Math.floor(randomBetween(random, min, max + 1));
+}
+
+function randomFrom<T>(random: () => number, items: readonly T[]) {
+  return items[Math.floor(random() * items.length)] as T;
+}
+
+function createGenerativeNpcs(seed: string): NpcInvestor[] {
+  const random = createSeededRandom(seed);
+  const usedNames = new Set<string>();
+
+  return Array.from({ length: 4 }, (_, index) => {
+    let name = '';
+    while (!name || usedNames.has(name)) {
+      name = `${randomFrom(random, NPC_FIRST_NAMES)} ${randomFrom(random, NPC_LAST_NAMES)}`;
+    }
+    usedNames.add(name);
+
+    const focusCompany = randomFrom(random, ['cosmic', 'rmd', 'heroscop'] as const);
+    const cash = randomInt(random, 180, 340);
+    const boldness = Math.round(randomBetween(random, 0.72, 0.96) * 100) / 100;
+    const patience = Math.round(randomBetween(random, 0.42, 0.82) * 100) / 100;
+
+    return {
+      id: `npc_${index}_${name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
+      name,
+      persona: randomFrom(random, NPC_PERSONAS),
+      cash,
+      focusCompany,
+      boldness,
+      patience,
+      analysisNote: `Masih memetakan peluang ${focusCompany.toUpperCase()} saat game dimulai.`,
+    } satisfies NpcInvestor;
+  });
+}
+
+function seedNpcOwnership(companies: Record<CompanyKey, CompanyState>, npcs: NpcInvestor[], seed: string) {
+  const random = createSeededRandom(`${seed}-ownership`);
+
+  npcs.forEach((npc, index) => {
+    const primary = npc.focusCompany;
+    const secondaryChoices = (['cosmic', 'rmd', 'heroscop'] as CompanyKey[]).filter((company) => company !== primary);
+    const secondary = secondaryChoices[index % secondaryChoices.length];
+    const primaryInvestment = randomInt(random, 65, 145);
+    const secondaryInvestment = randomInt(random, 18, 52);
+    const totalInvestment = Math.min(npc.cash - 30, primaryInvestment + secondaryInvestment);
+    const appliedPrimary = Math.max(0, Math.min(primaryInvestment, totalInvestment));
+    const appliedSecondary = Math.max(0, totalInvestment - appliedPrimary);
+
+    companies[primary].cash += appliedPrimary;
+    companies[primary].investors[npc.id] = (companies[primary].investors[npc.id] ?? 0) + appliedPrimary;
+
+    if (appliedSecondary > 0) {
+      companies[secondary].cash += appliedSecondary;
+      companies[secondary].investors[npc.id] = (companies[secondary].investors[npc.id] ?? 0) + appliedSecondary;
+    }
+
+    npc.cash -= appliedPrimary + appliedSecondary;
+    npc.analysisNote = `Membuka posisi awal di ${companies[primary].name} sambil menjaga opsi cadangan di ${companies[secondary].name}.`;
+  });
+}
 
 function createUpgrades(seed: { architecture: number; lithography: number; clockSpeed: number; coreDesign: number; cacheStack: number; powerEfficiency: number }) {
   return {
@@ -229,9 +323,7 @@ function createInitialGameState(profile: ProfileDraft): GameState {
     marketShare: 27,
     reputation: 46,
     investors: {
-      founder_cosmic: 300,
-      npc_iris: 180,
-      npc_marco: 120,
+      founder_cosmic: 320,
     },
     upgrades: createUpgrades({ architecture: 2, lithography: 180, clockSpeed: 1.5, coreDesign: 1, cacheStack: 512, powerEfficiency: 98 }),
     teams: createTeams({ researchers: 2, marketing: 2, fabrication: 2 }),
@@ -247,9 +339,7 @@ function createInitialGameState(profile: ProfileDraft): GameState {
     marketShare: 21,
     reputation: 43,
     investors: {
-      founder_rmd: 280,
-      npc_sora: 165,
-      npc_marco: 90,
+      founder_rmd: 310,
     },
     upgrades: createUpgrades({ architecture: 2, lithography: 170, clockSpeed: 1.7, coreDesign: 2, cacheStack: 512, powerEfficiency: 102 }),
     teams: createTeams({ researchers: 3, marketing: 1, fabrication: 1 }),
@@ -265,9 +355,7 @@ function createInitialGameState(profile: ProfileDraft): GameState {
     marketShare: 18,
     reputation: 41,
     investors: {
-      founder_heroscop: 290,
-      npc_iris: 135,
-      npc_sora: 95,
+      founder_heroscop: 300,
     },
     upgrades: createUpgrades({ architecture: 2, lithography: 160, clockSpeed: 1.4, coreDesign: 2, cacheStack: 768, powerEfficiency: 90 }),
     teams: createTeams({ researchers: 2, marketing: 1, fabrication: 2 }),
@@ -279,6 +367,10 @@ function createInitialGameState(profile: ProfileDraft): GameState {
     rmd: rmd.company,
     heroscop: heroscop.company,
   } satisfies Record<CompanyKey, CompanyState>;
+
+  const npcSeed = `${profile.name.trim()}-${Date.now()}-${Math.random()}`;
+  const npcs = createGenerativeNpcs(npcSeed);
+  seedNpcOwnership(companies, npcs, npcSeed);
 
   return resolveLeadership({
     year: START_YEAR,
@@ -292,13 +384,10 @@ function createInitialGameState(profile: ProfileDraft): GameState {
       selectedCompany: profile.selectedCompany,
     },
     companies,
-    npcs: [
-      { id: 'npc_iris', name: 'Iris Vale', persona: 'Fund manager super teliti', cash: 250, focusCompany: 'cosmic', boldness: 0.88, patience: 0.55 },
-      { id: 'npc_marco', name: 'Marco Zhen', persona: 'Angel investor oportunis', cash: 220, focusCompany: 'rmd', boldness: 0.78, patience: 0.45 },
-      { id: 'npc_sora', name: 'Sora Kim', persona: 'Tech whale pemburu efisiensi', cash: 260, focusCompany: 'heroscop', boldness: 0.92, patience: 0.6 },
-    ],
+    npcs,
     activityFeed: [
       `${START_YEAR}: Profil ${profile.name.trim() || 'Player'} dibuat dengan modal awal $${formatNumber(PLAYER_STARTING_CASH)}M.`,
+      `${START_YEAR}: NPC investor dibangkitkan secara generatif dan langsung menganalisis Cosmic, RMD, serta Heroscop.`,
       `${START_YEAR}: Cosmic, RMD, dan Heroscop masih dipimpin para pendirinya.`,
     ],
   });
@@ -573,23 +662,47 @@ function runNpcTurn(current: GameState) {
   let next = { ...current, companies: { ...current.companies }, npcs: current.npcs.map((npc) => ({ ...npc })) };
 
   next.npcs.forEach((npc) => {
-    const company = next.companies[npc.focusCompany];
-    const score = calculateCpuScore(company.upgrades);
-    const price = getSharePrice(company);
-    const urgency = company.ceoName === npc.name ? 1.1 : 1;
-    const appetite = (company.marketShare / 26 + company.reputation / 55 + score / 520) * npc.boldness * urgency;
-    const shouldInvest = npc.cash > 18 && appetite > 1.35;
+    const analyses = (Object.entries(next.companies) as [CompanyKey, CompanyState][]).map(([key, company]) => {
+      const score = calculateCpuScore(company.upgrades);
+      const ownedPercent = getOwnershipPercent(company, npc.id);
+      const sharePrice = getSharePrice(company);
+      const valuation = getCompanyValuation(company);
+      const efficiency = score / Math.max(1, sharePrice);
+      const momentum = company.marketShare / 18 + company.reputation / 42 + company.researchPerSecond / 9;
+      const controlBias = ownedPercent / 12 + (company.ceoName === npc.name ? 0.45 : 0);
+      const valueGap = valuation / Math.max(1, sharePrice * 10);
+      const finalScore = efficiency * 0.34 + momentum * 0.3 + controlBias * 0.22 + valueGap * 0.14;
+
+      return {
+        key,
+        company,
+        finalScore,
+        ownedPercent,
+        sharePrice,
+        score,
+      };
+    }).sort((left, right) => right.finalScore - left.finalScore);
+
+    const best = analyses[0];
+    const fallback = analyses[1];
+    npc.focusCompany = best.key;
+    npc.analysisNote = `${best.company.name} dipilih karena kombinasi efisiensi skor ${formatNumber(best.score, 0)}, momentum pasar, dan peluang kendali ${formatNumber(best.ownedPercent, 1)}%.`;
+
+    const conviction = best.finalScore - (fallback?.finalScore ?? 0);
+    const shouldInvest = npc.cash > 20 && best.finalScore > 2.05;
 
     if (!shouldInvest) {
-      npc.cash += 6 * npc.patience;
+      npc.cash += 4 + 5 * npc.patience;
+      npc.analysisNote = `${best.company.name} masih dipantau. ${npc.name} menahan dana sambil menunggu valuasi lebih menarik.`;
       return;
     }
 
-    const spend = clamp(Math.round(price * npc.boldness * 0.8), 16, Math.min(72, npc.cash));
+    const spend = clamp(Math.round(best.sharePrice * (0.65 + npc.boldness + conviction)), 18, Math.min(86, npc.cash));
     npc.cash -= spend;
-    company.cash += spend;
-    company.investors[npc.id] = (company.investors[npc.id] ?? 0) + spend;
-    next.activityFeed = addFeedEntry(next.activityFeed, `${next.year}: ${npc.name} menambah investasi $${formatNumber(spend)}M ke ${company.name}.`);
+    best.company.cash += spend;
+    best.company.investors[npc.id] = (best.company.investors[npc.id] ?? 0) + spend;
+    npc.analysisNote = `${best.company.name} dianalisis paling efisien, jadi ${npc.name} menambah posisi $${formatNumber(spend)}M.`;
+    next.activityFeed = addFeedEntry(next.activityFeed, `${next.year}: ${npc.name} menganalisis seluruh pasar lalu menambah investasi $${formatNumber(spend)}M ke ${best.company.name}.`);
   });
 
   return resolveLeadership(next);
@@ -606,6 +719,8 @@ export function CpuFoundrySim() {
   const [isReleaseMenuOpen, setIsReleaseMenuOpen] = useState(false);
   const [isInvestmentMenuOpen, setIsInvestmentMenuOpen] = useState(false);
   const [isCompaniesFrameOpen, setIsCompaniesFrameOpen] = useState(false);
+  const [isInvestorFrameOpen, setIsInvestorFrameOpen] = useState(false);
+  const [investorFrameCompanyKey, setInvestorFrameCompanyKey] = useState<CompanyKey>('cosmic');
   const [focusedCompanyKey, setFocusedCompanyKey] = useState<CompanyKey | null>(null);
 
   useEffect(() => {
@@ -613,12 +728,21 @@ export function CpuFoundrySim() {
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (!raw) return;
       const parsed = JSON.parse(raw) as GameState;
-      setGame(resolveLeadership(parsed));
+      const normalized = {
+        ...parsed,
+        npcs: parsed.npcs.map((npc, index) => ({
+          ...npc,
+          focusCompany: npc.focusCompany ?? (['cosmic', 'rmd', 'heroscop'][index % 3] as CompanyKey),
+          analysisNote: npc.analysisNote ?? `Masih memantau ${npc.focusCompany ?? 'pasar'} sebelum mengambil langkah berikutnya.`,
+        })),
+      } satisfies GameState;
+      setGame(resolveLeadership(normalized));
       setStatusMessage(`Selamat datang kembali, ${parsed.player.name}.`);
       setReleaseDraft((current) => ({
         ...current,
         series: `${parsed.companies[parsed.player.selectedCompany].name} Prime`,
       }));
+      setInvestorFrameCompanyKey(parsed.player.selectedCompany);
     } catch {
       window.localStorage.removeItem(STORAGE_KEY);
     }
@@ -646,7 +770,7 @@ export function CpuFoundrySim() {
     const previousBodyOverflow = body.style.overflow;
     const previousBodyTouchAction = body.style.touchAction;
 
-    const isModalOpen = isReleaseMenuOpen || isInvestmentMenuOpen || isCompaniesFrameOpen || focusedCompanyKey !== null;
+    const isModalOpen = isReleaseMenuOpen || isInvestmentMenuOpen || isCompaniesFrameOpen || isInvestorFrameOpen || focusedCompanyKey !== null;
     html.style.overflow = isModalOpen ? 'hidden' : 'auto';
     body.style.overflow = isModalOpen ? 'hidden' : 'auto';
     body.style.touchAction = 'pan-y';
@@ -656,7 +780,7 @@ export function CpuFoundrySim() {
       body.style.overflow = previousBodyOverflow;
       body.style.touchAction = previousBodyTouchAction;
     };
-  }, [focusedCompanyKey, isCompaniesFrameOpen, isReleaseMenuOpen, isInvestmentMenuOpen]);
+  }, [focusedCompanyKey, isCompaniesFrameOpen, isInvestorFrameOpen, isReleaseMenuOpen, isInvestmentMenuOpen]);
 
   const togglePanel = (panel: PanelKey) => {
     setOpenPanels((current) => ({
@@ -688,6 +812,7 @@ export function CpuFoundrySim() {
       priceIndex: 1,
     });
     setInvestmentDraft({ company: profileDraft.selectedCompany, amount: 40 });
+    setInvestorFrameCompanyKey(profileDraft.selectedCompany);
   };
 
   const resetProfile = () => {
@@ -700,6 +825,7 @@ export function CpuFoundrySim() {
     setIsInvestmentMenuOpen(false);
     setIsReleaseMenuOpen(false);
     setIsCompaniesFrameOpen(false);
+    setIsInvestorFrameOpen(false);
     setFocusedCompanyKey(null);
   };
 
@@ -737,7 +863,15 @@ export function CpuFoundrySim() {
 
   const openCompaniesFrame = () => {
     setFocusedCompanyKey(null);
+    setIsInvestorFrameOpen(false);
     setIsCompaniesFrameOpen(true);
+  };
+
+  const openInvestorFrame = (company: CompanyKey) => {
+    setFocusedCompanyKey(null);
+    setIsCompaniesFrameOpen(false);
+    setInvestorFrameCompanyKey(company);
+    setIsInvestorFrameOpen(true);
   };
 
   const openCompanyDetail = (company: CompanyKey) => {
@@ -745,6 +879,7 @@ export function CpuFoundrySim() {
     setFocusedCompanyKey(company);
     setCompanyDetailPanels(DEFAULT_COMPANY_DETAIL_PANELS);
     setIsCompaniesFrameOpen(false);
+    setIsInvestorFrameOpen(false);
   };
 
   const closeCompanyDetail = () => {
@@ -1000,6 +1135,15 @@ export function CpuFoundrySim() {
     };
   });
 
+  const investorRankings = Object.entries(game.companies[investorFrameCompanyKey].investors)
+    .map(([investorId, amount]) => ({
+      investorId,
+      amount,
+      ownership: getOwnershipPercent(game.companies[investorFrameCompanyKey], investorId),
+      displayName: investorDisplayName(game, investorId),
+    }))
+    .sort((left, right) => right.amount - left.amount);
+
   return (
     <>
       <main className={styles.shell}>
@@ -1087,8 +1231,11 @@ export function CpuFoundrySim() {
                   <button type="button" className={styles.secondaryButton} onClick={() => setIsInvestmentMenuOpen(true)}>
                     Beli saham
                   </button>
+                  <button type="button" className={styles.ghostButton} onClick={() => activeCompany && openInvestorFrame(activeCompany.key)}>
+                    Investor list
+                  </button>
                   <button type="button" className={styles.ghostButton} onClick={() => activeCompany && openCompanyDetail(activeCompany.key)}>
-                    Buka detail fokus
+                    Detail fokus
                   </button>
                   <button type="button" className={styles.ghostButton} onClick={resetProfile}>
                     Reset profil
@@ -1118,7 +1265,7 @@ export function CpuFoundrySim() {
                         </div>
                         <span className={styles.costPill}>$ {formatNumber(npc.cash, 1)}M</span>
                       </div>
-                      <p className={styles.itemDescription}>Fokus saat ini: {game.companies[npc.focusCompany].name}. Mereka akan terus menambah saham agar kursi CEO tidak mudah direbut.</p>
+                      <p className={styles.itemDescription}>Fokus saat ini: {game.companies[npc.focusCompany].name}. {npc.analysisNote}</p>
                     </article>
                   ))}
                 </div>
@@ -1184,12 +1331,82 @@ export function CpuFoundrySim() {
                           <strong>{leadingOwner}</strong>
                         </div>
                       </div>
+                      <p className={styles.itemDescription}>Tap untuk membuka frame penuh dan memantau struktur pemilik, performa, serta operasi perusahaan.</p>
                     </article>
                   </button>
                 ))}
               </div>
 
-              <button type="button" className={styles.ghostButton} onClick={() => setIsCompaniesFrameOpen(false)}>
+              <div className={styles.actionRow}>
+                <button type="button" className={styles.ghostButton} onClick={() => setIsCompaniesFrameOpen(false)}>
+                  Go back
+                </button>
+                <button type="button" className={styles.secondaryButton} onClick={() => openInvestorFrame(activeCompany?.key ?? investorFrameCompanyKey)}>
+                  Investor list
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {isInvestorFrameOpen ? (
+        <div className={styles.screenFrameOverlay} role="presentation" onClick={() => setIsInvestorFrameOpen(false)}>
+          <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label="Daftar investor" onClick={(event) => event.stopPropagation()}>
+            <div className={styles.screenFrameHeader}>
+              <div>
+                <p className={styles.panelTag}>Investor list</p>
+                <h2>{game.companies[investorFrameCompanyKey].name} ownership board</h2>
+              </div>
+              <button type="button" className={styles.closeButton} onClick={() => setIsInvestorFrameOpen(false)} aria-label="Kembali ke halaman utama">
+                ←
+              </button>
+            </div>
+
+            <div className={styles.screenFrameBody}>
+              <div className={styles.quickGrid}>
+                {(['cosmic', 'rmd', 'heroscop'] as CompanyKey[]).map((company) => (
+                  <button
+                    key={company}
+                    type="button"
+                    className={investorFrameCompanyKey === company ? styles.quickButtonActive : styles.quickButton}
+                    onClick={() => setInvestorFrameCompanyKey(company)}
+                  >
+                    {game.companies[company].name}
+                  </button>
+                ))}
+              </div>
+
+              <div className={styles.memoCard}>
+                <p className={styles.panelTag}>Urutan investor</p>
+                <p>Panel ini menampilkan daftar investor dari terbesar ke terkecil untuk {game.companies[investorFrameCompanyKey].name}. Investor terbesar otomatis memegang kendali CEO.</p>
+              </div>
+
+              <div className={styles.panel}>
+                <div className={styles.panelToggle} role="presentation">
+                  <div>
+                    <p className={styles.panelTag}>Ranking</p>
+                    <h2>Investor terbesar → terkecil</h2>
+                  </div>
+                  <span>{formatNumber(investorRankings.length)} investor</span>
+                </div>
+                <div className={styles.panelList}>
+                  {investorRankings.map((entry, index) => (
+                    <article key={entry.investorId} className={styles.itemCard}>
+                      <div className={styles.itemTop}>
+                        <div>
+                          <p className={styles.itemLabel}>Rank #{index + 1}</p>
+                          <h3>{entry.displayName}</h3>
+                        </div>
+                        <span className={styles.costPill}>{formatNumber(entry.ownership, 1)}%</span>
+                      </div>
+                      <p className={styles.itemDescription}>Nilai investasi: $ {formatNumber(entry.amount, 1)}M. {index === 0 ? 'Saat ini memegang kursi CEO.' : 'Masih mengejar posisi teratas.'}</p>
+                    </article>
+                  ))}
+                </div>
+              </div>
+
+              <button type="button" className={styles.ghostButton} onClick={() => setIsInvestorFrameOpen(false)}>
                 Go back
               </button>
             </div>
@@ -1255,6 +1472,9 @@ export function CpuFoundrySim() {
                     disabled={!focusedPlayerIsCeo}
                   >
                     {focusedPlayerIsCeo ? 'Release CPU' : 'Harus jadi CEO'}
+                  </button>
+                  <button type="button" className={styles.ghostButton} onClick={() => openInvestorFrame(focusedCompany.key)}>
+                    Investor list
                   </button>
                   <button type="button" className={styles.ghostButton} onClick={() => switchCompany(focusedCompany.key)}>
                     Jadikan fokus aktif
