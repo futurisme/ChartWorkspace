@@ -79,6 +79,9 @@ type CompanyState = {
   researchPerDay: number;
   lastRelease: string;
   focus: string;
+  lastReleaseDay: number;
+  lastReleaseCpuScore: number;
+  lastReleasePriceIndex: number;
   upgrades: Record<UpgradeKey, UpgradeState>;
   teams: Record<TeamKey, TeamState>;
   investors: Record<string, number>;
@@ -187,16 +190,19 @@ type TradePreview = {
 };
 
 type CompanyAiAction = {
-  type: 'upgrade' | 'team' | 'payout';
-  key: UpgradeKey | TeamKey | 'payout-up' | 'payout-down';
+  type: 'upgrade' | 'team' | 'payout' | 'release';
+  key: UpgradeKey | TeamKey | 'payout-up' | 'payout-down' | 'release';
   resource: 'research' | 'cash';
   cost: number;
   score: number;
   label: string;
   rationale: string;
+  priceIndex?: number;
+  releaseSeries?: string;
+  releaseCpuName?: string;
 };
 
-const STORAGE_KEY = 'cpu-foundry-profile-sim-v8';
+const STORAGE_KEY = 'cpu-foundry-profile-sim-v9';
 const TICK_MS = 200;
 const START_DATE_UTC = Date.UTC(2000, 0, 1);
 const NPC_ACTION_EVERY_TICKS = 10;
@@ -1150,6 +1156,9 @@ function createCompany(config: {
       researchPerDay,
       lastRelease: config.lastRelease,
       focus: config.focus,
+      lastReleaseDay: 0,
+      lastReleaseCpuScore: calculateCpuScore(config.upgrades),
+      lastReleasePriceIndex: 1,
       upgrades: config.upgrades,
       teams: config.teams,
       investors: {
@@ -2069,8 +2078,103 @@ function scoreNpcTeamAction(game: GameState, npc: NpcInvestor, company: CompanyS
   };
 }
 
+function chooseNpcReleasePriceIndex(npc: NpcInvestor, company: CompanyState, cpuDelta: number, cashEmergency: number) {
+  if (cashEmergency > 0.55) return 0;
+  if (npc.strategy === 'growth' && cpuDelta > 18) return 2;
+  if (company.marketShare < 12 || npc.strategy === 'value') return 0;
+  if (cpuDelta > 28 || company.reputation > 58) return 2;
+  return 1;
+}
+
+function scoreNpcReleaseAction(game: GameState, npc: NpcInvestor, company: CompanyState): CompanyAiAction | null {
+  const currentCpuScore = calculateCpuScore(company.upgrades);
+  const daysSinceRelease = game.elapsedDays - company.lastReleaseDay;
+  const cpuDelta = currentCpuScore - company.lastReleaseCpuScore;
+  const cashEmergency = clamp((28 - company.cash) / 28, 0, 2.8);
+  const management = getManagementResourceContext(company);
+  const marketNeed = clamp((18 - company.marketShare) / 18, 0, 1.2);
+  const reputationNeed = clamp((50 - company.reputation) / 50, 0, 1);
+  const priceIndex = chooseNpcReleasePriceIndex(npc, company, cpuDelta, cashEmergency);
+  const staleness = clamp(daysSinceRelease / 90, 0, 2.2);
+  const repeatedSpecPenalty = daysSinceRelease < 28 && cpuDelta < 10 && priceIndex === company.lastReleasePriceIndex
+    ? 3.8
+    : daysSinceRelease < 18 && cpuDelta < 18 && priceIndex === company.lastReleasePriceIndex
+      ? 2
+      : daysSinceRelease < 12 && cpuDelta < 8
+        ? 1.2
+        : 0;
+  const pricePreset = PRICE_PRESETS[priceIndex];
+  const launchRevenue = calculateLaunchRevenue(currentCpuScore, company.teams, company.marketShare, company.reputation, pricePreset.factor);
+  const score = (
+    cashEmergency * 7.2
+    + cpuDelta * 0.042
+    + staleness * 1.65
+    + marketNeed * 1.4
+    + reputationNeed * 0.8
+    + management.researchOverflow * 0.32
+    + npc.intelligence * 0.44
+    + launchRevenue * 0.006
+    - repeatedSpecPenalty
+  );
+
+  if (score < 0.9 && cashEmergency < 0.45 && cpuDelta < 12 && daysSinceRelease < 70) return null;
+  const releaseNumber = company.releaseCount + 1;
+  const releaseSeries = `${company.name} ${pricePreset.label === 'Mahal' ? 'Apex' : pricePreset.label === 'Murah' ? 'Core' : 'Prime'} Series`;
+  const releaseCpuName = `${company.name.slice(0, 2).toUpperCase()}-${String(releaseNumber).padStart(2, '0')}`;
+
+  return {
+    type: 'release',
+    key: 'release',
+    resource: 'cash',
+    cost: 0,
+    score,
+    label: `Release CPU ${releaseCpuName}`,
+    rationale: cashEmergency > 0.6
+      ? 'mengisi kas darurat lewat produk terbaik yang siap dijual'
+      : cpuDelta > 18
+        ? 'mengunci lonjakan spesifikasi menjadi pendapatan baru'
+        : 'menjaga ritme pasar tanpa terlalu menunggu roadmap sempurna',
+    priceIndex,
+    releaseSeries,
+    releaseCpuName,
+  };
+}
+
 function applyNpcCompanyAction(game: GameState, companyKey: CompanyKey, action: CompanyAiAction) {
   const company = game.companies[companyKey];
+  if (action.type === 'release') {
+    const priceIndex = action.priceIndex ?? 1;
+    const pricePreset = PRICE_PRESETS[priceIndex];
+    const cpuScore = calculateCpuScore(company.upgrades);
+    const launchRevenue = calculateLaunchRevenue(cpuScore, company.teams, company.marketShare, company.reputation, pricePreset.factor);
+    const reputationGain = Math.max(1.2, cpuScore / 240 + company.teams.marketing.count * 0.7 + pricePreset.reputationBonus);
+    const marketShareGain = Math.min(4.8, cpuScore / 500 + company.teams.fabrication.count * 0.16 + pricePreset.marketBonus);
+    const series = action.releaseSeries ?? `${company.name} Prime Series`;
+    const cpuName = action.releaseCpuName ?? `${company.name.slice(0, 2).toUpperCase()}-${String(company.releaseCount + 1).padStart(2, '0')}`;
+    return {
+      ...game,
+      companies: {
+        ...game.companies,
+        [companyKey]: {
+          ...company,
+          cash: company.cash + launchRevenue,
+          reputation: clamp(company.reputation + reputationGain, 10, 100),
+          marketShare: clamp(company.marketShare + marketShareGain, 3, 75),
+          releaseCount: company.releaseCount + 1,
+          bestCpuScore: Math.max(company.bestCpuScore, cpuScore),
+          lastReleaseDay: game.elapsedDays,
+          lastReleaseCpuScore: cpuScore,
+          lastReleasePriceIndex: priceIndex,
+          lastRelease: `${series} ${cpuName} rilis ${formatDateFromDays(game.elapsedDays)} (${pricePreset.label.toLowerCase()}).`,
+        },
+      },
+      activityFeed: addFeedEntry(
+        game.activityFeed,
+        `${formatDateFromDays(game.elapsedDays)}: ${company.name} merilis ${series} ${cpuName} dan membukukan $${formatNumber(launchRevenue)}M.`
+      ),
+    };
+  }
+
   if (action.type === 'upgrade') {
     const key = action.key as UpgradeKey;
     const preview = previewUpgradeCompany(company, key);
@@ -2129,12 +2233,18 @@ function chooseNpcCompanyActionByDomain(game: GameState, npc: NpcInvestor, compa
   if (domain === 'technology' || domain === 'general') {
     candidates.push(...(Object.keys(company.upgrades) as UpgradeKey[]).map((key) => scoreNpcUpgradeAction(game, npc, company, key)));
     candidates.push(scoreNpcTeamAction(game, npc, company, 'researchers'));
+    const releaseAction = scoreNpcReleaseAction(game, npc, company);
+    if (releaseAction) candidates.push(releaseAction);
   }
   if (domain === 'operations' || domain === 'general') {
     candidates.push(scoreNpcTeamAction(game, npc, company, 'fabrication'));
   }
   if (domain === 'marketing' || domain === 'general') {
     candidates.push(scoreNpcTeamAction(game, npc, company, 'marketing'));
+    if (domain === 'marketing') {
+      const releaseAction = scoreNpcReleaseAction(game, npc, company);
+      if (releaseAction) candidates.push({ ...releaseAction, score: releaseAction.score + 0.18 });
+    }
   }
   if (domain === 'finance') {
     candidates.push(scoreNpcPayoutAction(npc, company, 'up'), scoreNpcPayoutAction(npc, company, 'down'));
@@ -2159,8 +2269,11 @@ function chooseNpcCompanyActionByDomain(game: GameState, npc: NpcInvestor, compa
   if (!best) return null;
   const executionThreshold = (best.type === 'upgrade' || best.type === 'team')
     ? 0.32 - management.managementIntensity * 0.05 - npc.intelligence * 0.04
-    : 0.52 - management.cashOverflow * 0.05;
+    : best.type === 'release'
+      ? 0.82 - management.managementIntensity * 0.08 - npc.intelligence * 0.05
+      : 0.52 - management.cashOverflow * 0.05;
   if ((best.type === 'upgrade' || best.type === 'team') && best.score < executionThreshold && !hasResearchOverflow && !hasCashOverflow) return null;
+  if (best.type === 'release' && best.score < executionThreshold) return null;
   if (best.type === 'payout' && best.score < 0.55) return null;
   return best;
 }
@@ -2229,6 +2342,7 @@ function runNpcChiefExecutiveTurn(current: GameState) {
         const actionKey = `${domain}:${action.key}`;
         const seenCount = actionCounts.get(actionKey) ?? 0;
         if (action.type === 'payout' && seenCount >= 1) break;
+        if (action.type === 'release' && seenCount >= 1) break;
         if (seenCount >= 3) break;
 
         workingGame = resolveGovernance(applyNpcManagementAction(workingGame, companyKey, action));
@@ -2238,7 +2352,7 @@ function runNpcChiefExecutiveTurn(current: GameState) {
         domainActions += 1;
         totalActions += 1;
 
-        if (action.type === 'payout') break;
+        if (action.type === 'payout' || action.type === 'release') break;
       }
     });
 
@@ -2478,6 +2592,9 @@ export function CpuFoundrySim() {
             {
               ...company,
               capitalStrain: company.capitalStrain ?? 0,
+              lastReleaseDay: company.lastReleaseDay ?? 0,
+              lastReleaseCpuScore: company.lastReleaseCpuScore ?? calculateCpuScore(company.upgrades),
+              lastReleasePriceIndex: company.lastReleasePriceIndex ?? 1,
               shareListings: sanitizeShareListings({
                 ...company,
                 shareListings: company.shareListings ?? [],
@@ -2914,6 +3031,9 @@ export function CpuFoundrySim() {
           marketShare: clamp(activeCompany.marketShare + marketShareGain, 3, 75),
           releaseCount: activeCompany.releaseCount + 1,
           bestCpuScore: Math.max(activeCompany.bestCpuScore, activeCpuScore),
+          lastReleaseDay: game.elapsedDays,
+          lastReleaseCpuScore: activeCpuScore,
+          lastReleasePriceIndex: releaseDraft.priceIndex,
           lastRelease: `${series} ${cpuName} rilis ${formatDateFromDays(game.elapsedDays)} (${activePricePreset.label.toLowerCase()}).`,
         },
       },
