@@ -153,7 +153,7 @@ const NPC_GROWTH_INTERVAL_DAYS = 60;
 const NPC_GROWTH_BATCH = 3;
 const TOTAL_SHARES = 1000;
 const TRADING_FEE_RATE = 0.02;
-const MIN_TRADE_AMOUNT = 12;
+const MIN_TRADE_AMOUNT = 0.5;
 const COMPANY_KEYS: CompanyKey[] = ['cosmic', 'rmd', 'heroscop'];
 const TRANSACTION_SLIDER_STOPS: SliderStop[] = [
   { label: '0%', value: 0 },
@@ -1825,10 +1825,10 @@ export function CpuFoundrySim() {
                   <button type="button" className={styles.ghostButton} onClick={closeCompanyDetail}>
                     Go back
                   </button>
-                  <button type="button" className={styles.secondaryButton} onClick={() => { switchCompany(focusedCompany.key); setInvestmentDraft((current) => ({ ...current, company: focusedCompany.key })); setIsInvestmentMenuOpen(true); }}>
+                  <button type="button" className={styles.secondaryButton} onClick={() => { switchCompany(focusedCompany.key); setInvestmentDraft((current) => ({ ...current, company: focusedCompany.key })); setFocusedCompanyKey(null); setIsInvestmentMenuOpen(true); }}>
                     Beli / jual saham
                   </button>
-                  <button type="button" className={styles.primaryButton} onClick={() => { switchCompany(focusedCompany.key); setIsReleaseMenuOpen(true); }} disabled={!focusedPlayerIsCeo}>
+                  <button type="button" className={styles.primaryButton} onClick={() => { switchCompany(focusedCompany.key); setFocusedCompanyKey(null); setIsReleaseMenuOpen(true); }} disabled={!focusedPlayerIsCeo}>
                     {focusedPlayerIsCeo ? 'Release CPU' : 'Harus jadi CEO'}
                   </button>
                   <button type="button" className={styles.ghostButton} onClick={() => openInvestorFrame(focusedCompany.key)}>
@@ -2101,7 +2101,7 @@ export function CpuFoundrySim() {
                   ))}
                 </div>
                 <p className={styles.compactHint}>
-                  {investmentDraft.mode === 'buy' ? 'Bayar' : 'Jual'} $ {formatNumber(Math.abs(investmentPreview.netCashDelta), 2)}M untuk {formatNumber(investmentPreview.sharesMoved, 2)} saham.
+                  {investmentDraft.mode === 'buy' ? 'Bayar' : 'Jual'} $ {formatNumber(Math.abs(investmentPreview.netCashDelta), 2)}M untuk {formatNumber(investmentPreview.sharesMoved, 2)} saham · sim live.
                 </p>
               </div>
 

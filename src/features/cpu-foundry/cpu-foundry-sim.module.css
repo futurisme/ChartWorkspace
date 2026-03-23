@@ -2,6 +2,10 @@
   min-height: 100dvh;
   padding: 10px 10px 22px;
   overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
   background:
     radial-gradient(circle at top, rgba(148, 163, 184, 0.18), transparent 30%),
     linear-gradient(180deg, #ffffff 0%, #f8fafc 52%, #ffffff 100%);
@@ -284,6 +288,10 @@
   display: flex;
   align-items: flex-end;
   justify-content: center;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
   padding: 14px 10px calc(14px + env(safe-area-inset-bottom));
   background: rgba(255, 255, 255, 0.78);
 }
@@ -294,6 +302,10 @@
   z-index: 55;
   display: flex;
   justify-content: center;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
   padding: 0;
   background: rgba(241, 245, 249, 0.92);
 }
@@ -304,6 +316,8 @@
   max-height: 100dvh;
   overflow: auto;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
   border-radius: 0;
 }
 
@@ -329,6 +343,8 @@
   max-height: min(84dvh, 700px);
   overflow: auto;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
 }
 
 .heroMiniCard {
@@ -505,5 +521,76 @@
   .modalCard {
     width: 100%;
     max-height: min(88dvh, 760px);
+  }
+}
+
+@media (max-width: 560px) {
+  .shell {
+    padding: 8px 8px 16px;
+  }
+
+  .heroCard,
+  .loginCard,
+  .topStrip > div,
+  .statChip,
+  .memoCard,
+  .itemCard,
+  .sliderCard,
+  .releasePreview,
+  .loginPreview,
+  .heroMiniCard,
+  .companyCard,
+  .feedItem {
+    padding: 8px;
+  }
+
+  .panelToggle,
+  .modalHeader,
+  .screenFrameHeader {
+    padding: 10px;
+  }
+
+  .panelBody,
+  .panelList,
+  .companyList,
+  .feedList,
+  .npcList,
+  .screenFrameBody,
+  .modalBody {
+    padding: 0 10px 10px;
+  }
+
+  .heroHeader h1,
+  .loginCard h1 {
+    font-size: 1.14rem;
+  }
+
+  .panelToggle h2,
+  .itemCard h3,
+  .modalHeader h2,
+  .companyCard h3 {
+    font-size: 0.88rem;
+  }
+
+  .subtitle,
+  .memoCard p,
+  .itemDescription,
+  .feedItem {
+    font-size: 0.78rem;
+  }
+
+  .releaseTrigger,
+  .primaryButton,
+  .secondaryButton,
+  .ghostButton,
+  .quickButton,
+  .quickButtonActive {
+    padding: 9px 10px;
+  }
+
+  .yearBadge {
+    min-width: 46px;
+    padding: 5px 7px;
+    font-size: 0.8rem;
   }
 }
