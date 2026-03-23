@@ -393,7 +393,7 @@ function toPublicBot(bot: PersistedBot, revealToken = false): BotMakerBot {
 
 function parsePersistedBots(state: BotMakerState): PersistedBot[] {
   return state.bots.map((bot) => {
-    const source = bot as unknown as Partial<PersistedBot>;
+    const source = bot as unknown as Partial<PersistedBot> & Pick<BotMakerBot, 'hasToken'>;
     const tokenCipher = typeof source.tokenCipher === 'string' ? source.tokenCipher : '';
     const tokenIv = typeof source.tokenIv === 'string' ? source.tokenIv : '';
 
