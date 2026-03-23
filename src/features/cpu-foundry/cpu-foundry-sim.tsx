@@ -200,6 +200,8 @@ type CompanyAiAction = {
   priceIndex?: number;
   releaseSeries?: string;
   releaseCpuName?: string;
+  releasePriorityBoost?: number;
+  forceImmediate?: boolean;
 };
 
 const STORAGE_KEY = 'cpu-foundry-profile-sim-v9';
@@ -2086,16 +2088,61 @@ function chooseNpcReleasePriceIndex(npc: NpcInvestor, company: CompanyState, cpu
   return 1;
 }
 
-function scoreNpcReleaseAction(game: GameState, npc: NpcInvestor, company: CompanyState): CompanyAiAction | null {
+function getNpcReleasePressure(game: GameState, npc: NpcInvestor, company: CompanyState) {
   const currentCpuScore = calculateCpuScore(company.upgrades);
+  const management = getManagementResourceContext(company);
   const daysSinceRelease = game.elapsedDays - company.lastReleaseDay;
   const cpuDelta = currentCpuScore - company.lastReleaseCpuScore;
   const cashEmergency = clamp((28 - company.cash) / 28, 0, 2.8);
-  const management = getManagementResourceContext(company);
+  const cashReserveGap = clamp((management.cashReserveTarget - company.cash) / Math.max(1, management.cashReserveTarget), 0, 2.4);
+  const severeCashCrisis = company.cash <= Math.max(5.5, management.cashReserveTarget * 0.1);
+  const nearZeroCash = company.cash <= 1.6;
+  const baseReleaseWindow = clamp(Math.round(24 - npc.boldness * 7 - npc.intelligence * 4), 8, 24);
+  const releaseWindow = cashEmergency > 0.7 ? Math.max(6, baseReleaseWindow - 7) : cashEmergency > 0.45 ? Math.max(7, baseReleaseWindow - 4) : baseReleaseWindow;
+  const canForceRelease = severeCashCrisis || nearZeroCash || (cashEmergency > 1.1 && cashReserveGap > 0.9);
+  const releaseDistance =
+    Math.max(0, cpuDelta) * 0.68
+    + Math.max(0, daysSinceRelease - releaseWindow) * 0.12
+    + (company.lastReleasePriceIndex === chooseNpcReleasePriceIndex(npc, company, cpuDelta, cashEmergency) ? 0 : 2.6);
+
+  return {
+    currentCpuScore,
+    management,
+    daysSinceRelease,
+    cpuDelta,
+    cashEmergency,
+    cashReserveGap,
+    nearZeroCash,
+    releaseWindow,
+    canForceRelease,
+    releaseDistance,
+  };
+}
+
+function scoreNpcReleaseAction(game: GameState, npc: NpcInvestor, company: CompanyState): CompanyAiAction | null {
+  const pressure = getNpcReleasePressure(game, npc, company);
+  const {
+    currentCpuScore,
+    management,
+    daysSinceRelease,
+    cpuDelta,
+    cashEmergency,
+    cashReserveGap,
+    nearZeroCash,
+    releaseWindow,
+    canForceRelease,
+    releaseDistance,
+  } = pressure;
   const marketNeed = clamp((18 - company.marketShare) / 18, 0, 1.2);
   const reputationNeed = clamp((50 - company.reputation) / 50, 0, 1);
   const priceIndex = chooseNpcReleasePriceIndex(npc, company, cpuDelta, cashEmergency);
   const staleness = clamp(daysSinceRelease / 90, 0, 2.2);
+  const tooSoonWithNoDistance =
+    daysSinceRelease < releaseWindow
+    && releaseDistance < 5.4
+    && cashEmergency < 0.72
+    && !canForceRelease;
+  if (tooSoonWithNoDistance) return null;
   const repeatedSpecPenalty = daysSinceRelease < 28 && cpuDelta < 10 && priceIndex === company.lastReleasePriceIndex
     ? 3.8
     : daysSinceRelease < 18 && cpuDelta < 18 && priceIndex === company.lastReleasePriceIndex
@@ -2105,19 +2152,24 @@ function scoreNpcReleaseAction(game: GameState, npc: NpcInvestor, company: Compa
         : 0;
   const pricePreset = PRICE_PRESETS[priceIndex];
   const launchRevenue = calculateLaunchRevenue(currentCpuScore, company.teams, company.marketShare, company.reputation, pricePreset.factor);
+  const releaseCadencePressure = clamp((daysSinceRelease - releaseWindow) / Math.max(8, releaseWindow), 0, 2.4);
+  const urgentCashPressure = Math.max(cashEmergency, cashReserveGap * 0.9);
+  const crisisBoost = canForceRelease ? 11 + Math.max(0, 1.8 - company.cash) * 0.8 : 0;
   const score = (
-    cashEmergency * 7.2
+    urgentCashPressure * 7.6
     + cpuDelta * 0.042
     + staleness * 1.65
+    + releaseCadencePressure * 2.1
     + marketNeed * 1.4
     + reputationNeed * 0.8
     + management.researchOverflow * 0.32
     + npc.intelligence * 0.44
     + launchRevenue * 0.006
+    + crisisBoost
     - repeatedSpecPenalty
   );
 
-  if (score < 0.9 && cashEmergency < 0.45 && cpuDelta < 12 && daysSinceRelease < 70) return null;
+  if (score < 0.9 && cashEmergency < 0.45 && cpuDelta < 12 && daysSinceRelease < 70 && !canForceRelease) return null;
   const releaseNumber = company.releaseCount + 1;
   const releaseSeries = `${company.name} ${pricePreset.label === 'Mahal' ? 'Apex' : pricePreset.label === 'Murah' ? 'Core' : 'Prime'} Series`;
   const releaseCpuName = `${company.name.slice(0, 2).toUpperCase()}-${String(releaseNumber).padStart(2, '0')}`;
@@ -2129,14 +2181,18 @@ function scoreNpcReleaseAction(game: GameState, npc: NpcInvestor, company: Compa
     cost: 0,
     score,
     label: `Release CPU ${releaseCpuName}`,
-    rationale: cashEmergency > 0.6
-      ? 'mengisi kas darurat lewat produk terbaik yang siap dijual'
+    rationale: canForceRelease
+      ? 'krisis kas: wajib monetisasi CPU tercanggih secepat mungkin untuk menyelamatkan runway'
+      : cashEmergency > 0.6
+        ? 'mengisi kas darurat lewat produk terbaik yang siap dijual'
       : cpuDelta > 18
         ? 'mengunci lonjakan spesifikasi menjadi pendapatan baru'
         : 'menjaga ritme pasar tanpa terlalu menunggu roadmap sempurna',
     priceIndex,
     releaseSeries,
     releaseCpuName,
+    releasePriorityBoost: releaseCadencePressure + urgentCashPressure * 1.6 + (canForceRelease ? 9 : 0),
+    forceImmediate: canForceRelease || nearZeroCash,
   };
 }
 
@@ -2234,7 +2290,8 @@ function chooseNpcCompanyActionByDomain(game: GameState, npc: NpcInvestor, compa
     candidates.push(...(Object.keys(company.upgrades) as UpgradeKey[]).map((key) => scoreNpcUpgradeAction(game, npc, company, key)));
     candidates.push(scoreNpcTeamAction(game, npc, company, 'researchers'));
     const releaseAction = scoreNpcReleaseAction(game, npc, company);
-    if (releaseAction) candidates.push(releaseAction);
+    if (releaseAction?.forceImmediate) return releaseAction;
+    if (releaseAction) candidates.push({ ...releaseAction, score: releaseAction.score + (releaseAction.releasePriorityBoost ?? 0) });
   }
   if (domain === 'operations' || domain === 'general') {
     candidates.push(scoreNpcTeamAction(game, npc, company, 'fabrication'));
@@ -2243,7 +2300,13 @@ function chooseNpcCompanyActionByDomain(game: GameState, npc: NpcInvestor, compa
     candidates.push(scoreNpcTeamAction(game, npc, company, 'marketing'));
     if (domain === 'marketing') {
       const releaseAction = scoreNpcReleaseAction(game, npc, company);
-      if (releaseAction) candidates.push({ ...releaseAction, score: releaseAction.score + 0.18 });
+      if (releaseAction?.forceImmediate) return releaseAction;
+      if (releaseAction) {
+        candidates.push({
+          ...releaseAction,
+          score: releaseAction.score + 0.18 + (releaseAction.releasePriorityBoost ?? 0) * 0.75,
+        });
+      }
     }
   }
   if (domain === 'finance') {
