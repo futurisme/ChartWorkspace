@@ -432,6 +432,22 @@
   gap: 8px;
 }
 
+.optionList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.optionPill {
+  border-radius: 999px;
+  padding: 5px 8px;
+  background: rgba(99, 102, 241, 0.1);
+  color: #4338ca;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
 .compactHint {
   margin: 8px 0 0;
   color: #334155;

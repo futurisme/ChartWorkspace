@@ -610,6 +610,50 @@ function createIndependentBoardMember(company: CompanyState, slot: number): Boar
   };
 }
 
+function getCompanyPerformanceScore(company: CompanyState) {
+  const cpuScore = calculateCpuScore(company.upgrades);
+  return company.marketShare * 0.34
+    + company.reputation * 0.28
+    + company.boardMood * 18
+    + company.cash * 0.018
+    + company.researchPerDay * 2.6
+    + cpuScore * 0.004;
+}
+
+function getCompanyStressLevel(company: CompanyState) {
+  const marketStress = clamp((18 - company.marketShare) / 18, 0, 1);
+  const reputationStress = clamp((42 - company.reputation) / 42, 0, 1);
+  const cashStress = clamp((260 - company.cash) / 260, 0, 1);
+  const boardStress = clamp((0.62 - company.boardMood) / 0.62, 0, 1);
+  return marketStress * 0.32 + reputationStress * 0.24 + cashStress * 0.22 + boardStress * 0.22;
+}
+
+function getBoardMemberOptions(member: BoardMember, company: CompanyState) {
+  const options: string[] = [];
+  const stress = getCompanyStressLevel(company);
+
+  if (member.seatType === 'chair') {
+    options.push('Review CEO', 'Tetapkan target profit', 'Pantau eksekusi board');
+  } else if (member.seatType === 'founder') {
+    options.push('Jaga visi produk', 'Naikkan investasi R&D', 'Pertahankan talenta inti');
+  } else if (member.seatType === 'shareholder') {
+    options.push('Dorong ROI', 'Atur ulang alokasi modal', 'Tinjau struktur dividen');
+  } else if (member.seatType === 'independent') {
+    options.push('Audit risiko', 'Disiplin kas', 'Minta transparansi CEO');
+  } else {
+    options.push('Jaga moral tim', 'Lindungi roadmap jangka panjang', 'Tekan eksekusi operasi');
+  }
+
+  if (stress > 0.6) options.unshift('Siapkan rapat darurat');
+  if (company.boardMood < 0.5) options.unshift('Minta evaluasi CEO');
+  if (company.cash < 220) options.unshift('Tekan efisiensi biaya');
+  if (company.researchPerDay < 11) options.push('Tambah budget riset');
+  if (company.marketShare < 15) options.push('Percepat strategi distribusi');
+  if (company.payoutRatio > 0.26) options.push('Turunkan payout sementara');
+
+  return Array.from(new Set(options)).slice(0, 4);
+}
+
 function getCandidateLeadershipScore(company: CompanyState, candidateId: string, previousCeoId: string) {
   const ownership = getOwnershipPercent(company, candidateId);
   const continuity = candidateId === previousCeoId ? 4 : 0;
@@ -956,6 +1000,9 @@ function simulateTick(current: GameState) {
       const dividendPoolPerDay = governedCompany.dividendPerShare * governedCompany.sharesOutstanding;
       const passiveMarketDelta = governedCompany.teams.marketing.count * 0.016 + governedCompany.teams.fabrication.count * 0.011 + governedCompany.boardMood * 0.006;
       const passiveReputationDelta = governedCompany.teams.marketing.count * 0.009 + governedCompany.boardMood * 0.006;
+      const stressLevel = getCompanyStressLevel(governedCompany);
+      const capitalFlightPerDay = stressLevel * (6 + governedCompany.marketPoolShares / 80);
+      const managementDragPerDay = stressLevel * (1.2 + governedCompany.revenuePerDay * 0.08);
 
       Object.entries(governedCompany.investors).forEach(([investorId, shares]) => {
         const payout = shares * governedCompany.dividendPerShare * tickDays;
@@ -972,9 +1019,9 @@ function simulateTick(current: GameState) {
         {
           ...governedCompany,
           research: governedCompany.research + governedCompany.researchPerDay * tickDays,
-          cash: Math.max(0, governedCompany.cash + retentionProfit * tickDays - dividendPoolPerDay * tickDays - ceoSalary),
-          marketShare: clamp(governedCompany.marketShare + passiveMarketDelta * tickDays, 3, 75),
-          reputation: clamp(governedCompany.reputation + passiveReputationDelta * tickDays, 10, 100),
+          cash: Math.max(0, governedCompany.cash + retentionProfit * tickDays - dividendPoolPerDay * tickDays - ceoSalary - capitalFlightPerDay * tickDays - managementDragPerDay * tickDays),
+          marketShare: clamp(governedCompany.marketShare + passiveMarketDelta * tickDays - stressLevel * 0.75 * tickDays, 3, 75),
+          reputation: clamp(governedCompany.reputation + passiveReputationDelta * tickDays - stressLevel * 0.92 * tickDays, 10, 100),
         },
       ];
     })
@@ -1016,16 +1063,19 @@ function scoreCompanyForNpc(npc: NpcInvestor, company: CompanyState) {
   const qualitySignal = company.reputation / 42 + company.boardMood + company.cash / 1200;
   const valueSignal = valuation / Math.max(1, sharePrice * company.sharesOutstanding);
   const controlSignal = getOwnershipPercent(company, npc.id) / 14;
+  const performanceSignal = getCompanyPerformanceScore(company) / 25;
+  const stressLevel = getCompanyStressLevel(company);
+  const managementPenalty = stressLevel * 2.6;
   const strategyBias =
     npc.strategy === 'value'
-      ? valueSignal * 2.3 + qualitySignal * 0.8
+      ? valueSignal * 2.3 + qualitySignal * 0.8 + performanceSignal * 0.5
       : npc.strategy === 'growth'
-        ? growthSignal * 2.4 + qualitySignal * 0.9
+        ? growthSignal * 2.4 + qualitySignal * 0.9 + performanceSignal * 0.6
         : npc.strategy === 'dividend'
-          ? dividendYield * 3.2 + qualitySignal * 0.9
+          ? dividendYield * 3.2 + qualitySignal * 0.9 + performanceSignal * 0.3
           : npc.strategy === 'activist'
-            ? controlSignal * 2.4 + valueSignal * 1.1 + growthSignal * 0.9
-            : valueSignal * 1.2 + growthSignal * 1.3 + dividendYield * 1.1;
+            ? controlSignal * 2.4 + valueSignal * 1.1 + growthSignal * 0.9 + performanceSignal * 0.45
+            : valueSignal * 1.2 + growthSignal * 1.3 + dividendYield * 1.1 + performanceSignal * 0.45;
 
   const longTermFit = npc.horizonDays / 365 * 0.35 + npc.patience * 0.6;
   return {
@@ -1035,7 +1085,10 @@ function scoreCompanyForNpc(npc: NpcInvestor, company: CompanyState) {
     dividendYield,
     growthSignal,
     qualitySignal,
-    finalScore: strategyBias + longTermFit,
+    performanceSignal,
+    stressLevel,
+    managementPenalty,
+    finalScore: strategyBias + longTermFit - managementPenalty,
   };
 }
 
@@ -1059,25 +1112,37 @@ function runNpcTurn(current: GameState) {
 
     const reserveCash = 20 + npc.cash * npc.reserveRatio;
     const bestOutrunsFocus = best.finalScore - currentFocus.finalScore;
-    const shouldTrim = currentFocus.ownership > 4 && (bestOutrunsFocus > 0.85 || currentFocus.dividendYield < 0.08 || currentFocus.company.boardMood < 0.45);
+    const shouldTrim = currentFocus.ownership > 4
+      && (
+        bestOutrunsFocus > 0.85
+        || currentFocus.dividendYield < 0.08
+        || currentFocus.company.boardMood < 0.45
+        || currentFocus.stressLevel > 0.55
+      );
+    const shouldExit = currentFocus.ownership > 1.2
+      && (currentFocus.stressLevel > 0.78 || currentFocus.company.cash < 150 || currentFocus.performanceSignal < 1.55);
 
-    if (shouldTrim) {
+    if (shouldTrim || shouldExit) {
       const ownedValue = (currentFocus.company.investors[npc.id] ?? 0) * currentFocus.sharePrice;
-      const trimBudget = clamp(ownedValue * (0.18 + npc.boldness * 0.22), MIN_TRADE_AMOUNT, ownedValue * 0.6);
+      const trimBudget = shouldExit
+        ? clamp(ownedValue * (0.45 + npc.boldness * 0.2), MIN_TRADE_AMOUNT, ownedValue * 0.92)
+        : clamp(ownedValue * (0.18 + npc.boldness * 0.22), MIN_TRADE_AMOUNT, ownedValue * 0.6);
       const result = transactShares(next, npc.id, currentFocus.key, 'sell', trimBudget);
       if (result.tradedValue > 0) {
         next = {
           ...result.next,
           activityFeed: addFeedEntry(
             result.next.activityFeed,
-            `${formatDateFromDays(result.next.elapsedDays)}: ${npc.name} menjual ${formatNumber(result.sharesMoved, 2)} saham ${currentFocus.company.name} demi reposisi jangka panjang.`
+            `${formatDateFromDays(result.next.elapsedDays)}: ${npc.name} menjual ${formatNumber(result.sharesMoved, 2)} saham ${currentFocus.company.name}${shouldExit ? ' untuk kabur dari manajemen buruk.' : ' demi reposisi jangka panjang.'}`
           ),
         };
         const refreshedCompany = next.companies[currentFocus.key];
         const lostCeo = refreshedCompany.ceoId !== npc.id && currentFocus.company.ceoId === npc.id;
         npc.analysisNote = lostCeo
           ? `${npc.name} melepas saham ${refreshedCompany.name} terlalu jauh dan otomatis turun dari kursi CEO oleh voting dewan.`
-          : `${npc.name} mengurangi posisi di ${refreshedCompany.name} karena valuasi dan tata kelola tidak lagi seideal sebelumnya.`;
+          : shouldExit
+            ? `${npc.name} keluar agresif dari ${refreshedCompany.name} karena performa CEO dan manajemen dianggap terlalu berisiko.`
+            : `${npc.name} mengurangi posisi di ${refreshedCompany.name} karena valuasi dan tata kelola tidak lagi seideal sebelumnya.`;
         return;
       }
     }
@@ -1121,7 +1186,7 @@ function runNpcTurn(current: GameState) {
       }
     }
 
-    npc.analysisNote = `${npc.name} membandingkan yield dividen, valuasi, pangsa pasar, riset, dan struktur dewan sebelum menambah ${best.company.name}.`;
+    npc.analysisNote = `${npc.name} membandingkan kinerja, valuasi, mood dewan, riset, dan arus modal sebelum menambah ${best.company.name}.`;
   });
 
   return resolveGovernance(next);
@@ -1180,6 +1245,24 @@ export function CpuFoundrySim() {
       setGame((current) => (current ? simulateTick(current) : current));
     }, TICK_MS);
     return () => window.clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    const previousHtmlOverflowY = html.style.overflowY;
+    const previousBodyOverflowY = body.style.overflowY;
+    const previousBodyTouchAction = body.style.touchAction;
+
+    html.style.overflowY = 'auto';
+    body.style.overflowY = 'auto';
+    body.style.touchAction = 'pan-y';
+
+    return () => {
+      html.style.overflowY = previousHtmlOverflowY;
+      body.style.overflowY = previousBodyOverflowY;
+      body.style.touchAction = previousBodyTouchAction;
+    };
   }, []);
 
 
@@ -1921,6 +2004,11 @@ export function CpuFoundrySim() {
                           <span className={styles.costPill}>Vote {formatNumber(member.voteWeight, 1)}</span>
                         </div>
                         <p className={styles.itemDescription}>{member.agenda}</p>
+                        <div className={styles.optionList}>
+                          {getBoardMemberOptions(member, focusedCompany).map((option) => (
+                            <span key={`${member.id}-${option}`} className={styles.optionPill}>{option}</span>
+                          ))}
+                        </div>
                       </article>
                     ))}
                   </div>
