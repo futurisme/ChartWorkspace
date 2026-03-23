@@ -117,6 +117,25 @@ type InvestmentDraft = {
   amount: number;
 };
 
+type TradePreview = {
+  valuation: number;
+  sharePrice: number;
+  marketCap: number;
+  currentShares: number;
+  requestedValue: number;
+  maxTradeValue: number;
+  grossTradeValue: number;
+  feeValue: number;
+  netCashDelta: number;
+  sharesMoved: number;
+  futureShares: number;
+  futureOwnership: number;
+  marketLiquidityShares: number;
+  marketLiquidityValue: number;
+  currentHoldingValue: number;
+  futureHoldingValue: number;
+};
+
 const STORAGE_KEY = 'cpu-foundry-profile-sim-v4';
 const TICK_MS = 200;
 const START_DATE_UTC = Date.UTC(2000, 0, 1);
@@ -383,7 +402,7 @@ function getCompanyInvestmentTotal(company: CompanyState) {
 
 function getSharePrice(company: CompanyState) {
   const valuation = getCompanyValuation(company);
-  return Math.max(5, Math.round((valuation / company.sharesOutstanding) * 10) / 10);
+  return Math.max(5, valuation / company.sharesOutstanding);
 }
 
 function getCompanyValuation(company: CompanyState) {
@@ -395,6 +414,54 @@ function getOwnershipPercent(company: CompanyState, investorId: string) {
   const shares = company.investors[investorId] ?? 0;
   if (!company.sharesOutstanding) return 0;
   return shares / company.sharesOutstanding * 100;
+}
+
+function getInvestorCash(game: GameState, investorId: string) {
+  if (investorId === game.player.id) return game.player.cash;
+  return game.npcs.find((npc) => npc.id === investorId)?.cash ?? 0;
+}
+
+function getTradePreview(
+  company: CompanyState,
+  investorCash: number,
+  currentShares: number,
+  mode: InvestorActionMode,
+  requestedValue: number
+): TradePreview {
+  const valuation = getCompanyValuation(company);
+  const sharePrice = getSharePrice(company);
+  const marketCap = sharePrice * company.sharesOutstanding;
+  const normalizedRequestedValue = Math.max(0, requestedValue);
+  const maxTradeValue = mode === 'buy'
+    ? Math.max(0, Math.min(company.marketPoolShares * sharePrice, investorCash / (1 + TRADING_FEE_RATE)))
+    : Math.max(0, currentShares * sharePrice);
+  const grossTradeValue = Math.min(normalizedRequestedValue, maxTradeValue);
+  const sharesMoved = sharePrice > 0 ? grossTradeValue / sharePrice : 0;
+  const feeValue = grossTradeValue * TRADING_FEE_RATE;
+  const netCashDelta = mode === 'buy' ? -(grossTradeValue + feeValue) : grossTradeValue - feeValue;
+  const futureShares = mode === 'buy' ? currentShares + sharesMoved : Math.max(0, currentShares - sharesMoved);
+  const futureOwnership = company.sharesOutstanding > 0 ? futureShares / company.sharesOutstanding * 100 : 0;
+  const currentHoldingValue = currentShares * sharePrice;
+  const futureHoldingValue = futureShares * sharePrice;
+
+  return {
+    valuation,
+    sharePrice,
+    marketCap,
+    currentShares,
+    requestedValue: normalizedRequestedValue,
+    maxTradeValue,
+    grossTradeValue,
+    feeValue,
+    netCashDelta,
+    sharesMoved,
+    futureShares,
+    futureOwnership,
+    marketLiquidityShares: company.marketPoolShares,
+    marketLiquidityValue: company.marketPoolShares * sharePrice,
+    currentHoldingValue,
+    futureHoldingValue,
+  };
 }
 
 function addFeedEntry(feed: string[], message: string) {
@@ -767,48 +834,40 @@ function applyCashToInvestor(game: GameState, investorId: string, amount: number
 
 function transactShares(current: GameState, investorId: string, companyKey: CompanyKey, mode: InvestorActionMode, requestedAmount: number) {
   const company = current.companies[companyKey];
-  const sharePrice = getSharePrice(company);
   if (requestedAmount <= 0) {
     return { next: current, tradedValue: 0, sharesMoved: 0 };
   }
 
-  if (mode === 'buy') {
-    const buyerCash = investorId === current.player.id ? current.player.cash : current.npcs.find((npc) => npc.id === investorId)?.cash ?? 0;
-    const affordableBudget = Math.min(buyerCash, requestedAmount);
-    const shares = Math.min(company.marketPoolShares, Number((affordableBudget / sharePrice).toFixed(2)));
-    const grossValue = shares * sharePrice;
-    const totalCost = grossValue * (1 + TRADING_FEE_RATE);
-    if (grossValue < MIN_TRADE_AMOUNT || totalCost > buyerCash + 0.0001 || shares <= 0) {
-      return { next: current, tradedValue: 0, sharesMoved: 0 };
-    }
+  const investorCash = getInvestorCash(current, investorId);
+  const currentShares = company.investors[investorId] ?? 0;
+  const preview = getTradePreview(company, investorCash, currentShares, mode, requestedAmount);
+  if (preview.grossTradeValue < MIN_TRADE_AMOUNT || preview.sharesMoved <= 0) {
+    return { next: current, tradedValue: 0, sharesMoved: 0 };
+  }
+  if (mode === 'buy' && preview.netCashDelta * -1 > investorCash + 0.0001) {
+    return { next: current, tradedValue: 0, sharesMoved: 0 };
+  }
 
+  if (mode === 'buy') {
     let next: GameState = {
       ...current,
       companies: {
         ...current.companies,
         [companyKey]: {
           ...company,
-          marketPoolShares: company.marketPoolShares - shares,
+          marketPoolShares: Math.max(0, company.marketPoolShares - preview.sharesMoved),
           investors: {
             ...company.investors,
-            [investorId]: (company.investors[investorId] ?? 0) + shares,
+            [investorId]: currentShares + preview.sharesMoved,
           },
         },
       },
     };
-    next = applyCashToInvestor(next, investorId, -totalCost);
-    return { next: resolveGovernance(next), tradedValue: grossValue, sharesMoved: shares };
+    next = applyCashToInvestor(next, investorId, preview.netCashDelta);
+    return { next: resolveGovernance(next), tradedValue: preview.grossTradeValue, sharesMoved: preview.sharesMoved };
   }
 
-  const ownedShares = company.investors[investorId] ?? 0;
-  const shares = Math.min(ownedShares, Number((requestedAmount / sharePrice).toFixed(2)));
-  const grossValue = shares * sharePrice;
-  const netValue = grossValue * (1 - TRADING_FEE_RATE);
-  if (grossValue < MIN_TRADE_AMOUNT || shares <= 0) {
-    return { next: current, tradedValue: 0, sharesMoved: 0 };
-  }
-
-  const nextInvestors = { ...company.investors, [investorId]: ownedShares - shares };
+  const nextInvestors = { ...company.investors, [investorId]: currentShares - preview.sharesMoved };
   if (nextInvestors[investorId] <= 0.01) {
     delete nextInvestors[investorId];
   }
@@ -819,13 +878,13 @@ function transactShares(current: GameState, investorId: string, companyKey: Comp
       ...current.companies,
       [companyKey]: {
         ...company,
-        marketPoolShares: company.marketPoolShares + shares,
+        marketPoolShares: company.marketPoolShares + preview.sharesMoved,
         investors: nextInvestors,
       },
     },
   };
-  next = applyCashToInvestor(next, investorId, netValue);
-  return { next: resolveGovernance(next), tradedValue: netValue, sharesMoved: shares };
+  next = applyCashToInvestor(next, investorId, preview.netCashDelta);
+  return { next: resolveGovernance(next), tradedValue: preview.grossTradeValue, sharesMoved: preview.sharesMoved };
 }
 
 function maybeGenerateMoreNpcs(current: GameState) {
@@ -867,14 +926,13 @@ function simulateTick(current: GameState) {
   const tickDays = TICK_MS / 1000;
   const nextElapsedDays = current.elapsedDays + tickDays;
   const reachedNewDay = Math.floor(nextElapsedDays) > Math.floor(current.elapsedDays);
+  const governedCurrent = resolveGovernance(current);
 
-  let nextPlayerCash = current.player.cash;
-  const npcCashMap = new Map(current.npcs.map((npc) => [npc.id, npc.cash]));
+  let nextPlayerCash = governedCurrent.player.cash;
+  const npcCashMap = new Map(governedCurrent.npcs.map((npc) => [npc.id, npc.cash]));
 
   const companies = Object.fromEntries(
-    (Object.entries(current.companies) as [CompanyKey, CompanyState][]).map(([key, company]) => {
-      const governanceSeed = resolveGovernance({ ...current, companies: { ...current.companies, [key]: company } });
-      const governedCompany = governanceSeed.companies[key];
+    (Object.entries(governedCurrent.companies) as [CompanyKey, CompanyState][]).map(([key, governedCompany]) => {
       const retentionProfit = governedCompany.revenuePerDay * 0.42 * (1 - governedCompany.payoutRatio);
       const dividendPoolPerDay = governedCompany.dividendPerShare * governedCompany.sharesOutstanding;
       const passiveMarketDelta = governedCompany.teams.marketing.count * 0.016 + governedCompany.teams.fabrication.count * 0.011 + governedCompany.boardMood * 0.006;
@@ -882,7 +940,7 @@ function simulateTick(current: GameState) {
 
       Object.entries(governedCompany.investors).forEach(([investorId, shares]) => {
         const payout = shares * governedCompany.dividendPerShare * tickDays;
-        if (investorId === current.player.id) nextPlayerCash += payout;
+        if (investorId === governedCurrent.player.id) nextPlayerCash += payout;
         else npcCashMap.set(investorId, (npcCashMap.get(investorId) ?? 0) + payout);
       });
 
@@ -904,14 +962,14 @@ function simulateTick(current: GameState) {
   ) as Record<CompanyKey, CompanyState>;
 
   let nextState: GameState = resolveGovernance({
-    ...current,
+    ...governedCurrent,
     elapsedDays: nextElapsedDays,
-    tickCount: current.tickCount + 1,
+    tickCount: governedCurrent.tickCount + 1,
     player: {
-      ...current.player,
+      ...governedCurrent.player,
       cash: nextPlayerCash,
     },
-    npcs: current.npcs.map((npc) => ({
+    npcs: governedCurrent.npcs.map((npc) => ({
       ...npc,
       cash: npcCashMap.get(npc.id) ?? npc.cash,
       active: true,
@@ -1099,12 +1157,11 @@ export function CpuFoundrySim() {
   }, [game]);
 
   useEffect(() => {
-    if (!game) return;
     const interval = window.setInterval(() => {
       setGame((current) => (current ? simulateTick(current) : current));
     }, TICK_MS);
     return () => window.clearInterval(interval);
-  }, [game]);
+  }, []);
 
   useEffect(() => {
     const html = document.documentElement;
@@ -1181,6 +1238,17 @@ export function CpuFoundrySim() {
     }, 0);
     return game.player.cash + holdings;
   }, [game]);
+  const investmentPreview = useMemo(() => {
+    if (!game) return null;
+    const company = game.companies[investmentDraft.company];
+    return getTradePreview(
+      company,
+      game.player.cash,
+      company.investors[game.player.id] ?? 0,
+      investmentDraft.mode,
+      investmentDraft.amount
+    );
+  }, [game, investmentDraft]);
 
   const switchCompany = (company: CompanyKey) => {
     if (!game) return;
@@ -1623,7 +1691,7 @@ export function CpuFoundrySim() {
                           <p className={styles.itemLabel}>{company.focus}</p>
                           <h3>{company.name}</h3>
                         </div>
-                        <span className={styles.costPill}>$ {formatNumber(sharePrice, 1)} / share</span>
+                        <span className={styles.costPill}>$ {formatNumber(sharePrice, 2)} / share</span>
                       </div>
                       <div className={styles.infoRowCompact}>
                         <div>
@@ -1639,8 +1707,8 @@ export function CpuFoundrySim() {
                           <strong>{formatNumber(playerOwnership, 1)}%</strong>
                         </div>
                         <div>
-                          <span>NPC aktif</span>
-                          <strong>{game.npcs.length}</strong>
+                          <span>Market cap</span>
+                          <strong>$ {formatNumber(getSharePrice(company) * company.sharesOutstanding, 1)}M</strong>
                         </div>
                       </div>
                       <p className={styles.itemDescription}>Tap untuk memantau dewan, investor terbesar, dividen/share, gaji CEO, dan opsi beli/jual saham.</p>
@@ -1802,11 +1870,19 @@ export function CpuFoundrySim() {
                       </div>
                       <div>
                         <span>Harga saham</span>
-                        <strong>$ {formatNumber(getSharePrice(focusedCompany), 1)}</strong>
+                        <strong>$ {formatNumber(getSharePrice(focusedCompany), 2)}</strong>
                       </div>
                       <div>
                         <span>Treasury/market</span>
                         <strong>{formatNumber(focusedCompany.marketPoolShares, 2)} saham</strong>
+                      </div>
+                      <div>
+                        <span>Market cap</span>
+                        <strong>$ {formatNumber(getSharePrice(focusedCompany) * focusedCompany.sharesOutstanding, 1)}M</strong>
+                      </div>
+                      <div>
+                        <span>Nilai/lembar intrinsik</span>
+                        <strong>$ {formatNumber(getCompanyValuation(focusedCompany) / focusedCompany.sharesOutstanding, 2)}</strong>
                       </div>
                     </div>
                     <div className={styles.memoCard}>
@@ -1970,13 +2046,13 @@ export function CpuFoundrySim() {
         </div>
       ) : null}
 
-      {isInvestmentMenuOpen && game ? (
+      {isInvestmentMenuOpen && game && investmentPreview ? (
         <div className={styles.modalOverlay} role="presentation" onClick={() => setIsInvestmentMenuOpen(false)}>
           <section className={styles.modalCard} role="dialog" aria-modal="true" aria-label="Investasi saham" onClick={(event) => event.stopPropagation()}>
             <div className={styles.modalHeader}>
               <div>
                 <p className={styles.panelTag}>Perdagangan saham</p>
-                <h2>Beli atau jual saham tanpa cheat</h2>
+                <h2>Beli atau jual saham realtime</h2>
               </div>
               <button type="button" className={styles.closeButton} onClick={() => setIsInvestmentMenuOpen(false)} aria-label="Tutup menu investasi">
                 ✕
@@ -2010,7 +2086,10 @@ export function CpuFoundrySim() {
                     <p className={styles.panelTag}>Nilai transaksi</p>
                     <strong>$ {formatNumber(investmentDraft.amount)}M</strong>
                   </div>
-                  <small>Cash: $ {formatNumber(game.player.cash, 1)}M · Saham kamu: {formatNumber(game.companies[investmentDraft.company].investors[game.player.id] ?? 0, 2)}</small>
+                  <small>
+                    Cash: $ {formatNumber(game.player.cash, 1)}M · Saham kamu: {formatNumber(investmentPreview.currentShares, 2)} · Likuiditas pasar:
+                    {' '}$ {formatNumber(investmentPreview.marketLiquidityValue, 1)}M
+                  </small>
                 </div>
                 <input className={styles.slider} type="range" min={0} max={INVESTMENT_OPTIONS.length - 1} step={1} value={Math.max(0, INVESTMENT_OPTIONS.indexOf(investmentDraft.amount as (typeof INVESTMENT_OPTIONS)[number]))} onChange={(event) => setInvestmentDraft((current) => ({ ...current, amount: INVESTMENT_OPTIONS[Number(event.target.value)] }))} aria-label="Slider nilai transaksi" />
                 <div className={styles.sliderLabels}>
@@ -2026,21 +2105,48 @@ export function CpuFoundrySim() {
                   <strong>{game.companies[investmentDraft.company].name}</strong>
                 </div>
                 <div>
-                  <span>Harga saat ini</span>
-                  <strong>$ {formatNumber(getSharePrice(game.companies[investmentDraft.company]), 1)} / share</strong>
+                  <span>Harga realtime</span>
+                  <strong>$ {formatNumber(investmentPreview.sharePrice, 2)} / share</strong>
+                </div>
+                <div>
+                  <span>Nilai perusahaan</span>
+                  <strong>$ {formatNumber(investmentPreview.valuation, 1)}M</strong>
+                </div>
+                <div>
+                  <span>Market cap sinkron</span>
+                  <strong>$ {formatNumber(investmentPreview.marketCap, 1)}M</strong>
+                </div>
+                <div>
+                  <span>Harga × total saham</span>
+                  <strong>$ {formatNumber(investmentPreview.sharePrice * game.companies[investmentDraft.company].sharesOutstanding, 1)}M</strong>
+                </div>
+                <div>
+                  <span>Saham berpindah</span>
+                  <strong>{formatNumber(investmentPreview.sharesMoved, 2)} saham</strong>
+                </div>
+                <div>
+                  <span>Nilai transaksi aktual</span>
+                  <strong>$ {formatNumber(investmentPreview.grossTradeValue, 2)}M</strong>
+                </div>
+                <div>
+                  <span>Fee transaksi</span>
+                  <strong>$ {formatNumber(investmentPreview.feeValue, 2)}M</strong>
+                </div>
+                <div>
+                  <span>{investmentDraft.mode === 'buy' ? 'Total dibayar' : 'Kas diterima'}</span>
+                  <strong>$ {formatNumber(Math.abs(investmentPreview.netCashDelta), 2)}M</strong>
                 </div>
                 <div>
                   <span>Ownership setelah aksi</span>
-                  <strong>
-                    {(() => {
-                      const company = game.companies[investmentDraft.company];
-                      const currentShares = company.investors[game.player.id] ?? 0;
-                      const price = getSharePrice(company);
-                      const movedShares = investmentDraft.amount / price;
-                      const futureShares = investmentDraft.mode === 'buy' ? currentShares + movedShares : Math.max(0, currentShares - movedShares);
-                      return `${formatNumber((futureShares / company.sharesOutstanding) * 100, 1)}%`;
-                    })()}
-                  </strong>
+                  <strong>{formatNumber(investmentPreview.futureOwnership, 2)}%</strong>
+                </div>
+                <div>
+                  <span>Nilai sahammu sekarang</span>
+                  <strong>$ {formatNumber(investmentPreview.currentHoldingValue, 2)}M</strong>
+                </div>
+                <div>
+                  <span>Nilai sahammu setelah aksi</span>
+                  <strong>$ {formatNumber(investmentPreview.futureHoldingValue, 2)}M</strong>
                 </div>
                 <div>
                   <span>Risiko CEO</span>
@@ -2048,8 +2154,12 @@ export function CpuFoundrySim() {
                 </div>
               </div>
 
-              <button type="button" className={styles.primaryButton} onClick={investInCompany}>
-                {investmentDraft.mode === 'buy' ? 'Beli saham sekarang' : 'Jual saham sekarang'}
+              <button type="button" className={styles.primaryButton} onClick={investInCompany} disabled={investmentPreview.grossTradeValue < MIN_TRADE_AMOUNT}>
+                {investmentPreview.grossTradeValue < MIN_TRADE_AMOUNT
+                  ? 'Nilai aktual terlalu kecil'
+                  : investmentDraft.mode === 'buy'
+                    ? 'Beli saham sekarang'
+                    : 'Jual saham sekarang'}
               </button>
             </div>
           </section>
