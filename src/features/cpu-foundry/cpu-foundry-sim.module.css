@@ -1,6 +1,7 @@
 .shell {
-  min-height: 100vh;
-  padding: 14px 12px 28px;
+  min-height: 100dvh;
+  padding: 10px 10px 20px;
+  overflow-x: hidden;
   background:
     radial-gradient(circle at top, rgba(56, 189, 248, 0.12), transparent 34%),
     linear-gradient(180deg, #050816 0%, #080d19 44%, #02040c 100%);
@@ -12,136 +13,146 @@
 .panel,
 .statChip,
 .memoCard,
+.itemCard,
+.modalCard,
 .sliderCard,
-.releasePreview,
-.itemCard {
-  border: 1px solid rgba(148, 163, 184, 0.16);
-  background: rgba(7, 12, 26, 0.88);
-  box-shadow: 0 12px 28px rgba(2, 6, 23, 0.34);
+.releasePreview {
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(7, 12, 26, 0.92);
+  box-shadow: 0 10px 24px rgba(2, 6, 23, 0.32);
 }
 
 .heroCard,
-.panel {
-  border-radius: 18px;
+.panel,
+.modalCard {
+  border-radius: 16px;
 }
 
 .heroCard {
-  padding: 14px;
+  padding: 10px;
 }
 
 .eyebrow,
 .panelTag,
 .statChip span,
-.inlineHighlights span,
+.topStrip span,
 .infoRow span,
 .field span,
 .sliderLabels span,
 .releasePreview span,
 .itemLabel {
   text-transform: uppercase;
-  letter-spacing: 0.12em;
-  font-size: 0.68rem;
+  letter-spacing: 0.11em;
+  font-size: 0.64rem;
   color: #94a3b8;
 }
 
-.heroTopRow {
+.heroHeader {
   display: flex;
-  align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
+  align-items: flex-start;
 }
 
-.heroTopRow h1 {
-  margin: 6px 0 8px;
-  font-size: 1.7rem;
-  line-height: 1.02;
-}
-
-.subtitle {
-  margin: 0;
-  color: #cbd5e1;
-  line-height: 1.45;
-  font-size: 0.92rem;
+.heroHeader h1 {
+  margin: 4px 0 0;
+  font-size: 1.32rem;
+  line-height: 1;
 }
 
 .yearBadge {
-  min-width: 64px;
+  min-width: 52px;
   border-radius: 999px;
-  padding: 8px 10px;
-  text-align: center;
-  font-weight: 800;
+  padding: 6px 8px;
   background: linear-gradient(135deg, #22d3ee 0%, #8b5cf6 100%);
   color: #020617;
+  font-weight: 800;
+  text-align: center;
 }
 
-.inlineHighlights,
+.subtitle {
+  margin-top: 8px;
+  font-size: 0.84rem;
+  line-height: 1.35;
+  color: #dbeafe;
+}
+
+.topStrip,
 .statGrid,
 .infoRow,
-.formStack,
 .panelBody,
-.panelBodyCompact {
+.panelList,
+.modalBody {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
-.inlineHighlights {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin-top: 12px;
+.topStrip {
+  grid-template-columns: 1fr 1fr auto;
+  gap: 6px;
+  margin-top: 10px;
 }
 
-.inlineHighlights div,
+.topStrip > div,
 .statChip,
-.releasePreview,
 .memoCard,
+.itemCard,
 .sliderCard,
-.itemCard {
-  border-radius: 14px;
-  padding: 12px;
+.releasePreview {
+  border-radius: 12px;
+  padding: 10px;
 }
 
-.inlineHighlights strong,
+.topStrip strong,
 .statChip strong,
 .infoRow strong,
 .releasePreview strong {
   display: block;
   margin-top: 4px;
-  font-size: 0.98rem;
+  font-size: 0.88rem;
+}
+
+.releaseTrigger,
+.primaryButton,
+.secondaryButton,
+.panelToggle,
+.closeButton {
+  border: none;
+  font: inherit;
+}
+
+.releaseTrigger {
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: linear-gradient(135deg, #f59e0b 0%, #fb7185 100%);
+  color: #111827;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
 .statGrid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin-top: 10px;
-}
-
-.statChip strong {
-  font-size: 1.02rem;
+  margin-top: 8px;
 }
 
 .panelStack {
   display: grid;
-  gap: 10px;
-  margin-top: 12px;
-  max-width: 760px;
+  gap: 8px;
+  margin-top: 10px;
+  max-width: 720px;
 }
 
 .panel {
   overflow: hidden;
 }
 
-.panelToggle,
-.primaryButton,
-.secondaryButton {
-  width: 100%;
-  border: none;
-  font: inherit;
-}
-
 .panelToggle {
+  width: 100%;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
-  padding: 14px;
+  gap: 8px;
+  padding: 12px;
   cursor: pointer;
   background: transparent;
   color: inherit;
@@ -149,45 +160,126 @@
 }
 
 .panelToggle h2,
-.itemCard h3 {
+.itemCard h3,
+.modalHeader h2 {
   margin: 4px 0 0;
-  font-size: 1rem;
+  font-size: 0.96rem;
 }
 
 .panelToggle span {
   flex-shrink: 0;
   border-radius: 999px;
-  padding: 6px 10px;
+  padding: 4px 8px;
   background: rgba(148, 163, 184, 0.12);
   color: #cbd5e1;
-  font-size: 0.8rem;
+  font-size: 0.74rem;
 }
 
 .panelBody,
-.panelBodyCompact {
-  padding: 0 14px 14px;
+.panelList {
+  padding: 0 12px 12px;
 }
 
 .infoRow {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.memoCard p {
-  margin: 6px 0 0;
+.memoCard p,
+.itemDescription {
+  margin-top: 6px;
   color: #dbeafe;
-  line-height: 1.45;
+  line-height: 1.35;
+  font-size: 0.84rem;
+}
+
+.itemTop {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.costPill {
+  flex-shrink: 0;
+  border-radius: 999px;
+  padding: 5px 8px;
+  background: rgba(34, 211, 238, 0.12);
+  color: #67e8f9;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.secondaryButton,
+.primaryButton {
+  width: 100%;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-weight: 700;
+}
+
+.secondaryButton {
+  margin-top: 8px;
+  background: linear-gradient(135deg, #38bdf8 0%, #8b5cf6 100%);
+  color: white;
+}
+
+.primaryButton {
+  background: linear-gradient(135deg, #f59e0b 0%, #fb7185 100%);
+  color: #111827;
+}
+
+.secondaryButton:disabled {
+  opacity: 0.45;
+}
+
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 14px 10px calc(14px + env(safe-area-inset-bottom));
+  background: rgba(2, 6, 23, 0.7);
+}
+
+.modalCard {
+  width: min(100%, 520px);
+  max-height: min(82dvh, 680px);
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.modalHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 12px 8px;
+}
+
+.closeButton {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.12);
+  color: #eff6ff;
+}
+
+.modalBody {
+  padding: 0 12px 12px;
 }
 
 .field {
   display: grid;
-  gap: 6px;
+  gap: 5px;
 }
 
 .field input {
   width: 100%;
   border: 1px solid rgba(148, 163, 184, 0.16);
-  border-radius: 12px;
-  padding: 11px 12px;
+  border-radius: 10px;
+  padding: 10px 11px;
   background: rgba(15, 23, 42, 0.9);
   color: #eff6ff;
   outline: none;
@@ -196,29 +288,30 @@
 .field input:focus,
 .slider:focus {
   border-color: rgba(56, 189, 248, 0.8);
-  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.16);
 }
 
 .sliderHeader {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
+  align-items: center;
 }
 
 .sliderHeader strong {
   display: block;
   margin-top: 4px;
-  font-size: 1rem;
+  font-size: 0.94rem;
 }
 
 .sliderHeader small {
   color: #93c5fd;
+  font-size: 0.76rem;
 }
 
 .slider {
   width: 100%;
-  margin: 14px 0 8px;
+  margin: 12px 0 6px;
   accent-color: #38bdf8;
 }
 
@@ -231,76 +324,18 @@
 .releasePreview {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.primaryButton,
-.secondaryButton {
-  border-radius: 12px;
-  padding: 12px 14px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: transform 160ms ease, opacity 160ms ease;
-}
-
-.primaryButton {
-  background: linear-gradient(135deg, #f59e0b 0%, #fb7185 100%);
-  color: #111827;
-}
-
-.secondaryButton {
-  margin-top: 10px;
-  background: linear-gradient(135deg, #38bdf8 0%, #8b5cf6 100%);
-  color: white;
-}
-
-.primaryButton:hover,
-.secondaryButton:hover:not(:disabled) {
-  transform: translateY(-1px);
-}
-
-.secondaryButton:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.itemTop {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  align-items: flex-start;
-}
-
-.costPill {
-  flex-shrink: 0;
-  border-radius: 999px;
-  padding: 6px 10px;
-  background: rgba(34, 211, 238, 0.12);
-  color: #67e8f9;
-  font-size: 0.78rem;
-  font-weight: 700;
-}
-
-.itemDescription {
-  margin: 10px 0 0;
-  color: #cbd5e1;
-  line-height: 1.45;
-  font-size: 0.9rem;
+  gap: 8px;
 }
 
 @media (min-width: 768px) {
   .shell {
-    padding: 24px 18px 36px;
+    padding: 16px 16px 30px;
     display: grid;
     justify-content: center;
   }
 
   .heroCard,
   .panelStack {
-    width: min(100%, 760px);
-  }
-
-  .statGrid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: min(100%, 720px);
   }
 }
