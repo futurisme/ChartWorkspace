@@ -6,10 +6,13 @@ import styles from './cpu-foundry-sim.module.css';
 type UpgradeKey = 'architecture' | 'lithography' | 'clockSpeed' | 'coreDesign' | 'cacheStack' | 'powerEfficiency';
 type TeamKey = 'researchers' | 'marketing' | 'fabrication';
 type PanelKey = 'profile' | 'intel';
-type CompanyDetailPanelKey = 'overview' | 'operations' | 'ownership' | 'governance' | 'intel';
+type CompanyDetailPanelKey = 'overview' | 'management' | 'operations' | 'ownership' | 'governance' | 'intel';
 type CompanyKey = 'cosmic' | 'rmd' | 'heroscop';
 type InvestorActionMode = 'buy' | 'sell';
 type StrategyStyle = 'value' | 'growth' | 'dividend' | 'activist' | 'balanced';
+type ExecutiveRole = 'coo' | 'cfo' | 'cto' | 'cmo';
+type ExecutiveDomain = 'operations' | 'finance' | 'technology' | 'marketing';
+type TradeRoute = 'auto' | 'company' | 'holders';
 
 type UpgradeState = {
   label: string;
@@ -36,6 +39,27 @@ type BoardMember = {
   seatType: 'chair' | 'shareholder' | 'founder' | 'independent' | 'employee';
   voteWeight: number;
   agenda: string;
+};
+
+type CompanyExecutive = {
+  role: ExecutiveRole;
+  title: string;
+  domain: ExecutiveDomain;
+  occupantId: string;
+  occupantName: string;
+  appointedBy: string;
+  salaryPerDay: number;
+  effectiveness: number;
+  mandate: string;
+  note: string;
+};
+
+type ShareListing = {
+  sellerId: string;
+  sharesAvailable: number;
+  priceMultiplier: 2 | 3 | 4;
+  openedDay: number;
+  note: string;
 };
 
 type CompanyState = {
@@ -65,6 +89,12 @@ type CompanyState = {
   ceoSalaryPerDay: number;
   boardMood: number;
   boardMembers: BoardMember[];
+  executives: Record<ExecutiveRole, CompanyExecutive | null>;
+  executivePayrollPerDay: number;
+  executivePulse: string;
+  nextManagementReviewDay: number;
+  capitalStrain: number;
+  shareListings: ShareListing[];
 };
 
 type PlayerProfile = {
@@ -86,6 +116,7 @@ type NpcInvestor = {
   patience: number;
   horizonDays: number;
   reserveRatio: number;
+  intelligence: number;
   analysisNote: string;
   active: boolean;
 };
@@ -114,7 +145,14 @@ type ReleaseDraft = {
 type InvestmentDraft = {
   company: CompanyKey;
   mode: InvestorActionMode;
+  route: TradeRoute;
   sliderPercent: number;
+};
+
+type ShareListingDraft = {
+  company: CompanyKey;
+  shares: string;
+  priceMultiplier: 2 | 3 | 4;
 };
 
 type SliderStop = {
@@ -131,6 +169,7 @@ type TradePreview = {
   maxTradeValue: number;
   grossTradeValue: number;
   feeValue: number;
+  feeRate: number;
   netCashDelta: number;
   sharesMoved: number;
   futureShares: number;
@@ -139,21 +178,38 @@ type TradePreview = {
   marketLiquidityValue: number;
   currentHoldingValue: number;
   futureHoldingValue: number;
+  route: TradeRoute;
+  routeLabel: string;
+  companyCashDelta: number;
+  companyValueDelta: number;
+  counterpartyCount: number;
+  counterpartyLabel: string;
 };
 
-const STORAGE_KEY = 'cpu-foundry-profile-sim-v4';
+type CompanyAiAction = {
+  type: 'upgrade' | 'team' | 'payout';
+  key: UpgradeKey | TeamKey | 'payout-up' | 'payout-down';
+  resource: 'research' | 'cash';
+  cost: number;
+  score: number;
+  label: string;
+  rationale: string;
+};
+
+const STORAGE_KEY = 'cpu-foundry-profile-sim-v8';
 const TICK_MS = 200;
 const START_DATE_UTC = Date.UTC(2000, 0, 1);
 const NPC_ACTION_EVERY_TICKS = 10;
-const PLAYER_STARTING_CASH = 480;
+const PLAYER_STARTING_CASH = 140;
 const INITIAL_NPC_COUNT = 20;
 const MAX_ACTIVE_NPCS = 35;
 const NPC_GROWTH_START_DAY = 180;
 const NPC_GROWTH_INTERVAL_DAYS = 60;
 const NPC_GROWTH_BATCH = 3;
 const TOTAL_SHARES = 1000;
-const TRADING_FEE_RATE = 0.02;
-const MIN_TRADE_AMOUNT = 0.5;
+const COMPANY_TRADE_FEE_RATE = 0.018;
+const HOLDER_TRADE_FEE_RATE = 0.052;
+const MIN_TRADE_AMOUNT = 0.1;
 const COMPANY_KEYS: CompanyKey[] = ['cosmic', 'rmd', 'heroscop'];
 const TRANSACTION_SLIDER_STOPS: SliderStop[] = [
   { label: '0%', value: 0 },
@@ -173,6 +229,7 @@ const DEFAULT_OPEN_PANELS: Record<PanelKey, boolean> = {
 };
 const DEFAULT_COMPANY_DETAIL_PANELS: Record<CompanyDetailPanelKey, boolean> = {
   overview: true,
+  management: true,
   operations: true,
   ownership: false,
   governance: true,
@@ -188,6 +245,11 @@ const DEFAULT_RELEASE_DRAFT: ReleaseDraft = {
   cpuName: 'N-01',
   priceIndex: 1,
 };
+const DEFAULT_SHARE_LISTING_DRAFT: ShareListingDraft = {
+  company: 'cosmic',
+  shares: '',
+  priceMultiplier: 2,
+};
 const STRATEGY_LABELS: Record<StrategyStyle, string> = {
   value: 'Value',
   growth: 'Growth',
@@ -195,6 +257,33 @@ const STRATEGY_LABELS: Record<StrategyStyle, string> = {
   activist: 'Activist',
   balanced: 'Balanced',
 };
+const EXECUTIVE_ROLE_META: Record<ExecutiveRole, { title: string; domain: ExecutiveDomain; mandate: string; permissionLabel: string }> = {
+  coo: {
+    title: 'COO',
+    domain: 'operations',
+    mandate: 'Mengelola eksekusi operasi, kapasitas fab, dan disiplin delivery.',
+    permissionLabel: 'Boleh ekspansi operasi/fabrication.',
+  },
+  cfo: {
+    title: 'CFO',
+    domain: 'finance',
+    mandate: 'Menjaga kas, payout, dan struktur modal tetap sehat.',
+    permissionLabel: 'Boleh atur payout dan ritme alokasi modal.',
+  },
+  cto: {
+    title: 'CTO',
+    domain: 'technology',
+    mandate: 'Memimpin roadmap arsitektur, node, dan readiness product.',
+    permissionLabel: 'Boleh upgrade teknologi dan release CPU.',
+  },
+  cmo: {
+    title: 'CMO',
+    domain: 'marketing',
+    mandate: 'Mengatur go-to-market, brand pressure, dan momentum demand.',
+    permissionLabel: 'Boleh ekspansi marketing dan dukung peluncuran.',
+  },
+};
+const EXECUTIVE_ROLES = Object.keys(EXECUTIVE_ROLE_META) as ExecutiveRole[];
 const NPC_FIRST_NAMES = ['Iris', 'Marco', 'Sora', 'Nadia', 'Riven', 'Kael', 'Tala', 'Vera', 'Noel', 'Zane', 'Arin', 'Luca', 'Mira', 'Dian', 'Kara', 'Raka', 'Sven', 'Elin', 'Timo', 'Rhea'];
 const NPC_LAST_NAMES = ['Vale', 'Zhen', 'Kim', 'Torres', 'Hale', 'Morrow', 'Ishida', 'Quill', 'Sato', 'Reyes', 'Prasetyo', 'Wijaya', 'Sullivan', 'Frost', 'Tanaka'];
 const NPC_PERSONAS = [
@@ -394,7 +483,7 @@ function calculateRevenuePerDay(
   reputation: number,
   boardMood: number
 ) {
-  return 9 + teams.fabrication.count * 3 + teams.marketing.count * 1.9 + calculateCpuScore(upgrades) * 0.018 + marketShare * 0.9 + reputation * 0.22 + boardMood * 1.6;
+  return 4.8 + teams.fabrication.count * 1.65 + teams.marketing.count * 1.05 + calculateCpuScore(upgrades) * 0.009 + marketShare * 0.42 + reputation * 0.11 + boardMood * 0.8;
 }
 
 function calculateLaunchRevenue(
@@ -413,12 +502,24 @@ function getCompanyInvestmentTotal(company: CompanyState) {
 
 function getSharePrice(company: CompanyState) {
   const valuation = getCompanyValuation(company);
-  return Math.max(5, valuation / company.sharesOutstanding);
+  return Math.max(0.08, valuation / company.sharesOutstanding);
 }
 
 function getCompanyValuation(company: CompanyState) {
   const cpuScore = calculateCpuScore(company.upgrades);
-  return Math.round((company.cash * 1.15 + company.revenuePerDay * 18 + company.marketShare * 26 + company.reputation * 12 + cpuScore * 0.55 + company.research * 0.35 + company.boardMood * 22) * 10) / 10;
+  return Math.max(
+    20,
+    Math.round((
+      company.cash
+      + company.revenuePerDay * 6.2
+      + company.marketShare * 7
+      + company.reputation * 4.1
+      + cpuScore * 0.082
+      + company.research * 0.08
+      + company.boardMood * 6
+      - company.capitalStrain
+    ) * 10) / 10
+  );
 }
 
 function getOwnershipPercent(company: CompanyState, investorId: string) {
@@ -432,36 +533,301 @@ function getInvestorCash(game: GameState, investorId: string) {
   return game.npcs.find((npc) => npc.id === investorId)?.cash ?? 0;
 }
 
-function getMaxTradeValue(company: CompanyState, investorCash: number, currentShares: number, mode: InvestorActionMode) {
-  return mode === 'buy'
-    ? Math.max(0, Math.min(company.marketPoolShares * getSharePrice(company), investorCash / (1 + TRADING_FEE_RATE)))
-    : Math.max(0, currentShares * getSharePrice(company));
+function getListingAskPrice(company: CompanyState, listing: ShareListing) {
+  return getSharePrice(company) * listing.priceMultiplier;
+}
+
+function getInvestorOpenListedShares(company: CompanyState, investorId: string) {
+  return company.shareListings
+    .filter((listing) => listing.sellerId === investorId)
+    .reduce((sum, listing) => sum + listing.sharesAvailable, 0);
+}
+
+function getAvailableSharesToList(company: CompanyState, investorId: string) {
+  return Math.max(0, (company.investors[investorId] ?? 0) - getInvestorOpenListedShares(company, investorId));
+}
+
+function sanitizeShareListings(company: CompanyState) {
+  return company.shareListings
+    .map((listing) => ({
+      ...listing,
+      sharesAvailable: Math.max(0, Math.min(listing.sharesAvailable, company.investors[listing.sellerId] ?? 0)),
+    }))
+    .filter((listing) => listing.sharesAvailable > 0.01);
+}
+
+function upsertShareListing(game: GameState, companyKey: CompanyKey, sellerId: string, sharesAvailable: number, priceMultiplier: 2 | 3 | 4, note: string) {
+  const company = game.companies[companyKey];
+  const nextListing: ShareListing = {
+    sellerId,
+    sharesAvailable: Math.max(0, Math.min(sharesAvailable, company.investors[sellerId] ?? 0)),
+    priceMultiplier,
+    openedDay: game.elapsedDays,
+    note,
+  };
+  const filtered = company.shareListings.filter((listing) => listing.sellerId !== sellerId);
+  return {
+    ...game,
+    companies: {
+      ...game.companies,
+      [companyKey]: {
+        ...company,
+        shareListings: sanitizeShareListings({
+          ...company,
+          shareListings: nextListing.sharesAvailable > 0.01 ? [...filtered, nextListing] : filtered,
+        }),
+      },
+    },
+  };
+}
+
+function clearShareListing(game: GameState, companyKey: CompanyKey, sellerId: string) {
+  const company = game.companies[companyKey];
+  return {
+    ...game,
+    companies: {
+      ...game.companies,
+      [companyKey]: {
+        ...company,
+        shareListings: company.shareListings.filter((listing) => listing.sellerId !== sellerId),
+      },
+    },
+  };
+}
+
+function getVisibleShareListings(company: CompanyState, excludeBuyerId?: string) {
+  return sanitizeShareListings(company)
+    .filter((listing) => listing.sellerId !== excludeBuyerId)
+    .sort((left, right) => {
+      if (left.priceMultiplier !== right.priceMultiplier) return left.priceMultiplier - right.priceMultiplier;
+      return left.openedDay - right.openedDay;
+    });
+}
+
+function allocateHolderBuyFromListings(company: CompanyState, listings: ShareListing[], requestedGrossValue: number) {
+  let remainingValue = Math.max(0, requestedGrossValue);
+  let grossTradeValue = 0;
+  let sharesMoved = 0;
+  const fills: Array<{ sellerId: string; shares: number; value: number; priceMultiplier: 2 | 3 | 4 }> = [];
+
+  listings.forEach((listing) => {
+    if (remainingValue <= 0.0001) return;
+    const askPrice = getListingAskPrice(company, listing);
+    const maxListingValue = listing.sharesAvailable * askPrice;
+    const valueTaken = Math.min(maxListingValue, remainingValue);
+    if (valueTaken <= 0.0001) return;
+    const sharesTaken = valueTaken / askPrice;
+    remainingValue -= valueTaken;
+    grossTradeValue += valueTaken;
+    sharesMoved += sharesTaken;
+    fills.push({
+      sellerId: listing.sellerId,
+      shares: sharesTaken,
+      value: valueTaken,
+      priceMultiplier: listing.priceMultiplier,
+    });
+  });
+
+  return {
+    grossTradeValue,
+    sharesMoved,
+    fills,
+    counterpartyCount: fills.length,
+  };
 }
 
 function getRequestedTradeValue(maxTradeValue: number, sliderPercent: number) {
   return maxTradeValue * clamp(sliderPercent, 0, 100) / 100;
 }
 
+function getTradeRouteLabel(route: TradeRoute) {
+  if (route === 'company') return 'Treasury / perusahaan';
+  if (route === 'holders') return 'Sesama pemegang saham';
+  return 'Auto';
+}
+
+function getTradeFeeRate(route: TradeRoute) {
+  return route === 'holders' ? HOLDER_TRADE_FEE_RATE : COMPANY_TRADE_FEE_RATE;
+}
+
+function getInvestorLiquidityReserve(game: GameState, investorId: string) {
+  if (investorId === game.player.id) return 18;
+  const npc = getNpcById(game, investorId);
+  if (!npc) return Infinity;
+  return 10 + npc.cash * npc.reserveRatio;
+}
+
+function getBuyerDemandBudget(game: GameState, company: CompanyState, buyerId: string) {
+  const cash = getInvestorCash(game, buyerId);
+  if (cash <= 0.01) return 0;
+  const npc = getNpcById(game, buyerId);
+  const reserve = getInvestorLiquidityReserve(game, buyerId);
+  const disposable = Math.max(0, cash - reserve);
+  if (disposable <= 0) return 0;
+  const strategicBias =
+    buyerId === game.player.id
+      ? 0.55
+      : npc
+        ? clamp(0.24 + npc.intelligence * 0.25 + npc.boldness * 0.2 + (npc.focusCompany === company.key ? 0.16 : 0), 0.18, 0.92)
+        : 0;
+  return disposable * strategicBias;
+}
+
+function getHolderRouteCapacity(game: GameState, company: CompanyState, investorId: string, mode: InvestorActionMode) {
+  if (mode === 'buy') {
+    const listings = getVisibleShareListings(company, investorId);
+    return {
+      maxTradeValue: listings.reduce((sum, listing) => sum + listing.sharesAvailable * getListingAskPrice(company, listing), 0),
+      counterpartyCount: listings.length,
+      counterpartyLabel: listings.length > 0 ? 'Membeli dari listing holder yang sedang dibuka, dimulai dari harga termudah.' : 'Belum ada holder yang membuka saham untuk dijual.',
+    };
+  }
+
+  const buyers = Object.keys(company.investors)
+    .filter((holderId) => holderId !== investorId)
+    .map((holderId) => getBuyerDemandBudget(game, company, holderId));
+  return {
+    maxTradeValue: buyers.reduce((sum, budget) => sum + budget, 0),
+    counterpartyCount: buyers.filter((budget) => budget >= MIN_TRADE_AMOUNT).length,
+    counterpartyLabel: buyers.some((budget) => budget >= MIN_TRADE_AMOUNT) ? 'Likuiditas datang dari holder lain yang punya kas dan keyakinan.' : 'Belum ada holder lain yang siap menyerap penjualan ini.',
+  };
+}
+
+function chooseAutoTradeRoute(game: GameState, company: CompanyState, investorId: string, mode: InvestorActionMode, investorCash: number, currentShares: number) {
+  const sharePrice = getSharePrice(company);
+  if (mode === 'buy') {
+    const companyLimit = Math.max(0, Math.min(company.marketPoolShares * sharePrice, investorCash / (1 + COMPANY_TRADE_FEE_RATE)));
+    return companyLimit >= MIN_TRADE_AMOUNT ? 'company' : 'holders';
+  }
+  const companyLimit = Math.max(0, currentShares * sharePrice);
+  const holderCapacity = getHolderRouteCapacity(game, company, investorId, mode).maxTradeValue;
+  const companyBuybackPenalty = mode === 'sell' ? clamp((sharePrice * currentShares - company.cash) / Math.max(1, sharePrice * currentShares), 0, 1) : 0;
+  const companyScore = companyLimit > 0 ? companyLimit * 0.9 - COMPANY_TRADE_FEE_RATE * 100 - companyBuybackPenalty * 24 : -Infinity;
+  const holderScore = holderCapacity > 0
+    ? holderCapacity * 0.82 - HOLDER_TRADE_FEE_RATE * 100 + (mode === 'sell' && company.cash < sharePrice * currentShares * 0.55 ? 8 : 0)
+    : -Infinity;
+  return holderScore > companyScore ? 'holders' : 'company';
+}
+
+function getMaxTradeValue(game: GameState, company: CompanyState, investorId: string, investorCash: number, currentShares: number, mode: InvestorActionMode, route: TradeRoute) {
+  if (route === 'auto' && mode === 'buy') {
+    const companyCapacity = Math.max(0, Math.min(company.marketPoolShares * getSharePrice(company), investorCash / (1 + COMPANY_TRADE_FEE_RATE)));
+    const remainingCash = Math.max(0, investorCash - companyCapacity * (1 + COMPANY_TRADE_FEE_RATE));
+    const holderCapacity = getHolderRouteCapacity(game, company, investorId, mode).maxTradeValue;
+    return companyCapacity + Math.max(0, Math.min(holderCapacity, remainingCash / (1 + HOLDER_TRADE_FEE_RATE)));
+  }
+  const resolvedRoute = route === 'auto' ? chooseAutoTradeRoute(game, company, investorId, mode, investorCash, currentShares) : route;
+  if (resolvedRoute === 'holders') {
+    const holderCapacity = getHolderRouteCapacity(game, company, investorId, mode).maxTradeValue;
+    return mode === 'buy'
+      ? Math.max(0, Math.min(holderCapacity, investorCash / (1 + HOLDER_TRADE_FEE_RATE)))
+      : Math.max(0, Math.min(currentShares * getSharePrice(company), holderCapacity));
+  }
+  return mode === 'buy'
+    ? Math.max(0, Math.min(company.marketPoolShares * getSharePrice(company), investorCash / (1 + COMPANY_TRADE_FEE_RATE)))
+    : Math.max(0, currentShares * getSharePrice(company));
+}
+
 function getTradePreview(
+  game: GameState,
   company: CompanyState,
+  investorId: string,
   investorCash: number,
   currentShares: number,
   mode: InvestorActionMode,
-  requestedValue: number
+  requestedValue: number,
+  route: TradeRoute
 ): TradePreview {
+  if (route === 'auto' && mode === 'buy') {
+    const valuation = getCompanyValuation(company);
+    const sharePrice = getSharePrice(company);
+    const marketCap = sharePrice * company.sharesOutstanding;
+    const normalizedRequestedValue = Math.max(0, requestedValue);
+    const companyCapacity = Math.max(0, Math.min(company.marketPoolShares * sharePrice, investorCash / (1 + COMPANY_TRADE_FEE_RATE)));
+    const companyGrossValue = Math.min(normalizedRequestedValue, companyCapacity);
+    const companyShares = sharePrice > 0 ? companyGrossValue / sharePrice : 0;
+    const companyFeeValue = companyGrossValue * COMPANY_TRADE_FEE_RATE;
+    const remainingCash = Math.max(0, investorCash - companyGrossValue - companyFeeValue);
+    const remainingRequestedValue = Math.max(0, normalizedRequestedValue - companyGrossValue);
+    const holderListings = getVisibleShareListings(company, investorId);
+    const holderCapacity = getHolderRouteCapacity(game, company, investorId, 'buy').maxTradeValue;
+    const holderBudget = Math.max(0, Math.min(holderCapacity, remainingRequestedValue, remainingCash / (1 + HOLDER_TRADE_FEE_RATE)));
+    const holderAllocation = allocateHolderBuyFromListings(company, holderListings, holderBudget);
+    const holderFeeValue = holderAllocation.grossTradeValue * HOLDER_TRADE_FEE_RATE;
+    const grossTradeValue = companyGrossValue + holderAllocation.grossTradeValue;
+    const feeValue = companyFeeValue + holderFeeValue;
+    const sharesMoved = companyShares + holderAllocation.sharesMoved;
+    const futureShares = currentShares + sharesMoved;
+    const futureOwnership = company.sharesOutstanding > 0 ? futureShares / company.sharesOutstanding * 100 : 0;
+    const currentHoldingValue = currentShares * sharePrice;
+    const futureHoldingValue = futureShares * sharePrice;
+    return {
+      valuation,
+      sharePrice,
+      marketCap,
+      currentShares,
+      requestedValue: normalizedRequestedValue,
+      maxTradeValue: getMaxTradeValue(game, company, investorId, investorCash, currentShares, mode, route),
+      grossTradeValue,
+      feeValue,
+      feeRate: grossTradeValue > 0 ? feeValue / grossTradeValue : 0,
+      netCashDelta: -(grossTradeValue + feeValue),
+      sharesMoved,
+      futureShares,
+      futureOwnership,
+      marketLiquidityShares: company.marketPoolShares,
+      marketLiquidityValue: company.marketPoolShares * sharePrice,
+      currentHoldingValue,
+      futureHoldingValue,
+      route: 'auto',
+      routeLabel: holderAllocation.grossTradeValue > 0 ? 'Auto (perusahaan → holder)' : 'Auto (perusahaan)',
+      companyCashDelta: companyGrossValue,
+      companyValueDelta: companyGrossValue,
+      counterpartyCount: holderAllocation.counterpartyCount + (companyGrossValue > 0 ? 1 : 0),
+      counterpartyLabel: holderAllocation.counterpartyCount > 0
+        ? `Treasury dipakai lebih dulu, sisanya menyapu ${holderAllocation.counterpartyCount} listing holder termurah.`
+        : 'Treasury perusahaan dipakai lebih dulu; belum perlu sentuh listing holder.',
+    };
+  }
+
+  const resolvedRoute = route === 'auto' ? chooseAutoTradeRoute(game, company, investorId, mode, investorCash, currentShares) : route;
   const valuation = getCompanyValuation(company);
   const sharePrice = getSharePrice(company);
   const marketCap = sharePrice * company.sharesOutstanding;
   const normalizedRequestedValue = Math.max(0, requestedValue);
-  const maxTradeValue = getMaxTradeValue(company, investorCash, currentShares, mode);
+  const routeCapacity = resolvedRoute === 'holders'
+    ? getHolderRouteCapacity(game, company, investorId, mode)
+    : {
+        maxTradeValue: mode === 'buy' ? company.marketPoolShares * sharePrice : currentShares * sharePrice,
+        counterpartyCount: 1,
+        counterpartyLabel: mode === 'buy'
+          ? 'Transaksi menambah kas perusahaan lewat treasury stock.'
+          : 'Transaksi buyback mengurangi kas perusahaan terlebih dahulu.',
+      };
+  const feeRate = getTradeFeeRate(resolvedRoute);
+  const maxTradeValue = mode === 'buy'
+    ? Math.max(0, Math.min(routeCapacity.maxTradeValue, investorCash / (1 + feeRate)))
+    : Math.max(0, Math.min(currentShares * sharePrice, routeCapacity.maxTradeValue));
   const grossTradeValue = Math.min(normalizedRequestedValue, maxTradeValue);
-  const sharesMoved = sharePrice > 0 ? grossTradeValue / sharePrice : 0;
-  const feeValue = grossTradeValue * TRADING_FEE_RATE;
+  const sharesMoved = resolvedRoute === 'holders' && mode === 'buy'
+    ? allocateHolderBuyFromListings(company, getVisibleShareListings(company, investorId), grossTradeValue).sharesMoved
+    : sharePrice > 0 ? grossTradeValue / sharePrice : 0;
+  const feeValue = grossTradeValue * feeRate;
   const netCashDelta = mode === 'buy' ? -(grossTradeValue + feeValue) : grossTradeValue - feeValue;
   const futureShares = mode === 'buy' ? currentShares + sharesMoved : Math.max(0, currentShares - sharesMoved);
   const futureOwnership = company.sharesOutstanding > 0 ? futureShares / company.sharesOutstanding * 100 : 0;
   const currentHoldingValue = currentShares * sharePrice;
   const futureHoldingValue = futureShares * sharePrice;
+  const companyCashDelta = resolvedRoute === 'company'
+    ? mode === 'buy'
+      ? grossTradeValue
+      : -Math.min(company.cash, grossTradeValue)
+    : 0;
+  const companyValueDelta = resolvedRoute === 'company'
+    ? mode === 'buy'
+      ? grossTradeValue
+      : -grossTradeValue
+    : 0;
 
   return {
     valuation,
@@ -472,6 +838,7 @@ function getTradePreview(
     maxTradeValue,
     grossTradeValue,
     feeValue,
+    feeRate,
     netCashDelta,
     sharesMoved,
     futureShares,
@@ -480,6 +847,12 @@ function getTradePreview(
     marketLiquidityValue: company.marketPoolShares * sharePrice,
     currentHoldingValue,
     futureHoldingValue,
+    route: resolvedRoute,
+    routeLabel: getTradeRouteLabel(resolvedRoute),
+    companyCashDelta,
+    companyValueDelta,
+    counterpartyCount: routeCapacity.counterpartyCount,
+    counterpartyLabel: routeCapacity.counterpartyLabel,
   };
 }
 
@@ -497,6 +870,216 @@ function investorDisplayName(game: GameState, investorId: string) {
   }
   if (investorId.startsWith('institution_')) return investorId.replace('institution_', '').replace(/_/g, ' ');
   return investorId;
+}
+
+function getNpcById(game: GameState, investorId: string) {
+  return game.npcs.find((npc) => npc.id === investorId) ?? null;
+}
+
+function isHumanExecutiveCandidateId(investorId: string) {
+  return investorId.startsWith('npc_') || investorId.startsWith('player-') || investorId.startsWith('founder_');
+}
+
+function getExecutiveCandidatePool(game: GameState, company: CompanyState, ceoId: string) {
+  const rankedInvestors = Object.entries(company.investors)
+    .filter(([investorId, shares]) => shares > 0.01 && isHumanExecutiveCandidateId(investorId) && investorId !== ceoId)
+    .sort(([, left], [, right]) => right - left)
+    .map(([investorId]) => investorId);
+  const externalNpcTalent = game.npcs
+    .filter((npc) => npc.id !== ceoId && !rankedInvestors.includes(npc.id))
+    .filter((npc) => npc.focusCompany === company.key || npc.intelligence > 0.86)
+    .sort((left, right) => {
+      const leftScore = left.intelligence * 1.3 + left.patience * 0.4 + left.boldness * 0.2;
+      const rightScore = right.intelligence * 1.3 + right.patience * 0.4 + right.boldness * 0.2;
+      return rightScore - leftScore;
+    })
+    .slice(0, 4)
+    .map((npc) => npc.id);
+  const playerCandidate = company.investors[game.player.id] ?? 0;
+  const merged = Array.from(
+    new Set([
+      ...(playerCandidate > 0.01 && game.player.id !== ceoId ? [game.player.id] : []),
+      ...rankedInvestors,
+      ...externalNpcTalent,
+    ])
+  );
+  return merged.slice(0, 6);
+}
+
+function getManagementCadenceDays(company: CompanyState, ceoNpc: NpcInvestor) {
+  const stress = getCompanyStressLevel(company);
+  const resourceContext = getManagementResourceContext(company);
+  return clamp(
+    Math.round(10 - ceoNpc.intelligence * 3.4 - ceoNpc.boldness * 1.6 - stress * 2.8 - resourceContext.managementIntensity * 2.6 + ceoNpc.patience * 1.1),
+    2,
+    10
+  );
+}
+
+function getExecutiveCandidateScore(game: GameState, company: CompanyState, candidateId: string, role: ExecutiveRole) {
+  const ownership = getOwnershipPercent(company, candidateId);
+  const npc = getNpcById(game, candidateId);
+  const isFounder = candidateId === company.founderInvestorId;
+  const isPlayer = candidateId === game.player.id;
+  const intelligence = npc?.intelligence ?? (isPlayer ? 0.84 : isFounder ? 0.78 : 0.7);
+  const patience = npc?.patience ?? 0.7;
+  const boldness = npc?.boldness ?? 0.62;
+  const alignment = npc?.focusCompany === company.key ? 0.1 : 0;
+  const strategyFit =
+    role === 'cfo'
+      ? patience * 0.8 + (npc?.strategy === 'dividend' || npc?.strategy === 'value' ? 0.16 : 0)
+      : role === 'cto'
+        ? intelligence * 0.85 + (isFounder ? 0.18 : 0)
+        : role === 'coo'
+          ? patience * 0.42 + boldness * 0.28 + (isFounder ? 0.12 : 0)
+          : boldness * 0.55 + (npc?.strategy === 'growth' ? 0.18 : 0);
+
+  return ownership * 0.07 + intelligence * 1.2 + strategyFit + alignment;
+}
+
+function calculateExecutiveNeed(role: ExecutiveRole, company: CompanyState) {
+  const stress = getCompanyStressLevel(company);
+  const management = getManagementResourceContext(company);
+  const researchGap = clamp((16 - company.researchPerDay) / 16, 0, 1);
+  const marketGap = clamp((24 - company.marketShare) / 24, 0, 1);
+  const reputationGap = clamp((48 - company.reputation) / 48, 0, 1);
+  const cashStress = clamp((management.cashReserveTarget - company.cash) / Math.max(1, management.cashReserveTarget), 0, 1);
+  const fabGap = clamp((4 - company.teams.fabrication.count) / 4, 0, 1);
+  const marketingGap = clamp((4 - company.teams.marketing.count) / 4, 0, 1);
+
+  if (role === 'cto') return clamp(0.2 + researchGap * 0.7 + stress * 0.2 + management.researchOverflow * 0.14 + (company.releaseCount < 4 ? 0.08 : 0), 0, 1.4);
+  if (role === 'coo') return clamp(0.16 + fabGap * 0.58 + stress * 0.36 + company.marketShare / 160 + management.cashOverflow * 0.12, 0, 1.4);
+  if (role === 'cfo') return clamp(0.14 + cashStress * 0.74 + stress * 0.28 + company.payoutRatio + management.cashOverflow * 0.18, 0, 1.4);
+  return clamp(0.14 + marketGap * 0.56 + reputationGap * 0.34 + marketingGap * 0.38 + management.cashOverflow * 0.08, 0, 1.4);
+}
+
+function createExecutiveRecord(
+  game: GameState,
+  company: CompanyState,
+  role: ExecutiveRole,
+  occupantId: string,
+  appointedBy: string,
+  note: string
+): CompanyExecutive {
+  const meta = EXECUTIVE_ROLE_META[role];
+  const baseScore = getExecutiveCandidateScore(game, company, occupantId, role);
+  const effectiveness = clamp(0.62 + baseScore * 0.16, 0.65, 1.35);
+  const salaryPerDay = Math.max(0.25, getCompanyValuation(company) * 0.00022 * effectiveness + getOwnershipPercent(company, occupantId) * 0.006);
+  return {
+    role,
+    title: meta.title,
+    domain: meta.domain,
+    occupantId,
+    occupantName: investorDisplayName(game, occupantId),
+    appointedBy,
+    salaryPerDay,
+    effectiveness,
+    mandate: meta.mandate,
+    note,
+  };
+}
+
+function createEmptyExecutiveMap(): Record<ExecutiveRole, CompanyExecutive | null> {
+  return {
+    coo: null,
+    cfo: null,
+    cto: null,
+    cmo: null,
+  };
+}
+
+function sanitizeExecutiveAssignments(game: GameState, company: CompanyState, ceoId: string) {
+  const assignments = createEmptyExecutiveMap();
+  EXECUTIVE_ROLES.forEach((role) => {
+    const current = company.executives?.[role];
+    if (!current || !isHumanExecutiveCandidateId(current.occupantId) || current.occupantId === ceoId) return;
+    assignments[role] = createExecutiveRecord(
+      game,
+      company,
+      role,
+      current.occupantId,
+      current.appointedBy || ceoId,
+      current.note || `${EXECUTIVE_ROLE_META[role].title} menjaga ${company.name} tetap disiplin.`
+    );
+  });
+  return assignments;
+}
+
+function planNpcExecutiveAssignments(game: GameState, company: CompanyState, ceoId: string) {
+  const ceoNpc = getNpcById(game, ceoId);
+  if (!ceoNpc) {
+    const sanitized = sanitizeExecutiveAssignments(game, company, ceoId);
+    const payroll = EXECUTIVE_ROLES.reduce((sum, role) => sum + (sanitized[role]?.salaryPerDay ?? 0), 0);
+    return {
+      executives: sanitized,
+      executivePayrollPerDay: payroll,
+      executivePulse: `${company.ceoName} menjaga struktur eksekutif tetap manual dan selektif.`,
+    };
+  }
+
+  const intelligence = ceoNpc.intelligence;
+  const threshold = 0.46 + (1 - intelligence) * 0.18;
+  const pool = getExecutiveCandidatePool(game, company, ceoId);
+  const used = new Set<string>();
+  const executives = createEmptyExecutiveMap();
+  const chosenRoles: ExecutiveRole[] = [];
+
+  EXECUTIVE_ROLES.forEach((role) => {
+    const need = calculateExecutiveNeed(role, company);
+    if (need < threshold) return;
+    const currentOccupantId = company.executives?.[role]?.occupantId;
+    const candidate = pool
+      .filter((candidateId) => !used.has(candidateId))
+      .map((candidateId) => ({
+        candidateId,
+        score: getExecutiveCandidateScore(game, company, candidateId, role) + need * 0.8 + (candidateId === currentOccupantId ? 0.24 : 0),
+      }))
+      .sort((left, right) => right.score - left.score)[0];
+
+    if (!candidate || candidate.score < 1.2) return;
+    used.add(candidate.candidateId);
+    chosenRoles.push(role);
+    executives[role] = createExecutiveRecord(
+      game,
+      company,
+      role,
+      candidate.candidateId,
+      ceoId,
+      `${ceoNpc.name} menunjuk ${investorDisplayName(game, candidate.candidateId)} sebagai ${EXECUTIVE_ROLE_META[role].title} karena kebutuhan ${EXECUTIVE_ROLE_META[role].domain}.`
+    );
+  });
+
+  const executivePayrollPerDay = EXECUTIVE_ROLES.reduce((sum, role) => sum + (executives[role]?.salaryPerDay ?? 0), 0);
+  const executivePulse = chosenRoles.length === 0
+    ? `${ceoNpc.name} menilai ${company.name} belum membutuhkan eksekutif tambahan saat ini.`
+    : `${ceoNpc.name} merancang struktur ${chosenRoles.map((role) => EXECUTIVE_ROLE_META[role].title).join(', ')} untuk menjaga ${company.name} tetap lincah.`;
+
+  return {
+    executives,
+    executivePayrollPerDay,
+    executivePulse,
+  };
+}
+
+function getExecutiveCoverage(company: CompanyState, role: ExecutiveRole) {
+  return company.executives[role]?.effectiveness ?? 0;
+}
+
+function getExecutiveRolesForInvestor(company: CompanyState, investorId: string) {
+  return EXECUTIVE_ROLES.filter((role) => company.executives[role]?.occupantId === investorId);
+}
+
+function hasCompanyAuthority(company: CompanyState, investorId: string, domain: ExecutiveDomain | 'release') {
+  if (company.ceoId === investorId) return true;
+  const roles = getExecutiveRolesForInvestor(company, investorId);
+  if (domain === 'release') return roles.includes('cto') || roles.includes('cmo');
+  return roles.some((role) => EXECUTIVE_ROLE_META[role].domain === domain);
+}
+
+function getBoardExecutiveSignals(company: CompanyState) {
+  const missingRoles = EXECUTIVE_ROLES.filter((role) => !company.executives[role] && calculateExecutiveNeed(role, company) > 0.62);
+  const underPressureRoles = EXECUTIVE_ROLES.filter((role) => company.executives[role] && company.executives[role]!.effectiveness < 0.84);
+  return { missingRoles, underPressureRoles };
 }
 
 function createGenerativeNpcs(seed: string, count: number, offset = 0): NpcInvestor[] {
@@ -519,10 +1102,11 @@ function createGenerativeNpcs(seed: string, count: number, offset = 0): NpcInves
       name,
       persona: randomFrom(random, NPC_PERSONAS),
       strategy,
-      cash: randomInt(random, 180, 380),
+      cash: randomInt(random, 55, 190),
       focusCompany,
       boldness: Math.round(randomBetween(random, 0.48, 0.95) * 100) / 100,
       patience: Math.round(randomBetween(random, 0.4, 0.92) * 100) / 100,
+      intelligence: Math.round(randomBetween(random, 0.68, 0.99) * 100) / 100,
       horizonDays: randomInt(random, 120, 720),
       reserveRatio: Math.round(randomBetween(random, 0.14, 0.36) * 100) / 100,
       analysisNote: `Masih membangun tesis awal untuk ${focusCompany.toUpperCase()}.`,
@@ -569,16 +1153,21 @@ function createCompany(config: {
       upgrades: config.upgrades,
       teams: config.teams,
       investors: {
-        [founderInvestorId]: 520,
-        [`institution_${config.key}_partners`]: 170,
+        [founderInvestorId]: 940,
       },
       sharesOutstanding: TOTAL_SHARES,
-      marketPoolShares: 310,
-      dividendPerShare: 0.05,
-      payoutRatio: 0.16,
+      marketPoolShares: 60,
+      dividendPerShare: 0.01,
+      payoutRatio: 0.1,
       ceoSalaryPerDay: 2.4,
       boardMood,
       boardMembers: [],
+      executives: createEmptyExecutiveMap(),
+      executivePayrollPerDay: 0,
+      executivePulse: 'Belum ada jabatan eksekutif tambahan.',
+      nextManagementReviewDay: 3,
+      capitalStrain: 0,
+      shareListings: [],
     } satisfies CompanyState,
   };
 }
@@ -623,14 +1212,16 @@ function getCompanyPerformanceScore(company: CompanyState) {
 function getCompanyStressLevel(company: CompanyState) {
   const marketStress = clamp((18 - company.marketShare) / 18, 0, 1);
   const reputationStress = clamp((42 - company.reputation) / 42, 0, 1);
-  const cashStress = clamp((260 - company.cash) / 260, 0, 1);
+  const cashStress = clamp((110 - company.cash) / 110, 0, 1);
   const boardStress = clamp((0.62 - company.boardMood) / 0.62, 0, 1);
-  return marketStress * 0.32 + reputationStress * 0.24 + cashStress * 0.22 + boardStress * 0.22;
+  const strainStress = clamp(company.capitalStrain / Math.max(40, getCompanyValuation(company)), 0, 1);
+  return marketStress * 0.28 + reputationStress * 0.22 + cashStress * 0.2 + boardStress * 0.15 + strainStress * 0.15;
 }
 
 function getBoardMemberOptions(member: BoardMember, company: CompanyState) {
   const options: string[] = [];
   const stress = getCompanyStressLevel(company);
+  const executiveSignals = getBoardExecutiveSignals(company);
 
   if (member.seatType === 'chair') {
     options.push('Review CEO', 'Tetapkan target profit', 'Pantau eksekusi board');
@@ -646,10 +1237,16 @@ function getBoardMemberOptions(member: BoardMember, company: CompanyState) {
 
   if (stress > 0.6) options.unshift('Siapkan rapat darurat');
   if (company.boardMood < 0.5) options.unshift('Minta evaluasi CEO');
-  if (company.cash < 220) options.unshift('Tekan efisiensi biaya');
+  if (company.cash < 95) options.unshift('Tekan efisiensi biaya');
   if (company.researchPerDay < 11) options.push('Tambah budget riset');
   if (company.marketShare < 15) options.push('Percepat strategi distribusi');
   if (company.payoutRatio > 0.26) options.push('Turunkan payout sementara');
+  if (executiveSignals.missingRoles.length > 0) {
+    options.unshift(`Usul angkat ${EXECUTIVE_ROLE_META[executiveSignals.missingRoles[0]].title}`);
+  }
+  if (executiveSignals.underPressureRoles.length > 0) {
+    options.push(`Tinjau kinerja ${EXECUTIVE_ROLE_META[executiveSignals.underPressureRoles[0]].title}`);
+  }
 
   return Array.from(new Set(options)).slice(0, 4);
 }
@@ -718,15 +1315,47 @@ function resolveGovernance(game: GameState) {
       });
 
       const [ceoId] = Array.from(boardVotes.entries()).sort((left, right) => right[1] - left[1])[0] ?? [company.founderInvestorId, 0];
+      const sanitizedExecutives = sanitizeExecutiveAssignments(game, company, ceoId);
+      const ceoNpc = getNpcById(game, ceoId);
+      const executivePlan = getNpcById(game, ceoId)
+        ? planNpcExecutiveAssignments(game, company, ceoId)
+        : {
+            executives: sanitizedExecutives,
+            executivePayrollPerDay: EXECUTIVE_ROLES.reduce((sum, role) => sum + (sanitizedExecutives[role]?.salaryPerDay ?? 0), 0),
+            executivePulse: company.executivePulse || `${investorDisplayName(game, ceoId)} menjaga struktur eksekutif secara manual.`,
+          };
+      const executiveCoverage =
+        getExecutiveCoverage({ ...company, executives: executivePlan.executives }, 'coo')
+        + getExecutiveCoverage({ ...company, executives: executivePlan.executives }, 'cfo')
+        + getExecutiveCoverage({ ...company, executives: executivePlan.executives }, 'cto')
+        + getExecutiveCoverage({ ...company, executives: executivePlan.executives }, 'cmo');
       const boardMood = clamp(
-        0.35 + company.cash / 2200 + company.marketShare / 120 + company.reputation / 160 + (ceoId === company.ceoId ? 0.06 : -0.04),
+        0.35 + company.cash / 2200 + company.marketShare / 120 + company.reputation / 160 + (ceoId === company.ceoId ? 0.06 : -0.04) + executiveCoverage * 0.028,
         0.3,
         1.5
       );
-      const revenuePerDay = calculateRevenuePerDay(company.teams, company.upgrades, company.marketShare, company.reputation, boardMood);
-      const researchPerDay = calculateResearchPerDay(company.teams, company.upgrades);
-      const valuation = Math.max(120, getCompanyValuation({ ...company, boardMood, revenuePerDay, researchPerDay }));
-      const payoutRatio = clamp(0.08 + company.cash / 9000 + company.marketShare / 240 + company.reputation / 420, 0.08, 0.34);
+      const baseRevenuePerDay = calculateRevenuePerDay(company.teams, company.upgrades, company.marketShare, company.reputation, boardMood);
+      const baseResearchPerDay = calculateResearchPerDay(company.teams, company.upgrades);
+      const revenuePerDay = baseRevenuePerDay * (
+        1
+        + getExecutiveCoverage({ ...company, executives: executivePlan.executives }, 'coo') * 0.04
+        + getExecutiveCoverage({ ...company, executives: executivePlan.executives }, 'cfo') * 0.015
+        + getExecutiveCoverage({ ...company, executives: executivePlan.executives }, 'cmo') * 0.035
+      );
+      const researchPerDay = baseResearchPerDay * (
+        1
+        + getExecutiveCoverage({ ...company, executives: executivePlan.executives }, 'cto') * 0.07
+        + getExecutiveCoverage({ ...company, executives: executivePlan.executives }, 'coo') * 0.018
+      );
+      const valuation = Math.max(20, getCompanyValuation({ ...company, boardMood, revenuePerDay, researchPerDay }));
+      const cfoCoverage = getExecutiveCoverage({ ...company, executives: executivePlan.executives }, 'cfo');
+      const management = getManagementResourceContext({ ...company, boardMood, revenuePerDay, researchPerDay });
+      const targetPayoutRatio = 0.08 + company.cash / 6000 + company.marketShare / 280 + company.reputation / 520;
+      const payoutRatio = clamp(
+        (company.payoutRatio || targetPayoutRatio) * 0.7 + targetPayoutRatio * 0.3 - clamp((management.cashReserveTarget - company.cash) / Math.max(1, management.cashReserveTarget), 0, 1) * cfoCoverage * 0.06,
+        0.08,
+        0.34
+      );
       const dividendPerShare = Math.max(0.01, ((revenuePerDay * 0.42) * payoutRatio) / company.sharesOutstanding);
       const ceoSalaryPerDay = Math.max(0.6, valuation * 0.0009 + revenuePerDay * 0.022 + getOwnershipPercent(company, ceoId) * 0.04);
 
@@ -743,6 +1372,11 @@ function resolveGovernance(game: GameState) {
           payoutRatio,
           dividendPerShare,
           ceoSalaryPerDay,
+          executives: executivePlan.executives,
+          executivePayrollPerDay: executivePlan.executivePayrollPerDay,
+          executivePulse: executivePlan.executivePulse,
+          nextManagementReviewDay: company.nextManagementReviewDay ?? game.elapsedDays + (ceoNpc ? getManagementCadenceDays(company, ceoNpc) : 14),
+          shareListings: sanitizeShareListings(company),
         },
       ];
     })
@@ -761,10 +1395,10 @@ function createInitialGameState(profile: ProfileDraft): GameState {
     name: 'Cosmic',
     founder: 'Lena Voss',
     focus: 'Mainstream desktop dan supply OEM agresif.',
-    cash: 560,
-    research: 165,
-    marketShare: 27,
-    reputation: 46,
+    cash: 92,
+    research: 72,
+    marketShare: 12,
+    reputation: 29,
     upgrades: createUpgrades({ architecture: 2, lithography: 180, clockSpeed: 1.5, coreDesign: 1, cacheStack: 512, powerEfficiency: 98 }),
     teams: createTeams({ researchers: 2, marketing: 2, fabrication: 2 }),
     lastRelease: 'Cosmic Sol-1 masih mendominasi OEM murah.',
@@ -774,10 +1408,10 @@ function createInitialGameState(profile: ProfileDraft): GameState {
     name: 'RMD',
     founder: 'Mika Ren',
     focus: 'Performa enthusiast dengan ritme release lebih cepat.',
-    cash: 520,
-    research: 190,
-    marketShare: 21,
-    reputation: 43,
+    cash: 86,
+    research: 78,
+    marketShare: 10.5,
+    reputation: 27,
     upgrades: createUpgrades({ architecture: 2, lithography: 170, clockSpeed: 1.7, coreDesign: 2, cacheStack: 512, powerEfficiency: 102 }),
     teams: createTeams({ researchers: 3, marketing: 1, fabrication: 1 }),
     lastRelease: 'RMD Ember-2 populer di komunitas builder.',
@@ -787,10 +1421,10 @@ function createInitialGameState(profile: ProfileDraft): GameState {
     name: 'Heroscop',
     founder: 'Rafi Helion',
     focus: 'Efisiensi daya dan workstation premium.',
-    cash: 500,
-    research: 175,
-    marketShare: 18,
-    reputation: 41,
+    cash: 81,
+    research: 75,
+    marketShare: 9.5,
+    reputation: 26,
     upgrades: createUpgrades({ architecture: 2, lithography: 160, clockSpeed: 1.4, coreDesign: 2, cacheStack: 768, powerEfficiency: 90 }),
     teams: createTeams({ researchers: 2, marketing: 1, fabrication: 2 }),
     lastRelease: 'Heroscop Halo-2 unggul di pasar workstation kecil.',
@@ -805,23 +1439,8 @@ function createInitialGameState(profile: ProfileDraft): GameState {
   const npcSeed = `${profile.name.trim()}-${Date.now()}-${Math.random()}`;
   const npcs = createGenerativeNpcs(npcSeed, INITIAL_NPC_COUNT);
 
-  npcs.forEach((npc, index) => {
-    const primary = npc.focusCompany;
-    const secondaries = COMPANY_KEYS.filter((entry) => entry !== primary);
-    const secondary = secondaries[index % secondaries.length];
-    const firstBudget = randomInt(createSeededRandom(`${npc.id}-open`), 30, 80);
-    const secondBudget = randomInt(createSeededRandom(`${npc.id}-second`), 8, 26);
-    const primaryPrice = getSharePrice(companies[primary]);
-    const secondaryPrice = getSharePrice(companies[secondary]);
-    const primaryShares = Math.min(companies[primary].marketPoolShares, Number((firstBudget / primaryPrice).toFixed(2)));
-    const secondaryShares = Math.min(companies[secondary].marketPoolShares, Number((secondBudget / secondaryPrice).toFixed(2)));
-
-    companies[primary].marketPoolShares -= primaryShares;
-    companies[primary].investors[npc.id] = (companies[primary].investors[npc.id] ?? 0) + primaryShares;
-    companies[secondary].marketPoolShares -= secondaryShares;
-    companies[secondary].investors[npc.id] = (companies[secondary].investors[npc.id] ?? 0) + secondaryShares;
-    npc.cash -= primaryShares * primaryPrice + secondaryShares * secondaryPrice;
-    npc.analysisNote = `Membuka posisi awal di ${companies[primary].name} dan posisi sekunder di ${companies[secondary].name}.`;
+  npcs.forEach((npc) => {
+    npc.analysisNote = `${npc.name} masih observasi dan belum berani masuk besar karena mayoritas perusahaan masih founder-led serta free float sangat tipis.`;
   });
 
   return resolveGovernance({
@@ -840,6 +1459,7 @@ function createInitialGameState(profile: ProfileDraft): GameState {
       `01/01/00: Profil ${profile.name.trim() || 'Player'} dibuat dengan modal awal $${formatNumber(PLAYER_STARTING_CASH)}M.`,
       `01/01/00: 20 AI NPC aktif dibangkitkan dengan strategi value, growth, dividend, activist, dan balanced.`,
       `01/01/00: Dewan direksi 7 kursi aktif di tiap perusahaan untuk memilih CEO secara dinamis.`,
+      `01/01/00: Semua perusahaan mulai dari valuasi rendah, kas terbatas, dan free float tipis sehingga setiap suntikan modal terasa nyata.`,
     ],
   });
 }
@@ -895,59 +1515,237 @@ function applyCashToInvestor(game: GameState, investorId: string, amount: number
   };
 }
 
-function transactShares(current: GameState, investorId: string, companyKey: CompanyKey, mode: InvestorActionMode, requestedAmount: number) {
+function transactShares(current: GameState, investorId: string, companyKey: CompanyKey, mode: InvestorActionMode, requestedAmount: number, route: TradeRoute = 'auto') {
   const company = current.companies[companyKey];
   if (requestedAmount <= 0) {
-    return { next: current, tradedValue: 0, sharesMoved: 0 };
+    return { next: current, tradedValue: 0, sharesMoved: 0, route: 'company' as TradeRoute };
   }
 
   const investorCash = getInvestorCash(current, investorId);
   const currentShares = company.investors[investorId] ?? 0;
-  const preview = getTradePreview(company, investorCash, currentShares, mode, requestedAmount);
+  const preview = getTradePreview(current, company, investorId, investorCash, currentShares, mode, requestedAmount, route);
   if (preview.grossTradeValue < MIN_TRADE_AMOUNT || preview.sharesMoved <= 0) {
-    return { next: current, tradedValue: 0, sharesMoved: 0 };
+    return { next: current, tradedValue: 0, sharesMoved: 0, route: preview.route };
   }
   if (mode === 'buy' && preview.netCashDelta * -1 > investorCash + 0.0001) {
-    return { next: current, tradedValue: 0, sharesMoved: 0 };
+    return { next: current, tradedValue: 0, sharesMoved: 0, route: preview.route };
   }
 
-  if (mode === 'buy') {
+  if (route === 'auto' && mode === 'buy') {
+    const sharePrice = preview.sharePrice;
+    const companyCapacity = Math.max(0, Math.min(company.marketPoolShares * sharePrice, requestedAmount, investorCash / (1 + COMPANY_TRADE_FEE_RATE)));
+    const companyShares = sharePrice > 0 ? companyCapacity / sharePrice : 0;
+    const companyFee = companyCapacity * COMPANY_TRADE_FEE_RATE;
+    let next: GameState = current;
+
+    if (companyCapacity >= MIN_TRADE_AMOUNT && companyShares > 0.0001) {
+      next = applyCashToInvestor(
+        {
+          ...next,
+          companies: {
+            ...next.companies,
+            [companyKey]: {
+              ...next.companies[companyKey],
+              cash: next.companies[companyKey].cash + companyCapacity,
+              capitalStrain: Math.max(0, next.companies[companyKey].capitalStrain - companyCapacity * 0.45),
+              marketPoolShares: Math.max(0, next.companies[companyKey].marketPoolShares - companyShares),
+              investors: {
+                ...next.companies[companyKey].investors,
+                [investorId]: (next.companies[companyKey].investors[investorId] ?? 0) + companyShares,
+              },
+            },
+          },
+        },
+        investorId,
+        -(companyCapacity + companyFee)
+      );
+    }
+
+    const remainingRequested = Math.max(0, requestedAmount - companyCapacity);
+    const refreshedCompany = next.companies[companyKey];
+    const remainingCash = getInvestorCash(next, investorId);
+    const listingBudget = Math.max(0, Math.min(remainingRequested, remainingCash / (1 + HOLDER_TRADE_FEE_RATE)));
+    const holderAllocation = allocateHolderBuyFromListings(refreshedCompany, getVisibleShareListings(refreshedCompany, investorId), listingBudget);
+
+    if (holderAllocation.grossTradeValue >= MIN_TRADE_AMOUNT && holderAllocation.sharesMoved > 0.0001) {
+      let companyAfterListings = refreshedCompany;
+      let feed = next.activityFeed;
+      holderAllocation.fills.forEach((fill) => {
+        companyAfterListings = {
+          ...companyAfterListings,
+          investors: {
+            ...companyAfterListings.investors,
+            [fill.sellerId]: Math.max(0, (companyAfterListings.investors[fill.sellerId] ?? 0) - fill.shares),
+            [investorId]: (companyAfterListings.investors[investorId] ?? 0) + fill.shares,
+          },
+          shareListings: companyAfterListings.shareListings
+            .map((listing) => listing.sellerId === fill.sellerId
+              ? { ...listing, sharesAvailable: Math.max(0, listing.sharesAvailable - fill.shares) }
+              : listing)
+            .filter((listing) => listing.sharesAvailable > 0.01),
+        };
+        if ((companyAfterListings.investors[fill.sellerId] ?? 0) <= 0.01) {
+          delete companyAfterListings.investors[fill.sellerId];
+        }
+        next = applyCashToInvestor(next, fill.sellerId, fill.value);
+        feed = addFeedEntry(
+          feed,
+          `${formatDateFromDays(current.elapsedDays)}: ${investorDisplayName(current, fill.sellerId)} menjual ${formatNumber(fill.shares, 2)} saham ${company.name} kepada ${investorDisplayName(current, investorId)} via listing holder ${fill.priceMultiplier}x.`
+        );
+      });
+
+      next = applyCashToInvestor(
+        {
+          ...next,
+          activityFeed: feed,
+          companies: {
+            ...next.companies,
+            [companyKey]: companyAfterListings,
+          },
+        },
+        investorId,
+        -(holderAllocation.grossTradeValue + holderAllocation.grossTradeValue * HOLDER_TRADE_FEE_RATE)
+      );
+    }
+
+    const totalTradedValue = companyCapacity + holderAllocation.grossTradeValue;
+    const totalSharesMoved = companyShares + holderAllocation.sharesMoved;
+    return {
+      next: resolveGovernance(next),
+      tradedValue: totalTradedValue,
+      sharesMoved: totalSharesMoved,
+      route: 'auto' as TradeRoute,
+    };
+  }
+
+  if (preview.route === 'company') {
+    if (mode === 'buy') {
+      let next: GameState = {
+        ...current,
+        companies: {
+          ...current.companies,
+          [companyKey]: {
+            ...company,
+            cash: company.cash + preview.grossTradeValue,
+            capitalStrain: Math.max(0, company.capitalStrain - preview.grossTradeValue * 0.45),
+            marketPoolShares: Math.max(0, company.marketPoolShares - preview.sharesMoved),
+            investors: {
+              ...company.investors,
+              [investorId]: currentShares + preview.sharesMoved,
+            },
+          },
+        },
+      };
+      next = applyCashToInvestor(next, investorId, preview.netCashDelta);
+      return { next: resolveGovernance(next), tradedValue: preview.grossTradeValue, sharesMoved: preview.sharesMoved, route: preview.route };
+    }
+
+    const nextInvestors = { ...company.investors, [investorId]: currentShares - preview.sharesMoved };
+    if (nextInvestors[investorId] <= 0.01) {
+      delete nextInvestors[investorId];
+    }
+
+    const cashUsed = Math.min(company.cash, preview.grossTradeValue);
+    const uncoveredValue = Math.max(0, preview.grossTradeValue - cashUsed);
     let next: GameState = {
       ...current,
       companies: {
         ...current.companies,
         [companyKey]: {
           ...company,
-          marketPoolShares: Math.max(0, company.marketPoolShares - preview.sharesMoved),
-          investors: {
-            ...company.investors,
-            [investorId]: currentShares + preview.sharesMoved,
-          },
+          cash: Math.max(0, company.cash - cashUsed),
+          capitalStrain: company.capitalStrain + uncoveredValue,
+          marketPoolShares: company.marketPoolShares + preview.sharesMoved,
+          investors: nextInvestors,
         },
       },
     };
     next = applyCashToInvestor(next, investorId, preview.netCashDelta);
-    return { next: resolveGovernance(next), tradedValue: preview.grossTradeValue, sharesMoved: preview.sharesMoved };
+    return { next: resolveGovernance(next), tradedValue: preview.grossTradeValue, sharesMoved: preview.sharesMoved, route: preview.route };
   }
 
-  const nextInvestors = { ...company.investors, [investorId]: currentShares - preview.sharesMoved };
-  if (nextInvestors[investorId] <= 0.01) {
-    delete nextInvestors[investorId];
-  }
-
-  let next: GameState = {
+  const sharePrice = preview.sharePrice;
+  let remainingShares = preview.sharesMoved;
+  let consumedValue = 0;
+  let next = {
     ...current,
     companies: {
       ...current.companies,
       [companyKey]: {
         ...company,
-        marketPoolShares: company.marketPoolShares + preview.sharesMoved,
-        investors: nextInvestors,
+        investors: {
+          ...company.investors,
+        },
       },
     },
   };
-  next = applyCashToInvestor(next, investorId, preview.netCashDelta);
-  return { next: resolveGovernance(next), tradedValue: preview.grossTradeValue, sharesMoved: preview.sharesMoved };
+
+  if (mode === 'buy') {
+    const holderAllocation = allocateHolderBuyFromListings(company, getVisibleShareListings(company, investorId), preview.grossTradeValue);
+    let feed = next.activityFeed;
+    holderAllocation.fills.forEach((fill) => {
+      if (fill.shares <= 0.0001) return;
+      remainingShares -= fill.shares;
+      consumedValue += fill.value;
+      const holderCurrentShares = next.companies[companyKey].investors[fill.sellerId] ?? 0;
+      next.companies[companyKey].investors[fill.sellerId] = holderCurrentShares - fill.shares;
+      if (next.companies[companyKey].investors[fill.sellerId] <= 0.01) {
+        delete next.companies[companyKey].investors[fill.sellerId];
+      }
+      next.companies[companyKey].shareListings = next.companies[companyKey].shareListings
+        .map((listing) => listing.sellerId === fill.sellerId
+          ? { ...listing, sharesAvailable: Math.max(0, listing.sharesAvailable - fill.shares) }
+          : listing)
+        .filter((listing) => listing.sharesAvailable > 0.01);
+      next = applyCashToInvestor(next, fill.sellerId, fill.value);
+      feed = addFeedEntry(
+        feed,
+        `${formatDateFromDays(current.elapsedDays)}: ${investorDisplayName(current, fill.sellerId)} menjual ${formatNumber(fill.shares, 2)} saham ${company.name} kepada ${investorDisplayName(current, investorId)} via listing holder ${fill.priceMultiplier}x.`
+      );
+    });
+
+    next.companies[companyKey].investors[investorId] = (next.companies[companyKey].investors[investorId] ?? 0) + preview.sharesMoved - remainingShares;
+    next = applyCashToInvestor(next, investorId, -(consumedValue + consumedValue * preview.feeRate));
+    next = {
+      ...next,
+      activityFeed: feed,
+    };
+    return {
+      next: resolveGovernance(next),
+      tradedValue: consumedValue,
+      sharesMoved: preview.sharesMoved - remainingShares,
+      route: preview.route,
+    };
+  }
+
+  const buyers = Object.keys(company.investors)
+    .filter((holderId) => holderId !== investorId)
+    .map((holderId) => ({ holderId, budget: getBuyerDemandBudget(current, company, holderId) }))
+    .filter((entry) => entry.budget >= MIN_TRADE_AMOUNT)
+    .sort((left, right) => right.budget - left.budget);
+
+  buyers.forEach(({ holderId, budget }) => {
+    if (remainingShares <= 0.0001) return;
+    const sharesAbsorbed = Math.min(remainingShares, budget / sharePrice);
+    if (sharesAbsorbed <= 0.0001) return;
+    const valueMoved = sharesAbsorbed * sharePrice;
+    remainingShares -= sharesAbsorbed;
+    consumedValue += valueMoved;
+    next.companies[companyKey].investors[holderId] = (next.companies[companyKey].investors[holderId] ?? 0) + sharesAbsorbed;
+    next = applyCashToInvestor(next, holderId, -valueMoved);
+  });
+
+  next.companies[companyKey].investors[investorId] = Math.max(0, (next.companies[companyKey].investors[investorId] ?? 0) - (preview.sharesMoved - remainingShares));
+  if (next.companies[companyKey].investors[investorId] <= 0.01) {
+    delete next.companies[companyKey].investors[investorId];
+  }
+  next = applyCashToInvestor(next, investorId, consumedValue - consumedValue * preview.feeRate);
+  return {
+    next: resolveGovernance(next),
+    tradedValue: consumedValue,
+    sharesMoved: preview.sharesMoved - remainingShares,
+    route: preview.route,
+  };
 }
 
 function maybeGenerateMoreNpcs(current: GameState) {
@@ -1013,13 +1811,21 @@ function simulateTick(current: GameState) {
       const ceoSalary = governedCompany.ceoSalaryPerDay * tickDays;
       if (governedCompany.ceoId === current.player.id) nextPlayerCash += ceoSalary;
       else npcCashMap.set(governedCompany.ceoId, (npcCashMap.get(governedCompany.ceoId) ?? 0) + ceoSalary);
+      const executivePayroll = governedCompany.executivePayrollPerDay * tickDays;
+      EXECUTIVE_ROLES.forEach((role) => {
+        const executive = governedCompany.executives[role];
+        if (!executive) return;
+        if (executive.occupantId === current.player.id) nextPlayerCash += executive.salaryPerDay * tickDays;
+        else npcCashMap.set(executive.occupantId, (npcCashMap.get(executive.occupantId) ?? 0) + executive.salaryPerDay * tickDays);
+      });
 
       return [
         key,
         {
           ...governedCompany,
           research: governedCompany.research + governedCompany.researchPerDay * tickDays,
-          cash: Math.max(0, governedCompany.cash + retentionProfit * tickDays - dividendPoolPerDay * tickDays - ceoSalary - capitalFlightPerDay * tickDays - managementDragPerDay * tickDays),
+          cash: Math.max(0, governedCompany.cash + retentionProfit * tickDays - dividendPoolPerDay * tickDays - ceoSalary - executivePayroll - capitalFlightPerDay * tickDays - managementDragPerDay * tickDays),
+          capitalStrain: Math.max(0, governedCompany.capitalStrain - Math.max(0, retentionProfit - managementDragPerDay) * tickDays * 0.65),
           marketShare: clamp(governedCompany.marketShare + passiveMarketDelta * tickDays - stressLevel * 0.75 * tickDays, 3, 75),
           reputation: clamp(governedCompany.reputation + passiveReputationDelta * tickDays - stressLevel * 0.92 * tickDays, 10, 100),
         },
@@ -1045,6 +1851,7 @@ function simulateTick(current: GameState) {
 
   if (nextState.tickCount % NPC_ACTION_EVERY_TICKS === 0) {
     nextState = runNpcTurn(nextState);
+    nextState = runNpcChiefExecutiveTurn(nextState);
   }
 
   if (reachedNewDay) {
@@ -1065,19 +1872,28 @@ function scoreCompanyForNpc(npc: NpcInvestor, company: CompanyState) {
   const controlSignal = getOwnershipPercent(company, npc.id) / 14;
   const performanceSignal = getCompanyPerformanceScore(company) / 25;
   const stressLevel = getCompanyStressLevel(company);
-  const managementPenalty = stressLevel * 2.6;
+  const founderControl = getOwnershipPercent(company, company.founderInvestorId) / 100;
+  const outsideOwnership = clamp(1 - founderControl - company.marketPoolShares / company.sharesOutstanding, 0, 1);
+  const treasuryLiquidity = clamp(company.marketPoolShares / 90, 0, 1.2);
+  const strainPenalty = company.capitalStrain / Math.max(30, valuation);
+  const discoverySignal = clamp((company.marketShare / 30 + company.reputation / 55 + company.researchPerDay / 20) / 3, 0, 1.4);
+  const entryFriction = founderControl > 0.84 && company.marketShare < 24 ? (founderControl - 0.84) * 2.2 : 0;
+  const momentumSignal = discoverySignal * 0.9 + outsideOwnership * 0.65 + treasuryLiquidity * 0.24 + company.releaseCount * 0.08;
+  const managementPenalty = stressLevel * 2.6 + strainPenalty * 1.8;
   const strategyBias =
     npc.strategy === 'value'
-      ? valueSignal * 2.3 + qualitySignal * 0.8 + performanceSignal * 0.5
+      ? valueSignal * 2.3 + qualitySignal * 0.8 + performanceSignal * 0.5 + momentumSignal * 0.2
       : npc.strategy === 'growth'
-        ? growthSignal * 2.4 + qualitySignal * 0.9 + performanceSignal * 0.6
+        ? growthSignal * 2.4 + qualitySignal * 0.9 + performanceSignal * 0.6 + momentumSignal * 0.42
         : npc.strategy === 'dividend'
-          ? dividendYield * 3.2 + qualitySignal * 0.9 + performanceSignal * 0.3
+          ? dividendYield * 3.2 + qualitySignal * 0.9 + performanceSignal * 0.3 + momentumSignal * 0.18
           : npc.strategy === 'activist'
-            ? controlSignal * 2.4 + valueSignal * 1.1 + growthSignal * 0.9 + performanceSignal * 0.45
-            : valueSignal * 1.2 + growthSignal * 1.3 + dividendYield * 1.1 + performanceSignal * 0.45;
+            ? controlSignal * 2.4 + valueSignal * 1.1 + growthSignal * 0.9 + performanceSignal * 0.45 + momentumSignal * 0.16
+            : valueSignal * 1.2 + growthSignal * 1.3 + dividendYield * 1.1 + performanceSignal * 0.45 + momentumSignal * 0.24;
 
-  const longTermFit = npc.horizonDays / 365 * 0.35 + npc.patience * 0.6;
+  const longTermFit = npc.horizonDays / 365 * 0.35 + npc.patience * 0.6 + npc.intelligence * 0.34;
+  const liquidityPenalty = entryFriction * Math.max(0.2, 1 - npc.boldness * 0.6) + Math.max(0, 0.25 - treasuryLiquidity) * 0.65 - discoverySignal * npc.intelligence * 0.12;
+  const crowdConfidence = discoverySignal * (0.4 + npc.intelligence * 0.25) + outsideOwnership * 0.32 + treasuryLiquidity * 0.18;
   return {
     sharePrice,
     valuation,
@@ -1087,8 +1903,426 @@ function scoreCompanyForNpc(npc: NpcInvestor, company: CompanyState) {
     qualitySignal,
     performanceSignal,
     stressLevel,
+    discoverySignal,
+    momentumSignal,
+    crowdConfidence,
+    founderControl,
+    liquidityPenalty,
     managementPenalty,
-    finalScore: strategyBias + longTermFit - managementPenalty,
+    finalScore: strategyBias + longTermFit + crowdConfidence - managementPenalty - liquidityPenalty,
+  };
+}
+
+function getNpcStrategyProfile(strategy: StrategyStyle) {
+  if (strategy === 'growth') return { tech: 1.34, operations: 1.04, marketing: 1.1, efficiency: 0.82, finance: 0.74 };
+  if (strategy === 'value') return { tech: 0.96, operations: 1.02, marketing: 0.78, efficiency: 1.28, finance: 1.08 };
+  if (strategy === 'dividend') return { tech: 0.84, operations: 1.08, marketing: 0.88, efficiency: 1.16, finance: 1.28 };
+  if (strategy === 'activist') return { tech: 1.08, operations: 1.1, marketing: 0.9, efficiency: 1.04, finance: 1.14 };
+  return { tech: 1, operations: 1, marketing: 1, efficiency: 1, finance: 1 };
+}
+
+function getCompanyCompetitiveContext(game: GameState, company: CompanyState) {
+  const competitors = (Object.values(game.companies) as CompanyState[]).filter((entry) => entry.key !== company.key);
+  const currentCpuScore = calculateCpuScore(company.upgrades);
+  const bestCpuScore = Math.max(currentCpuScore, ...competitors.map((entry) => calculateCpuScore(entry.upgrades)));
+  const bestResearch = Math.max(company.researchPerDay, ...competitors.map((entry) => entry.researchPerDay));
+  const bestMarketShare = Math.max(company.marketShare, ...competitors.map((entry) => entry.marketShare));
+  const bestReputation = Math.max(company.reputation, ...competitors.map((entry) => entry.reputation));
+
+  return {
+    cpuGap: clamp((bestCpuScore - currentCpuScore) / Math.max(1, bestCpuScore), 0, 1),
+    researchGap: clamp((bestResearch - company.researchPerDay) / Math.max(1, bestResearch), 0, 1),
+    marketGap: clamp((bestMarketShare - company.marketShare) / Math.max(1, bestMarketShare), 0, 1),
+    reputationGap: clamp((bestReputation - company.reputation) / Math.max(1, bestReputation), 0, 1),
+  };
+}
+
+function getManagementResourceContext(company: CompanyState) {
+  const maxUpgradeCost = Math.max(...(Object.entries(company.upgrades) as [UpgradeKey, UpgradeState][]).map(([key, upgrade]) => getUpgradeCost(key, upgrade, company)));
+  const maxTeamCost = Math.max(...(Object.values(company.teams) as TeamState[]).map((team) => getTeamCost(team)));
+  const monthlyRevenue = company.revenuePerDay * 30;
+  const monthlyRetainedCash = Math.max(8, monthlyRevenue * 0.42 * (1 - company.payoutRatio));
+  const monthlyResearchOutput = Math.max(10, company.researchPerDay * 30);
+  const researchReserveTarget = Math.max(maxUpgradeCost * 2.1, company.researchPerDay * 9);
+  const cashReserveTarget = Math.max(maxTeamCost * 1.75, monthlyRetainedCash * 1.2, 32);
+  const researchOverflow = clamp((company.research - researchReserveTarget) / Math.max(1, researchReserveTarget), 0, 4);
+  const cashOverflow = clamp((company.cash - cashReserveTarget) / Math.max(1, cashReserveTarget), 0, 4);
+  const researchUrgency = clamp(company.research / Math.max(1, monthlyResearchOutput * 0.75), 0, 6);
+  const cashUrgency = clamp(company.cash / Math.max(1, monthlyRetainedCash * 1.4), 0, 6);
+  const managementIntensity = clamp(Math.max(researchOverflow, cashOverflow) * 0.8 + Math.max(researchUrgency, cashUrgency) * 0.22, 0, 4);
+
+  return {
+    maxUpgradeCost,
+    maxTeamCost,
+    monthlyRevenue,
+    monthlyRetainedCash,
+    monthlyResearchOutput,
+    researchReserveTarget,
+    cashReserveTarget,
+    researchOverflow,
+    cashOverflow,
+    researchUrgency,
+    cashUrgency,
+    managementIntensity,
+  };
+}
+
+function previewUpgradeCompany(company: CompanyState, key: UpgradeKey) {
+  const current = company.upgrades[key];
+  const nextValue = key === 'lithography' || key === 'powerEfficiency'
+    ? Math.max(key === 'lithography' ? 5 : 28, current.value + current.step)
+    : current.value + current.step;
+  const nextUpgrades = {
+    ...company.upgrades,
+    [key]: {
+      ...current,
+      value: nextValue,
+    },
+  };
+  return {
+    ...company,
+    upgrades: nextUpgrades,
+  };
+}
+
+function previewTeamCompany(company: CompanyState, key: TeamKey) {
+  return {
+    ...company,
+    teams: {
+      ...company.teams,
+      [key]: {
+        ...company.teams[key],
+        count: company.teams[key].count + 1,
+      },
+    },
+  };
+}
+
+function scoreNpcUpgradeAction(game: GameState, npc: NpcInvestor, company: CompanyState, key: UpgradeKey): CompanyAiAction {
+  const profile = getNpcStrategyProfile(npc.strategy);
+  const context = getCompanyCompetitiveContext(game, company);
+  const management = getManagementResourceContext(company);
+  const preview = previewUpgradeCompany(company, key);
+  const currentCpuScore = calculateCpuScore(company.upgrades);
+  const nextCpuScore = calculateCpuScore(preview.upgrades);
+  const cpuDelta = nextCpuScore - currentCpuScore;
+  const researchDelta = calculateResearchPerDay(company.teams, preview.upgrades) - company.researchPerDay;
+  const revenueDelta = calculateRevenuePerDay(company.teams, preview.upgrades, company.marketShare, company.reputation, company.boardMood) - company.revenuePerDay;
+  const cost = getUpgradeCost(key, company.upgrades[key], company);
+  const reservePressure = cost / Math.max(1, company.research + management.monthlyResearchOutput * 0.3);
+  const longTermBias = npc.intelligence * 0.4 + npc.patience * 0.24;
+  const efficiencyBias = key === 'lithography' || key === 'powerEfficiency' ? profile.efficiency * (0.7 + context.marketGap * 0.35) : 0;
+  const architectureBias = key === 'architecture' ? profile.tech * (0.55 + context.cpuGap * 0.6) : 0;
+  const backlogBias = management.researchOverflow * (0.75 + npc.intelligence * 0.4) + management.researchUrgency * 0.18;
+  const score = (
+    cpuDelta * (0.0088 + profile.tech * 0.0046)
+    + researchDelta * (1.1 + profile.tech * 0.45)
+    + revenueDelta * (0.18 + profile.operations * 0.06)
+    + context.cpuGap * 2.4
+    + context.researchGap * 1.8
+    + longTermBias
+    + backlogBias
+    + efficiencyBias
+    + architectureBias
+    - reservePressure * (0.82 + (1 - npc.boldness) * 0.22)
+  );
+
+  return {
+    type: 'upgrade',
+    key,
+    resource: 'research',
+    cost,
+    score,
+    label: company.upgrades[key].label,
+    rationale: cpuDelta > 0 ? 'mengejar gap teknologi' : 'menjaga efisiensi jangka panjang',
+  };
+}
+
+function scoreNpcTeamAction(game: GameState, npc: NpcInvestor, company: CompanyState, key: TeamKey): CompanyAiAction {
+  const profile = getNpcStrategyProfile(npc.strategy);
+  const context = getCompanyCompetitiveContext(game, company);
+  const management = getManagementResourceContext(company);
+  const preview = previewTeamCompany(company, key);
+  const researchDelta = calculateResearchPerDay(preview.teams, company.upgrades) - company.researchPerDay;
+  const revenueDelta = calculateRevenuePerDay(preview.teams, company.upgrades, company.marketShare, company.reputation, company.boardMood) - company.revenuePerDay;
+  const launchDelta = calculateLaunchRevenue(calculateCpuScore(company.upgrades), preview.teams, company.marketShare, company.reputation, 1) - calculateLaunchRevenue(calculateCpuScore(company.upgrades), company.teams, company.marketShare, company.reputation, 1);
+  const cost = getTeamCost(company.teams[key]);
+  const reservePressure = cost / Math.max(1, company.cash + management.monthlyRetainedCash * 0.75);
+  const backlogBias = management.cashOverflow * (0.68 + npc.intelligence * 0.34) + management.cashUrgency * 0.16;
+  const score = (
+    (key === 'researchers' ? researchDelta * (1.22 + profile.tech * 0.34) + context.researchGap * 1.6 : 0)
+    + (key === 'fabrication' ? revenueDelta * (0.24 + profile.operations * 0.08) + launchDelta * 0.004 + context.cpuGap * 0.65 : 0)
+    + (key === 'marketing' ? revenueDelta * (0.2 + profile.marketing * 0.08) + context.marketGap * 1.9 + context.reputationGap * 1.2 : 0)
+    + npc.intelligence * 0.38
+    + backlogBias
+    - reservePressure * (0.94 + (1 - npc.patience) * 0.18)
+  );
+
+  return {
+    type: 'team',
+    key,
+    resource: 'cash',
+    cost,
+    score,
+    label: company.teams[key].label,
+    rationale: key === 'researchers' ? 'menguatkan output R&D' : key === 'fabrication' ? 'membesarkan kapasitas eksekusi' : 'menambah tekanan brand & demand',
+  };
+}
+
+function applyNpcCompanyAction(game: GameState, companyKey: CompanyKey, action: CompanyAiAction) {
+  const company = game.companies[companyKey];
+  if (action.type === 'upgrade') {
+    const key = action.key as UpgradeKey;
+    const preview = previewUpgradeCompany(company, key);
+    return {
+      ...game,
+      companies: {
+        ...game.companies,
+        [companyKey]: {
+          ...preview,
+          research: company.research - action.cost,
+          bestCpuScore: Math.max(company.bestCpuScore, calculateCpuScore(preview.upgrades)),
+          executivePulse: `${company.ceoName} memprioritaskan ${company.upgrades[key].label} untuk ${action.rationale}.`,
+        },
+      },
+    };
+  }
+
+  const key = action.key as TeamKey;
+  const preview = previewTeamCompany(company, key);
+  return {
+    ...game,
+    companies: {
+      ...game.companies,
+      [companyKey]: {
+        ...preview,
+        cash: company.cash - action.cost,
+        executivePulse: `${company.ceoName} memperbesar ${company.teams[key].label} untuk ${action.rationale}.`,
+      },
+    },
+  };
+}
+
+function scoreNpcPayoutAction(npc: NpcInvestor, company: CompanyState, direction: 'up' | 'down'): CompanyAiAction {
+  const stress = getCompanyStressLevel(company);
+  const management = getManagementResourceContext(company);
+  const richCash = clamp((company.cash - management.cashReserveTarget * 1.55) / Math.max(1, management.cashReserveTarget * 2.2), 0, 1.2);
+  const lowCash = clamp((management.cashReserveTarget - company.cash) / Math.max(1, management.cashReserveTarget), 0, 1.2);
+  const score = direction === 'up'
+    ? richCash * (0.9 + npc.patience * 0.35) + management.cashOverflow * 0.26 + (npc.strategy === 'dividend' ? 0.8 : 0.18) - stress * 0.9
+    : lowCash * (1.05 + npc.intelligence * 0.3) + stress * 0.55 + (npc.strategy === 'value' || npc.strategy === 'activist' ? 0.22 : 0);
+  return {
+    type: 'payout',
+    key: direction === 'up' ? 'payout-up' : 'payout-down',
+    resource: 'cash',
+    cost: 0,
+    score,
+    label: direction === 'up' ? 'Naikkan payout' : 'Turunkan payout',
+    rationale: direction === 'up' ? 'menghadiahi investor saat kas kuat' : 'menjaga runway dan fleksibilitas modal',
+  };
+}
+
+function chooseNpcCompanyActionByDomain(game: GameState, npc: NpcInvestor, company: CompanyState, domain: ExecutiveDomain | 'general') {
+  const management = getManagementResourceContext(company);
+  const candidates: CompanyAiAction[] = [];
+
+  if (domain === 'technology' || domain === 'general') {
+    candidates.push(...(Object.keys(company.upgrades) as UpgradeKey[]).map((key) => scoreNpcUpgradeAction(game, npc, company, key)));
+    candidates.push(scoreNpcTeamAction(game, npc, company, 'researchers'));
+  }
+  if (domain === 'operations' || domain === 'general') {
+    candidates.push(scoreNpcTeamAction(game, npc, company, 'fabrication'));
+  }
+  if (domain === 'marketing' || domain === 'general') {
+    candidates.push(scoreNpcTeamAction(game, npc, company, 'marketing'));
+  }
+  if (domain === 'finance') {
+    candidates.push(scoreNpcPayoutAction(npc, company, 'up'), scoreNpcPayoutAction(npc, company, 'down'));
+  }
+
+  const hasResearchOverflow = company.research > management.researchReserveTarget;
+  const hasCashOverflow = company.cash > management.cashReserveTarget;
+
+  const affordable = candidates
+    .filter((action) => action.cost <= (action.resource === 'research' ? company.research : company.cash))
+    .sort((left, right) => {
+      const leftBoost = left.resource === 'research'
+        ? management.researchOverflow * 0.7 + management.researchUrgency * 0.12
+        : management.cashOverflow * 0.55 + management.cashUrgency * 0.1;
+      const rightBoost = right.resource === 'research'
+        ? management.researchOverflow * 0.7 + management.researchUrgency * 0.12
+        : management.cashOverflow * 0.55 + management.cashUrgency * 0.1;
+      return (right.score + rightBoost) - (left.score + leftBoost);
+    });
+
+  const best = affordable[0] ?? null;
+  if (!best) return null;
+  const executionThreshold = (best.type === 'upgrade' || best.type === 'team')
+    ? 0.32 - management.managementIntensity * 0.05 - npc.intelligence * 0.04
+    : 0.52 - management.cashOverflow * 0.05;
+  if ((best.type === 'upgrade' || best.type === 'team') && best.score < executionThreshold && !hasResearchOverflow && !hasCashOverflow) return null;
+  if (best.type === 'payout' && best.score < 0.55) return null;
+  return best;
+}
+
+function applyNpcManagementAction(game: GameState, companyKey: CompanyKey, action: CompanyAiAction) {
+  if (action.type !== 'payout') return applyNpcCompanyAction(game, companyKey, action);
+  const company = game.companies[companyKey];
+  const delta = action.key === 'payout-up' ? 0.015 : -0.02;
+  return {
+    ...game,
+    companies: {
+      ...game.companies,
+      [companyKey]: {
+        ...company,
+        payoutRatio: clamp(company.payoutRatio + delta, 0.08, 0.34),
+        executivePulse: `${company.ceoName} ${action.rationale}.`,
+      },
+    },
+  };
+}
+
+function getNpcManagementActionCapacity(company: CompanyState, ceoNpc: NpcInvestor, domain: ExecutiveDomain | 'general') {
+  const management = getManagementResourceContext(company);
+  if (domain === 'technology') return clamp(Math.round(1 + management.researchOverflow * 1.8 + management.researchUrgency * 0.45 + ceoNpc.intelligence * 1.6), 1, 6);
+  if (domain === 'operations') return clamp(Math.round(1 + management.cashOverflow * 1.2 + management.cashUrgency * 0.35 + ceoNpc.intelligence * 1.1), 1, 4);
+  if (domain === 'marketing') return clamp(Math.round(1 + management.cashOverflow * 1 + management.monthlyRevenue / 150 + ceoNpc.boldness), 1, 4);
+  if (domain === 'finance') return clamp(Math.round(1 + management.cashOverflow * 0.5 + getCompanyStressLevel(company)), 1, 2);
+  return clamp(Math.round(1 + management.managementIntensity * 1.4 + ceoNpc.intelligence), 1, 4);
+}
+
+function runNpcChiefExecutiveTurn(current: GameState) {
+  let next = current;
+
+  COMPANY_KEYS.forEach((companyKey) => {
+    const company = next.companies[companyKey];
+    const ceoNpc = getNpcById(next, company.ceoId);
+    if (!ceoNpc) return;
+    if (next.elapsedDays < company.nextManagementReviewDay) return;
+
+    let workingGame = next;
+    let workingCompany = workingGame.companies[companyKey];
+    const actionsTaken: string[] = [];
+    const roleOrder: Array<ExecutiveDomain | 'general'> = ['technology', 'operations', 'marketing', 'finance', 'general'];
+    const actionCounts = new Map<string, number>();
+    const roleHandlers: Record<ExecutiveDomain | 'general', string> = {
+      technology: workingCompany.executives.cto?.occupantName ?? ceoNpc.name,
+      operations: workingCompany.executives.coo?.occupantName ?? ceoNpc.name,
+      marketing: workingCompany.executives.cmo?.occupantName ?? ceoNpc.name,
+      finance: workingCompany.executives.cfo?.occupantName ?? ceoNpc.name,
+      general: ceoNpc.name,
+    };
+    const maxTotalActions = clamp(Math.round(4 + getManagementResourceContext(workingCompany).managementIntensity * 3 + ceoNpc.intelligence * 3), 4, 16);
+    let totalActions = 0;
+
+    roleOrder.forEach((domain) => {
+      if (totalActions >= maxTotalActions) return;
+      const actor = domain === 'general'
+        ? ceoNpc
+        : getNpcById(workingGame, workingCompany.executives[domain === 'technology' ? 'cto' : domain === 'operations' ? 'coo' : domain === 'marketing' ? 'cmo' : 'cfo']?.occupantId ?? ceoNpc.id) ?? ceoNpc;
+      const domainCapacity = getNpcManagementActionCapacity(workingCompany, ceoNpc, domain);
+      let domainActions = 0;
+
+      while (domainActions < domainCapacity && totalActions < maxTotalActions) {
+        const action = chooseNpcCompanyActionByDomain(workingGame, actor, workingCompany, domain);
+        if (!action) break;
+        const actionKey = `${domain}:${action.key}`;
+        const seenCount = actionCounts.get(actionKey) ?? 0;
+        if (action.type === 'payout' && seenCount >= 1) break;
+        if (seenCount >= 3) break;
+
+        workingGame = resolveGovernance(applyNpcManagementAction(workingGame, companyKey, action));
+        workingCompany = workingGame.companies[companyKey];
+        actionsTaken.push(`${roleHandlers[domain]}: ${action.label}`);
+        actionCounts.set(actionKey, seenCount + 1);
+        domainActions += 1;
+        totalActions += 1;
+
+        if (action.type === 'payout') break;
+      }
+    });
+
+    const nextReviewDay = workingGame.elapsedDays + getManagementCadenceDays(workingCompany, ceoNpc);
+    workingGame = resolveGovernance({
+      ...workingGame,
+      companies: {
+        ...workingGame.companies,
+        [companyKey]: {
+          ...workingGame.companies[companyKey],
+          nextManagementReviewDay: nextReviewDay,
+        },
+      },
+    });
+
+    if (actionsTaken.length === 0) {
+      next = workingGame;
+      ceoNpc.analysisNote = `${ceoNpc.name} menyelesaikan review manajemen ${workingCompany.name} dan memilih menunggu jendela aksi berikutnya di sekitar ${formatDateFromDays(nextReviewDay)}.`;
+      return;
+    }
+
+    next = {
+      ...workingGame,
+      activityFeed: addFeedEntry(
+        workingGame.activityFeed,
+        `${formatDateFromDays(workingGame.elapsedDays)}: Tim manajemen ${workingCompany.name} mengeksekusi ${actionsTaken.join(' · ')}.`
+      ),
+    };
+    ceoNpc.analysisNote = `${ceoNpc.name} menyelaraskan eksekutif ${workingCompany.name}: ${actionsTaken.join(', ')}. Review berikutnya sekitar ${formatDateFromDays(nextReviewDay)}.`;
+  });
+
+  return resolveGovernance(next);
+}
+
+function chooseNpcListingMultiplier(npc: NpcInvestor, ownership: number, convictionGap: number, stressLevel: number): 2 | 3 | 4 {
+  if (ownership > 8 || convictionGap < 0.35 || stressLevel < 0.5) return 4;
+  if (ownership > 4 || convictionGap < 0.8) return 3;
+  return 2;
+}
+
+function manageNpcShareListing(current: GameState, npc: NpcInvestor, target: { key: CompanyKey; company: CompanyState; ownership: number; stressLevel: number; finalScore: number }, bestScore: number, reserveCash: number) {
+  const existingListing = target.company.shareListings.find((listing) => listing.sellerId === npc.id) ?? null;
+  const convictionGap = bestScore - target.finalScore;
+  const availableShares = getAvailableSharesToList(target.company, npc.id);
+  const urgentExit = target.stressLevel > 0.82 || npc.cash < reserveCash * 0.55;
+  const shouldOpenListing = target.ownership > 1.5 && (convictionGap > 0.45 || target.stressLevel > 0.48);
+
+  if (!shouldOpenListing) {
+    if (!existingListing) return { next: current, changed: false };
+    return {
+      next: {
+        ...clearShareListing(current, target.key, npc.id),
+        activityFeed: addFeedEntry(current.activityFeed, `${formatDateFromDays(current.elapsedDays)}: ${npc.name} menarik kembali listing saham ${target.company.name} karena valuasi dianggap belum cocok.`),
+      },
+      changed: true,
+    };
+  }
+
+  if (urgentExit) return { next: current, changed: false };
+  const listingShares = clamp(
+    (target.company.investors[npc.id] ?? 0) * (convictionGap > 1 ? 0.42 : 0.24 + target.stressLevel * 0.18),
+    MIN_TRADE_AMOUNT / Math.max(0.08, getSharePrice(target.company)),
+    Math.max(MIN_TRADE_AMOUNT / Math.max(0.08, getSharePrice(target.company)), availableShares)
+  );
+  if (listingShares <= 0.01 || availableShares <= 0.01) return { next: current, changed: false };
+  const priceMultiplier = chooseNpcListingMultiplier(npc, target.ownership, convictionGap, target.stressLevel);
+  const normalizedShares = Math.min(listingShares, availableShares);
+  if (existingListing && Math.abs(existingListing.sharesAvailable - normalizedShares) < 0.02 && existingListing.priceMultiplier === priceMultiplier) {
+    return { next: current, changed: false };
+  }
+  const next = upsertShareListing(
+    current,
+    target.key,
+    npc.id,
+    normalizedShares,
+    priceMultiplier,
+    `${npc.name} hanya mau melepas saham ${target.company.name} di ${priceMultiplier}x harga normal.`
+  );
+  return {
+    next: {
+      ...next,
+      activityFeed: addFeedEntry(next.activityFeed, `${formatDateFromDays(next.elapsedDays)}: ${npc.name} membuka ${formatNumber(normalizedShares, 2)} saham ${target.company.name} di ${priceMultiplier}x harga normal.`),
+    },
+    changed: true,
   };
 }
 
@@ -1111,6 +2345,10 @@ function runNpcTurn(current: GameState) {
     npc.focusCompany = best.key;
 
     const reserveCash = 20 + npc.cash * npc.reserveRatio;
+    const listingDecision = manageNpcShareListing(next, npc, currentFocus, best.finalScore, reserveCash);
+    if (listingDecision.changed) {
+      next = listingDecision.next;
+    }
     const bestOutrunsFocus = best.finalScore - currentFocus.finalScore;
     const shouldTrim = currentFocus.ownership > 4
       && (
@@ -1118,22 +2356,29 @@ function runNpcTurn(current: GameState) {
         || currentFocus.dividendYield < 0.08
         || currentFocus.company.boardMood < 0.45
         || currentFocus.stressLevel > 0.55
+        || currentFocus.liquidityPenalty > 0.22
       );
     const shouldExit = currentFocus.ownership > 1.2
-      && (currentFocus.stressLevel > 0.78 || currentFocus.company.cash < 150 || currentFocus.performanceSignal < 1.55);
+      && (currentFocus.stressLevel > 0.72 || currentFocus.company.cash < 70 || currentFocus.performanceSignal < 1.55 || currentFocus.finalScore < 1.55);
 
     if (shouldTrim || shouldExit) {
+      const urgentExit = shouldExit && (currentFocus.stressLevel > 0.82 || npc.cash < reserveCash * 0.55);
+      if (!urgentExit) {
+        npc.analysisNote = `${npc.name} belum mau menjual murah ${currentFocus.company.name}; ia membuka/menjaga listing holder premium sambil menunggu bid yang lebih menarik.`;
+        return;
+      }
       const ownedValue = (currentFocus.company.investors[npc.id] ?? 0) * currentFocus.sharePrice;
       const trimBudget = shouldExit
         ? clamp(ownedValue * (0.45 + npc.boldness * 0.2), MIN_TRADE_AMOUNT, ownedValue * 0.92)
         : clamp(ownedValue * (0.18 + npc.boldness * 0.22), MIN_TRADE_AMOUNT, ownedValue * 0.6);
-      const result = transactShares(next, npc.id, currentFocus.key, 'sell', trimBudget);
+      const sellPreview = getTradePreview(next, currentFocus.company, npc.id, npc.cash, currentFocus.company.investors[npc.id] ?? 0, 'sell', trimBudget, 'auto');
+      const result = transactShares(next, npc.id, currentFocus.key, 'sell', trimBudget, 'auto');
       if (result.tradedValue > 0) {
         next = {
           ...result.next,
           activityFeed: addFeedEntry(
             result.next.activityFeed,
-            `${formatDateFromDays(result.next.elapsedDays)}: ${npc.name} menjual ${formatNumber(result.sharesMoved, 2)} saham ${currentFocus.company.name}${shouldExit ? ' untuk kabur dari manajemen buruk.' : ' demi reposisi jangka panjang.'}`
+            `${formatDateFromDays(result.next.elapsedDays)}: ${npc.name} menjual ${formatNumber(result.sharesMoved, 2)} saham ${currentFocus.company.name} via ${sellPreview.routeLabel.toLowerCase()}${shouldExit ? ' untuk kabur dari manajemen buruk.' : ' demi reposisi jangka panjang.'}`
           ),
         };
         const refreshedCompany = next.companies[currentFocus.key];
@@ -1149,13 +2394,25 @@ function runNpcTurn(current: GameState) {
 
     const affordable = npc.cash - reserveCash;
     const conviction = best.finalScore - (second?.finalScore ?? 0);
-    if (affordable < MIN_TRADE_AMOUNT || conviction < 0.12) {
+    const isFreshEntry = (best.company.investors[npc.id] ?? 0) < 0.01;
+    const scoutingThreshold = isFreshEntry
+      ? 0.2 + Math.max(0, 0.24 - best.discoverySignal * 0.12) + Math.max(0, best.founderControl - 0.88) * 0.9
+      : 0.12;
+    if (affordable < MIN_TRADE_AMOUNT || conviction < scoutingThreshold) {
       npc.analysisNote = `${best.company.name} tetap dipantau. ${npc.name} memilih menahan kas karena spread peluang belum cukup tebal.`;
       return;
     }
 
-    const budget = clamp(best.sharePrice * (2.2 + npc.boldness * 2.8) + conviction * 20, MIN_TRADE_AMOUNT, affordable * (0.42 + npc.boldness * 0.24));
-    const buyResult = transactShares(next, npc.id, best.key, 'buy', budget);
+    const starterDiscipline = isFreshEntry
+      ? clamp(0.18 + best.discoverySignal * 0.22 + best.momentumSignal * 0.12 - Math.max(0, best.founderControl - 0.9) * 0.5, 0.12, 0.46)
+      : clamp(0.32 + best.discoverySignal * 0.18 + npc.boldness * 0.12, 0.22, 0.68);
+    const budget = clamp(
+      best.sharePrice * (1.4 + npc.boldness * 1.9 + npc.intelligence * 1.1) + conviction * (16 + best.discoverySignal * 10),
+      MIN_TRADE_AMOUNT,
+      affordable * starterDiscipline
+    );
+    const buyPreview = getTradePreview(next, best.company, npc.id, npc.cash, best.company.investors[npc.id] ?? 0, 'buy', budget, 'auto');
+    const buyResult = transactShares(next, npc.id, best.key, 'buy', budget, 'auto');
     if (buyResult.tradedValue <= 0) {
       npc.analysisNote = `${best.company.name} menarik, tetapi likuiditas pasar untuk transaksi wajar sedang tipis.`;
       return;
@@ -1165,14 +2422,14 @@ function runNpcTurn(current: GameState) {
       ...buyResult.next,
       activityFeed: addFeedEntry(
         buyResult.next.activityFeed,
-        `${formatDateFromDays(buyResult.next.elapsedDays)}: ${npc.name} membeli ${formatNumber(buyResult.sharesMoved, 2)} saham ${best.company.name} berdasarkan analisis ${STRATEGY_LABELS[npc.strategy].toLowerCase()}.`
+        `${formatDateFromDays(buyResult.next.elapsedDays)}: ${npc.name} membeli ${formatNumber(buyResult.sharesMoved, 2)} saham ${best.company.name} via ${buyPreview.routeLabel.toLowerCase()} berdasarkan analisis ${STRATEGY_LABELS[npc.strategy].toLowerCase()}.`
       ),
     };
 
-    const diversified = second && npc.cash > reserveCash + 30 && second.finalScore >= best.finalScore * 0.92;
+    const diversified = second && npc.cash > reserveCash + 30 && second.finalScore >= best.finalScore * (0.88 + npc.intelligence * 0.06);
     if (diversified) {
       const sideBudget = clamp(affordable * 0.18, MIN_TRADE_AMOUNT, affordable * 0.24);
-      const sideResult = transactShares(next, npc.id, second.key, 'buy', sideBudget);
+      const sideResult = transactShares(next, npc.id, second.key, 'buy', sideBudget, 'auto');
       if (sideResult.tradedValue > 0) {
         next = {
           ...sideResult.next,
@@ -1198,7 +2455,8 @@ export function CpuFoundrySim() {
   const [openPanels, setOpenPanels] = useState<Record<PanelKey, boolean>>(DEFAULT_OPEN_PANELS);
   const [companyDetailPanels, setCompanyDetailPanels] = useState<Record<CompanyDetailPanelKey, boolean>>(DEFAULT_COMPANY_DETAIL_PANELS);
   const [releaseDraft, setReleaseDraft] = useState<ReleaseDraft>(DEFAULT_RELEASE_DRAFT);
-  const [investmentDraft, setInvestmentDraft] = useState<InvestmentDraft>({ company: 'cosmic', mode: 'buy', sliderPercent: 50 });
+  const [investmentDraft, setInvestmentDraft] = useState<InvestmentDraft>({ company: 'cosmic', mode: 'buy', route: 'auto', sliderPercent: 50 });
+  const [shareListingDraft, setShareListingDraft] = useState<ShareListingDraft>(DEFAULT_SHARE_LISTING_DRAFT);
   const [statusMessage, setStatusMessage] = useState('Buat profil dulu untuk masuk ke simulasi hidup investor CPU.');
   const [isReleaseMenuOpen, setIsReleaseMenuOpen] = useState(false);
   const [isInvestmentMenuOpen, setIsInvestmentMenuOpen] = useState(false);
@@ -1214,11 +2472,25 @@ export function CpuFoundrySim() {
       const parsed = JSON.parse(raw) as GameState;
       const normalized = resolveGovernance({
         ...parsed,
+        companies: Object.fromEntries(
+          (Object.entries(parsed.companies) as [CompanyKey, CompanyState][]).map(([key, company]) => [
+            key,
+            {
+              ...company,
+              capitalStrain: company.capitalStrain ?? 0,
+              shareListings: sanitizeShareListings({
+                ...company,
+                shareListings: company.shareListings ?? [],
+              }),
+            },
+          ])
+        ) as Record<CompanyKey, CompanyState>,
         npcs: parsed.npcs.map((npc) => ({
           ...npc,
           strategy: npc.strategy ?? 'balanced',
           horizonDays: npc.horizonDays ?? 365,
           reserveRatio: npc.reserveRatio ?? 0.2,
+          intelligence: npc.intelligence ?? 0.72,
           analysisNote: npc.analysisNote ?? 'Masih memetakan ulang peluang pasar.',
           active: true,
         })),
@@ -1289,7 +2561,8 @@ export function CpuFoundrySim() {
       cpuName: 'PX-01',
       priceIndex: 1,
     });
-    setInvestmentDraft({ company: profileDraft.selectedCompany, mode: 'buy', sliderPercent: 50 });
+    setInvestmentDraft({ company: profileDraft.selectedCompany, mode: 'buy', route: 'auto', sliderPercent: 50 });
+    setShareListingDraft({ ...DEFAULT_SHARE_LISTING_DRAFT, company: profileDraft.selectedCompany });
     setInvestorFrameCompanyKey(profileDraft.selectedCompany);
   };
 
@@ -1298,7 +2571,8 @@ export function CpuFoundrySim() {
     setGame(null);
     setProfileDraft(DEFAULT_PROFILE_DRAFT);
     setReleaseDraft(DEFAULT_RELEASE_DRAFT);
-    setInvestmentDraft({ company: 'cosmic', mode: 'buy', sliderPercent: 50 });
+    setInvestmentDraft({ company: 'cosmic', mode: 'buy', route: 'auto', sliderPercent: 50 });
+    setShareListingDraft(DEFAULT_SHARE_LISTING_DRAFT);
     setStatusMessage('Profil dihapus. Kamu bisa membuat akun baru.');
     setIsInvestmentMenuOpen(false);
     setIsReleaseMenuOpen(false);
@@ -1312,6 +2586,11 @@ export function CpuFoundrySim() {
   const activePricePreset = PRICE_PRESETS[releaseDraft.priceIndex];
   const isPlayerCeo = Boolean(game && activeCompany && activeCompany.ceoId === game.player.id);
   const focusedPlayerIsCeo = Boolean(game && focusedCompany && focusedCompany.ceoId === game.player.id);
+  const activePlayerExecutiveRoles = activeCompany && game ? getExecutiveRolesForInvestor(activeCompany, game.player.id) : [];
+  const focusedPlayerExecutiveRoles = focusedCompany && game ? getExecutiveRolesForInvestor(focusedCompany, game.player.id) : [];
+  const focusedCanManageTechnology = Boolean(focusedCompany && game && hasCompanyAuthority(focusedCompany, game.player.id, 'technology'));
+  const focusedCanManageFinance = Boolean(focusedCompany && game && hasCompanyAuthority(focusedCompany, game.player.id, 'finance'));
+  const focusedCanReleaseCpu = Boolean(focusedCompany && game && hasCompanyAuthority(focusedCompany, game.player.id, 'release'));
   const activeCpuScore = activeCompany ? calculateCpuScore(activeCompany.upgrades) : 0;
   const focusedCpuScore = focusedCompany ? calculateCpuScore(focusedCompany.upgrades) : 0;
   const playerNetWorth = useMemo(() => {
@@ -1326,15 +2605,53 @@ export function CpuFoundrySim() {
     if (!game) return null;
     const company = game.companies[investmentDraft.company];
     const currentShares = company.investors[game.player.id] ?? 0;
-    const maxTradeValue = getMaxTradeValue(company, game.player.cash, currentShares, investmentDraft.mode);
+    const maxTradeValue = getMaxTradeValue(game, company, game.player.id, game.player.cash, currentShares, investmentDraft.mode, investmentDraft.route);
     return getTradePreview(
+      game,
       company,
+      game.player.id,
       game.player.cash,
       currentShares,
       investmentDraft.mode,
-      getRequestedTradeValue(maxTradeValue, investmentDraft.sliderPercent)
+      getRequestedTradeValue(maxTradeValue, investmentDraft.sliderPercent),
+      investmentDraft.route
     );
   }, [game, investmentDraft]);
+  const companyCards = useMemo(
+    () => {
+      if (!game) return [];
+      return (Object.values(game.companies) as CompanyState[]).map((company) => ({
+        company,
+        playerOwnership: getOwnershipPercent(company, game.player.id),
+        sharePrice: getSharePrice(company),
+        companyValue: getCompanyValuation(company),
+      }));
+    },
+    [game]
+  );
+  const investorRankings = useMemo(
+    () => {
+      if (!game) return [];
+      return Object.entries(game.companies[investorFrameCompanyKey].investors)
+        .map(([investorId, shares]) => ({
+          investorId,
+          shares,
+          amount: shares * getSharePrice(game.companies[investorFrameCompanyKey]),
+          ownership: getOwnershipPercent(game.companies[investorFrameCompanyKey], investorId),
+          displayName: investorDisplayName(game, investorId),
+        }))
+        .sort((left, right) => right.shares - left.shares);
+    },
+    [game, investorFrameCompanyKey]
+  );
+  const focusedExecutiveCandidatePool = useMemo(
+    () => (focusedCompany && game ? getExecutiveCandidatePool(game, focusedCompany, focusedCompany.ceoId) : []),
+    [focusedCompany, game]
+  );
+  const focusedPlayerListing = useMemo(
+    () => (focusedCompany && game ? focusedCompany.shareListings.find((listing) => listing.sellerId === game.player.id) ?? null : null),
+    [focusedCompany, game]
+  );
 
   const switchCompany = (company: CompanyKey) => {
     if (!game) return;
@@ -1346,6 +2663,7 @@ export function CpuFoundrySim() {
       },
     });
     setInvestmentDraft((current) => ({ ...current, company }));
+    setShareListingDraft((current) => ({ ...current, company }));
     setReleaseDraft((current) => ({ ...current, series: `${game.companies[company].name} Prime` }));
   };
 
@@ -1382,12 +2700,16 @@ export function CpuFoundrySim() {
 
   const investInCompany = () => {
     if (!game || !investmentPreview) return;
+    if (investmentDraft.mode === 'sell' && investmentDraft.route === 'holders') {
+      setStatusMessage('Gunakan tombol "Buka saham" di panel Ownership untuk menjual ke sesama investor dengan harga 2x/3x/4x.');
+      return;
+    }
     const company = game.companies[investmentDraft.company];
     const beforeWasCeo = company.ceoId === game.player.id;
     const requestedTradeValue = getRequestedTradeValue(investmentPreview.maxTradeValue, investmentDraft.sliderPercent);
-    const result = transactShares(game, game.player.id, investmentDraft.company, investmentDraft.mode, requestedTradeValue);
+    const result = transactShares(game, game.player.id, investmentDraft.company, investmentDraft.mode, requestedTradeValue, investmentDraft.route);
     if (result.tradedValue <= 0) {
-      setStatusMessage(investmentDraft.mode === 'buy' ? 'Dana pribadi atau likuiditas pasar tidak cukup untuk membeli saham.' : 'Jumlah saham yang ingin dijual belum cukup atau terlalu kecil.');
+      setStatusMessage(investmentDraft.mode === 'buy' ? 'Dana pribadi atau likuiditas di rute yang dipilih tidak cukup untuk membeli saham.' : 'Jumlah saham atau demand holder di rute yang dipilih belum cukup.');
       return;
     }
 
@@ -1399,7 +2721,7 @@ export function CpuFoundrySim() {
       },
       activityFeed: addFeedEntry(
         result.next.activityFeed,
-        `${formatDateFromDays(result.next.elapsedDays)}: ${game.player.name} ${investmentDraft.mode === 'buy' ? 'membeli' : 'menjual'} ${formatNumber(result.sharesMoved, 2)} saham ${company.name}.`
+        `${formatDateFromDays(result.next.elapsedDays)}: ${game.player.name} ${investmentDraft.mode === 'buy' ? 'membeli' : 'menjual'} ${formatNumber(result.sharesMoved, 2)} saham ${company.name} via ${getTradeRouteLabel(result.route).toLowerCase()}.`
       ),
     };
 
@@ -1419,11 +2741,63 @@ export function CpuFoundrySim() {
     setIsInvestmentMenuOpen(false);
   };
 
-  const improveUpgrade = (key: UpgradeKey) => {
-    if (!game || !activeCompany || !isPlayerCeo) return;
-    const upgrade = activeCompany.upgrades[key];
-    const cost = getUpgradeCost(key, upgrade, activeCompany);
-    if (activeCompany.research < cost) {
+  const openPlayerShareListing = (companyKey: CompanyKey) => {
+    if (!game) return;
+    const company = game.companies[companyKey];
+    const desiredShares = Number(shareListingDraft.shares);
+    const availableShares = getAvailableSharesToList(company, game.player.id);
+    if (!Number.isFinite(desiredShares) || desiredShares <= 0) {
+      setStatusMessage('Masukkan jumlah saham yang valid untuk dibuka ke sesama investor.');
+      return;
+    }
+    if (desiredShares > availableShares + 0.0001) {
+      setStatusMessage('Jumlah saham yang dibuka melebihi saham bebas yang belum sedang kamu listing.');
+      return;
+    }
+
+    const next = upsertShareListing(
+      game,
+      companyKey,
+      game.player.id,
+      desiredShares,
+      shareListingDraft.priceMultiplier,
+      `${game.player.name} membuka ${formatNumber(desiredShares, 2)} saham ${company.name} di ${shareListingDraft.priceMultiplier}x harga normal.`
+    );
+    const enriched = {
+      ...next,
+      activityFeed: addFeedEntry(
+        next.activityFeed,
+        `${formatDateFromDays(next.elapsedDays)}: ${game.player.name} membuka ${formatNumber(desiredShares, 2)} saham ${company.name} untuk holder lain di ${shareListingDraft.priceMultiplier}x harga normal.`
+      ),
+    };
+    setGame(enriched);
+    setStatusMessage(`Listing holder dibuka di ${shareListingDraft.priceMultiplier}x harga normal.`);
+    setShareListingDraft((current) => ({ ...current, shares: '' }));
+  };
+
+  const cancelPlayerShareListing = (companyKey: CompanyKey) => {
+    if (!game) return;
+    const company = game.companies[companyKey];
+    const next = clearShareListing(game, companyKey, game.player.id);
+    setGame({
+      ...next,
+      activityFeed: addFeedEntry(
+        next.activityFeed,
+        `${formatDateFromDays(next.elapsedDays)}: ${game.player.name} menutup listing holder untuk saham ${company.name}.`
+      ),
+    });
+    setStatusMessage(`Listing holder ${company.name} ditutup.`);
+  };
+
+  const improveUpgrade = (key: UpgradeKey, companyKey?: CompanyKey) => {
+    const targetCompany = game ? game.companies[companyKey ?? game.player.selectedCompany] : null;
+    if (!game || !targetCompany || !hasCompanyAuthority(targetCompany, game.player.id, 'technology')) {
+      setStatusMessage('Hanya CEO atau CTO yang bisa mengubah roadmap teknologi.');
+      return;
+    }
+    const upgrade = targetCompany.upgrades[key];
+    const cost = getUpgradeCost(key, upgrade, targetCompany);
+    if (targetCompany.research < cost) {
       setStatusMessage('Research point perusahaan belum cukup.');
       return;
     }
@@ -1434,7 +2808,8 @@ export function CpuFoundrySim() {
 
     setGame((current) => {
       if (!current) return current;
-      const company = current.companies[current.player.selectedCompany];
+      const resolvedCompanyKey = companyKey ?? current.player.selectedCompany;
+      const company = current.companies[resolvedCompanyKey];
       const nextCompany: CompanyState = {
         ...company,
         research: company.research - cost,
@@ -1457,20 +2832,33 @@ export function CpuFoundrySim() {
         },
       });
     });
-    setStatusMessage(`${activeCompany.name}: ${upgrade.label} berhasil ditingkatkan.`);
+    setStatusMessage(`${targetCompany.name}: ${upgrade.label} berhasil ditingkatkan.`);
   };
 
-  const hireTeam = (key: TeamKey) => {
-    if (!game || !activeCompany || !isPlayerCeo) return;
-    const cost = getTeamCost(activeCompany.teams[key]);
-    if (activeCompany.cash < cost) {
+  const hireTeam = (key: TeamKey, companyKey?: CompanyKey) => {
+    const targetCompany = game ? game.companies[companyKey ?? game.player.selectedCompany] : null;
+    if (!game || !targetCompany) return;
+    const requiredDomain: ExecutiveDomain = key === 'marketing' ? 'marketing' : key === 'researchers' ? 'technology' : 'operations';
+    if (!hasCompanyAuthority(targetCompany, game.player.id, requiredDomain)) {
+      setStatusMessage(
+        requiredDomain === 'marketing'
+          ? 'Hanya CEO atau CMO yang bisa ekspansi marketing.'
+          : requiredDomain === 'technology'
+            ? 'Hanya CEO atau CTO yang bisa ekspansi R&D.'
+            : 'Hanya CEO atau COO yang bisa ekspansi operasi.'
+      );
+      return;
+    }
+    const cost = getTeamCost(targetCompany.teams[key]);
+    if (targetCompany.cash < cost) {
       setStatusMessage('Kas perusahaan belum cukup untuk ekspansi tim.');
       return;
     }
 
     setGame((current) => {
       if (!current) return current;
-      const company = current.companies[current.player.selectedCompany];
+      const resolvedCompanyKey = companyKey ?? current.player.selectedCompany;
+      const company = current.companies[resolvedCompanyKey];
       return resolveGovernance({
         ...current,
         companies: {
@@ -1489,12 +2877,12 @@ export function CpuFoundrySim() {
         },
       });
     });
-    setStatusMessage(`${activeCompany.name}: ${activeCompany.teams[key].label} diperbesar.`);
+    setStatusMessage(`${targetCompany.name}: ${targetCompany.teams[key].label} diperbesar.`);
   };
 
   const launchCpu = () => {
-    if (!game || !activeCompany || !isPlayerCeo) {
-      setStatusMessage('Kamu harus menjadi CEO untuk merilis CPU perusahaan ini.');
+    if (!game || !activeCompany || !hasCompanyAuthority(activeCompany, game.player.id, 'release')) {
+      setStatusMessage('Kamu harus menjadi CEO, CTO, atau CMO untuk merilis CPU perusahaan ini.');
       return;
     }
 
@@ -1539,6 +2927,91 @@ export function CpuFoundrySim() {
     setStatusMessage(`${series} ${cpuName} sukses dirilis.`);
     setReleaseDraft({ ...releaseDraft, cpuName: `PX-${String(activeCompany.releaseCount + 1).padStart(2, '0')}` });
     setIsReleaseMenuOpen(false);
+  };
+
+  const rotateExecutiveAppointment = (companyKey: CompanyKey, role: ExecutiveRole) => {
+    setGame((current) => {
+      if (!current) return current;
+      const company = current.companies[companyKey];
+      if (company.ceoId !== current.player.id) return current;
+      const pool = getExecutiveCandidatePool(current, company, company.ceoId);
+      if (pool.length === 0) return current;
+      const currentOccupantId = company.executives[role]?.occupantId;
+      const currentIndex = currentOccupantId ? pool.indexOf(currentOccupantId) : -1;
+      const nextOccupantId = pool[(currentIndex + 1 + pool.length) % pool.length];
+      return resolveGovernance({
+        ...current,
+        companies: {
+          ...current.companies,
+          [companyKey]: {
+            ...company,
+            executives: {
+              ...company.executives,
+              [role]: createExecutiveRecord(
+                current,
+                company,
+                role,
+                nextOccupantId,
+                current.player.id,
+                `${current.player.name} mendelegasikan domain ${EXECUTIVE_ROLE_META[role].domain} kepada ${investorDisplayName(current, nextOccupantId)}.`
+              ),
+            },
+            executivePulse: `${current.player.name} sedang merapikan struktur eksekutif ${company.name}.`,
+          },
+        },
+      });
+    });
+    setStatusMessage(`${EXECUTIVE_ROLE_META[role].title} diputar ke kandidat berikutnya.`);
+  };
+
+  const clearExecutiveAppointment = (companyKey: CompanyKey, role: ExecutiveRole) => {
+    setGame((current) => {
+      if (!current) return current;
+      const company = current.companies[companyKey];
+      if (company.ceoId !== current.player.id) return current;
+      return resolveGovernance({
+        ...current,
+        companies: {
+          ...current.companies,
+          [companyKey]: {
+            ...company,
+            executives: {
+              ...company.executives,
+              [role]: null,
+            },
+            executivePulse: `${current.player.name} mengosongkan kursi ${EXECUTIVE_ROLE_META[role].title} untuk menjaga struktur tetap lean.`,
+          },
+        },
+      });
+    });
+    setStatusMessage(`${EXECUTIVE_ROLE_META[role].title} dikosongkan.`);
+  };
+
+  const adjustPayoutBias = (direction: 'up' | 'down', companyKey?: CompanyKey) => {
+    const targetCompany = game ? game.companies[companyKey ?? game.player.selectedCompany] : null;
+    if (!game || !targetCompany || !hasCompanyAuthority(targetCompany, game.player.id, 'finance')) {
+      setStatusMessage('Hanya CEO atau CFO yang bisa mengubah payout policy.');
+      return;
+    }
+
+    setGame((current) => {
+      if (!current) return current;
+      const resolvedCompanyKey = companyKey ?? current.player.selectedCompany;
+      const company = current.companies[resolvedCompanyKey];
+      const delta = direction === 'up' ? 0.015 : -0.02;
+      return resolveGovernance({
+        ...current,
+        companies: {
+          ...current.companies,
+          [company.key]: {
+            ...company,
+            payoutRatio: clamp(company.payoutRatio + delta, 0.08, 0.34),
+            executivePulse: `${investorDisplayName(current, current.player.id)} ${direction === 'up' ? 'menaikkan' : 'menurunkan'} payout policy ${company.name}.`,
+          },
+        },
+      });
+    });
+    setStatusMessage(direction === 'up' ? 'Payout policy dinaikkan sedikit.' : 'Payout policy dibuat lebih defensif.');
   };
 
   if (!game) {
@@ -1591,23 +3064,6 @@ export function CpuFoundrySim() {
     );
   }
 
-  const companyCards = (Object.values(game.companies) as CompanyState[]).map((company) => ({
-    company,
-    playerOwnership: getOwnershipPercent(company, game.player.id),
-    sharePrice: getSharePrice(company),
-    companyValue: getCompanyValuation(company),
-  }));
-
-  const investorRankings = Object.entries(game.companies[investorFrameCompanyKey].investors)
-    .map(([investorId, shares]) => ({
-      investorId,
-      shares,
-      amount: shares * getSharePrice(game.companies[investorFrameCompanyKey]),
-      ownership: getOwnershipPercent(game.companies[investorFrameCompanyKey], investorId),
-      displayName: investorDisplayName(game, investorId),
-    }))
-    .sort((left, right) => right.shares - left.shares);
-
   return (
     <>
       <main className={styles.shell}>
@@ -1642,7 +3098,13 @@ export function CpuFoundrySim() {
             </article>
             <article className={styles.statChip}>
               <span>Role</span>
-              <strong>{isPlayerCeo ? `CEO ${activeCompany?.name}` : 'Investor'}</strong>
+              <strong>
+                {isPlayerCeo
+                  ? `CEO ${activeCompany?.name}`
+                  : activePlayerExecutiveRoles.length > 0
+                    ? activePlayerExecutiveRoles.map((role) => EXECUTIVE_ROLE_META[role].title).join(' / ')
+                    : 'Investor'}
+              </strong>
             </article>
             <article className={styles.statChip}>
               <span>NPC aktif</span>
@@ -1690,6 +3152,16 @@ export function CpuFoundrySim() {
                   <div>
                     <span>Kepemilikan</span>
                     <strong>{activeCompany ? `${formatNumber(getOwnershipPercent(activeCompany, game.player.id), 1)}%` : '0%'}</strong>
+                  </div>
+                  <div>
+                    <span>Akses eksekutif</span>
+                    <strong>
+                      {isPlayerCeo
+                        ? 'CEO full access'
+                        : activePlayerExecutiveRoles.length > 0
+                          ? activePlayerExecutiveRoles.map((role) => EXECUTIVE_ROLE_META[role].title).join(' · ')
+                          : 'Belum punya mandat'}
+                    </strong>
                   </div>
                 </div>
                 <div className={styles.memoCard}>
@@ -1802,6 +3274,10 @@ export function CpuFoundrySim() {
                           <span>Market cap</span>
                           <strong>$ {formatNumber(getSharePrice(company) * company.sharesOutstanding, 1)}M</strong>
                         </div>
+                        <div>
+                          <span>Exec seats</span>
+                          <strong>{formatNumber(EXECUTIVE_ROLES.filter((role) => company.executives[role]).length)}</strong>
+                        </div>
                       </div>
                       <p className={styles.itemDescription}>Pantau board, investor, dan trade live.</p>
                     </article>
@@ -1908,6 +3384,14 @@ export function CpuFoundrySim() {
                     <span>Gaji CEO/hari</span>
                     <strong>$ {formatNumber(focusedCompany.ceoSalaryPerDay, 2)}M</strong>
                   </div>
+                  <div>
+                    <span>Eksekutif aktif</span>
+                    <strong>{formatNumber(EXECUTIVE_ROLES.filter((role) => focusedCompany.executives[role]).length)} kursi</strong>
+                  </div>
+                  <div>
+                    <span>Payroll eksekutif</span>
+                    <strong>$ {formatNumber(focusedCompany.executivePayrollPerDay, 2)}M</strong>
+                  </div>
                 </div>
                 <div className={styles.actionRow}>
                   <button type="button" className={styles.ghostButton} onClick={closeCompanyDetail}>
@@ -1916,8 +3400,8 @@ export function CpuFoundrySim() {
                   <button type="button" className={styles.secondaryButton} onClick={() => { switchCompany(focusedCompany.key); setInvestmentDraft((current) => ({ ...current, company: focusedCompany.key })); closeTransientLayers(); setIsInvestmentMenuOpen(true); }}>
                     Beli / jual saham
                   </button>
-                  <button type="button" className={styles.primaryButton} onClick={() => { switchCompany(focusedCompany.key); closeTransientLayers(); setIsReleaseMenuOpen(true); }} disabled={!focusedPlayerIsCeo}>
-                    {focusedPlayerIsCeo ? 'Release CPU' : 'Harus jadi CEO'}
+                  <button type="button" className={styles.primaryButton} onClick={() => { switchCompany(focusedCompany.key); closeTransientLayers(); setIsReleaseMenuOpen(true); }} disabled={!focusedCanReleaseCpu}>
+                    {focusedCanReleaseCpu ? 'Release CPU' : 'Butuh CEO/CTO/CMO'}
                   </button>
                   <button type="button" className={styles.ghostButton} onClick={() => openInvestorFrame(focusedCompany.key)}>
                     Investor list
@@ -1976,10 +3460,91 @@ export function CpuFoundrySim() {
                         <span>Nilai/lembar intrinsik</span>
                         <strong>$ {formatNumber(getCompanyValuation(focusedCompany) / focusedCompany.sharesOutstanding, 2)}</strong>
                       </div>
+                      <div>
+                        <span>Capital strain</span>
+                        <strong>$ {formatNumber(focusedCompany.capitalStrain, 1)}M</strong>
+                      </div>
                     </div>
                     <div className={styles.memoCard}>
                       <p className={styles.panelTag}>Memo terbaru</p>
                       <p>{focusedCompany.lastRelease}</p>
+                    </div>
+                  </div>
+                ) : null}
+              </section>
+
+              <section className={styles.panel}>
+                <button type="button" className={styles.panelToggle} onClick={() => toggleCompanyDetailPanel('management')}>
+                  <div>
+                    <p className={styles.panelTag}>Management</p>
+                    <h2>CEO & jabatan eksekutif opsional</h2>
+                  </div>
+                  <span>{companyDetailPanels.management ? 'Tutup' : 'Buka'}</span>
+                </button>
+                {companyDetailPanels.management ? (
+                  <div className={styles.panelList}>
+                    <div className={styles.memoCard}>
+                      <p className={styles.panelTag}>Executive pulse</p>
+                      <p>{focusedCompany.executivePulse}</p>
+                    </div>
+                    <div className={styles.infoRow}>
+                      <div>
+                        <span>Payroll eksekutif</span>
+                        <strong>$ {formatNumber(focusedCompany.executivePayrollPerDay, 2)}M/hari</strong>
+                      </div>
+                      <div>
+                        <span>Kandidat manusia</span>
+                        <strong>{formatNumber(focusedExecutiveCandidatePool.length)} orang</strong>
+                      </div>
+                      <div>
+                        <span>Mandat player</span>
+                        <strong>{focusedPlayerIsCeo ? 'CEO' : focusedPlayerExecutiveRoles.map((role) => EXECUTIVE_ROLE_META[role].title).join(' / ') || 'Belum ada'}</strong>
+                      </div>
+                      <div>
+                        <span>Payout policy</span>
+                        <strong>{formatNumber(focusedCompany.payoutRatio * 100, 1)}%</strong>
+                      </div>
+                    </div>
+
+                    {EXECUTIVE_ROLES.map((role) => {
+                      const meta = EXECUTIVE_ROLE_META[role];
+                      const executive = focusedCompany.executives[role];
+                      return (
+                        <article key={role} className={styles.itemCard}>
+                          <div className={styles.itemTop}>
+                            <div>
+                              <p className={styles.itemLabel}>{meta.domain}</p>
+                              <h3>{meta.title}</h3>
+                            </div>
+                            <span className={styles.costPill}>{executive ? executive.occupantName : 'Vacant'}</span>
+                          </div>
+                          <p className={styles.itemDescription}>{executive ? executive.note : `CEO dapat membiarkan kursi ${meta.title} kosong jika belum dibutuhkan.`}</p>
+                          <div className={styles.optionList}>
+                            <span className={styles.optionPill}>{meta.permissionLabel}</span>
+                            <span className={styles.optionPill}>{meta.mandate}</span>
+                            {executive ? <span className={styles.optionPill}>Efektivitas {formatNumber(executive.effectiveness, 2)}x</span> : null}
+                          </div>
+                          {focusedPlayerIsCeo ? (
+                            <div className={styles.actionRow}>
+                              <button type="button" className={styles.secondaryButton} onClick={() => rotateExecutiveAppointment(focusedCompany.key, role)}>
+                                {executive ? 'Rotasi kandidat' : 'Tunjuk kandidat'}
+                              </button>
+                              <button type="button" className={styles.ghostButton} onClick={() => clearExecutiveAppointment(focusedCompany.key, role)} disabled={!executive}>
+                                Kosongkan kursi
+                              </button>
+                            </div>
+                          ) : null}
+                        </article>
+                      );
+                    })}
+
+                    <div className={styles.actionRow}>
+                      <button type="button" className={styles.secondaryButton} onClick={() => adjustPayoutBias('down', focusedCompany.key)} disabled={!focusedCanManageFinance}>
+                        {focusedCanManageFinance ? 'Turunkan payout' : 'Butuh CEO/CFO'}
+                      </button>
+                      <button type="button" className={styles.ghostButton} onClick={() => adjustPayoutBias('up', focusedCompany.key)} disabled={!focusedCanManageFinance}>
+                        {focusedCanManageFinance ? 'Naikkan payout' : 'Butuh CEO/CFO'}
+                      </button>
                     </div>
                   </div>
                 ) : null}
@@ -1997,7 +3562,7 @@ export function CpuFoundrySim() {
                   <div className={styles.panelList}>
                     <div className={styles.memoCard}>
                       <p className={styles.panelTag}>Board system</p>
-                      <p>7 kursi dewan memilih CEO dari performa dan ownership.</p>
+                      <p>7 kursi dewan memilih CEO dari performa dan ownership, lalu ikut menekan/usul struktur COO, CFO, CTO, dan CMO bila perusahaan membutuhkannya.</p>
                     </div>
                     {focusedCompany.boardMembers.map((member) => (
                       <article key={member.id} className={styles.itemCard}>
@@ -2030,6 +3595,70 @@ export function CpuFoundrySim() {
                 </button>
                 {companyDetailPanels.ownership ? (
                   <div className={styles.panelList}>
+                    {(focusedCompany.investors[game.player.id] ?? 0) > 0.01 ? (
+                      <article className={styles.itemCard}>
+                        <div className={styles.itemTop}>
+                          <div>
+                            <p className={styles.itemLabel}>Holder listing</p>
+                            <h3>Buka saham</h3>
+                          </div>
+                          <span className={styles.costPill}>
+                            {focusedPlayerListing ? `${formatNumber(focusedPlayerListing.sharesAvailable, 2)} saham @ ${focusedPlayerListing.priceMultiplier}x` : 'Belum ada listing'}
+                          </span>
+                        </div>
+                        <p className={styles.itemDescription}>
+                          Buka sebagian sahammu agar sesama investor bisa membeli lot yang benar-benar kamu tawarkan, tanpa auto menjual semuanya sekaligus.
+                        </p>
+                        <label className={styles.field}>
+                          <span>Nominal saham dibuka</span>
+                          <input
+                            value={shareListingDraft.company === focusedCompany.key ? shareListingDraft.shares : ''}
+                            onChange={(event) => setShareListingDraft((current) => ({ ...current, company: focusedCompany.key, shares: event.target.value }))}
+                            placeholder={`Maks ${formatNumber(getAvailableSharesToList(focusedCompany, game.player.id), 2)} saham`}
+                          />
+                        </label>
+                        <div className={styles.quickGrid}>
+                          {([2, 3, 4] as const).map((multiplier) => (
+                            <button
+                              key={multiplier}
+                              type="button"
+                              className={(shareListingDraft.company === focusedCompany.key ? shareListingDraft.priceMultiplier : 2) === multiplier ? styles.quickButtonActive : styles.quickButton}
+                              onClick={() => setShareListingDraft((current) => ({ ...current, company: focusedCompany.key, priceMultiplier: multiplier }))}
+                            >
+                              {multiplier}x normal
+                            </button>
+                          ))}
+                        </div>
+                        <div className={styles.actionRow}>
+                          <button type="button" className={styles.secondaryButton} onClick={() => openPlayerShareListing(focusedCompany.key)}>
+                            Buka saham
+                          </button>
+                          <button type="button" className={styles.ghostButton} onClick={() => cancelPlayerShareListing(focusedCompany.key)} disabled={!focusedPlayerListing}>
+                            Tutup listing
+                          </button>
+                        </div>
+                      </article>
+                    ) : null}
+
+                    {focusedCompany.shareListings.length > 0 ? (
+                      <article className={styles.itemCard}>
+                        <div className={styles.itemTop}>
+                          <div>
+                            <p className={styles.itemLabel}>Listing aktif</p>
+                            <h3>Order book holder</h3>
+                          </div>
+                          <span className={styles.costPill}>{formatNumber(focusedCompany.shareListings.length)} listing</span>
+                        </div>
+                        <div className={styles.optionList}>
+                          {getVisibleShareListings(focusedCompany).map((listing) => (
+                            <span key={`${listing.sellerId}-${listing.openedDay}`} className={styles.optionPill}>
+                              {investorDisplayName(game, listing.sellerId)} · {formatNumber(listing.sharesAvailable, 2)} saham · {listing.priceMultiplier}x
+                            </span>
+                          ))}
+                        </div>
+                      </article>
+                    ) : null}
+
                     {Object.entries(focusedCompany.investors)
                       .sort(([, left], [, right]) => right - left)
                       .map(([investorId, shares]) => (
@@ -2070,8 +3699,8 @@ export function CpuFoundrySim() {
                             <span className={styles.costPill}>{formatNumber(cost)} RP</span>
                           </div>
                           <p className={styles.itemDescription}>{upgrade.description}</p>
-                          <button type="button" className={styles.secondaryButton} onClick={() => { switchCompany(focusedCompany.key); improveUpgrade(key); }} disabled={!focusedPlayerIsCeo || focusedCompany.research < cost}>
-                            {!focusedPlayerIsCeo ? 'CEO only' : focusedCompany.research >= cost ? 'Upgrade' : 'RP kurang'}
+                          <button type="button" className={styles.secondaryButton} onClick={() => improveUpgrade(key, focusedCompany.key)} disabled={!focusedCanManageTechnology || focusedCompany.research < cost}>
+                            {!focusedCanManageTechnology ? 'CEO/CTO only' : focusedCompany.research >= cost ? 'Upgrade' : 'RP kurang'}
                           </button>
                         </article>
                       );
@@ -2089,8 +3718,32 @@ export function CpuFoundrySim() {
                             <span className={styles.costPill}>$ {formatNumber(cost)}M</span>
                           </div>
                           <p className={styles.itemDescription}>{team.description}</p>
-                          <button type="button" className={styles.secondaryButton} onClick={() => { switchCompany(focusedCompany.key); hireTeam(key); }} disabled={!focusedPlayerIsCeo || focusedCompany.cash < cost}>
-                            {!focusedPlayerIsCeo ? 'CEO only' : focusedCompany.cash >= cost ? 'Expand' : 'Dana kurang'}
+                          <button
+                            type="button"
+                            className={styles.secondaryButton}
+                            onClick={() => hireTeam(key, focusedCompany.key)}
+                            disabled={
+                              !(
+                                (key === 'researchers'
+                                  ? focusedCanManageTechnology
+                                  : key === 'marketing'
+                                    ? Boolean(focusedCompany && game && hasCompanyAuthority(focusedCompany, game.player.id, 'marketing'))
+                                    : Boolean(focusedCompany && game && hasCompanyAuthority(focusedCompany, game.player.id, 'operations')))
+                                && focusedCompany.cash >= cost
+                              )
+                            }
+                          >
+                            {key === 'researchers'
+                              ? focusedCanManageTechnology
+                                ? focusedCompany.cash >= cost ? 'Expand' : 'Dana kurang'
+                                : 'CEO/CTO only'
+                              : key === 'marketing'
+                                ? (focusedCompany && game && hasCompanyAuthority(focusedCompany, game.player.id, 'marketing'))
+                                  ? focusedCompany.cash >= cost ? 'Expand' : 'Dana kurang'
+                                  : 'CEO/CMO only'
+                                : (focusedCompany && game && hasCompanyAuthority(focusedCompany, game.player.id, 'operations'))
+                                  ? focusedCompany.cash >= cost ? 'Expand' : 'Dana kurang'
+                                  : 'CEO/COO only'}
                           </button>
                         </article>
                       );
@@ -2177,6 +3830,14 @@ export function CpuFoundrySim() {
                 </button>
               </div>
 
+              <div className={styles.quickGrid}>
+                {(['auto', 'company', 'holders'] as TradeRoute[]).map((route) => (
+                  <button key={route} type="button" className={investmentDraft.route === route ? styles.quickButtonActive : styles.quickButton} onClick={() => setInvestmentDraft((current) => ({ ...current, route }))}>
+                    {route === 'auto' ? 'Auto' : route === 'company' ? 'Perusahaan' : 'Holder'}
+                  </button>
+                ))}
+              </div>
+
               <div className={styles.sliderCard}>
                 <div className={styles.sliderHeader}>
                   <div>
@@ -2184,7 +3845,7 @@ export function CpuFoundrySim() {
                     <strong>$ {formatNumber(investmentPreview.grossTradeValue, 2)}M · {formatNumber(investmentPreview.sharesMoved / game.companies[investmentDraft.company].sharesOutstanding * 100, 2)}%</strong>
                   </div>
                   <small>
-                    {investmentDraft.mode === 'buy' ? 'Max buy' : 'Max sell'}: $ {formatNumber(investmentPreview.maxTradeValue, 2)}M · Live
+                    {investmentDraft.mode === 'buy' ? 'Max buy' : 'Max sell'}: $ {formatNumber(investmentPreview.maxTradeValue, 2)}M · {investmentPreview.routeLabel}
                   </small>
                 </div>
                 <input className={styles.slider} type="range" min={0} max={100} step={1} value={investmentDraft.sliderPercent} onChange={(event) => setInvestmentDraft((current) => ({ ...current, sliderPercent: Number(event.target.value) }))} aria-label="Slider nilai transaksi" />
@@ -2194,7 +3855,9 @@ export function CpuFoundrySim() {
                   ))}
                 </div>
                 <p className={styles.compactHint}>
-                  {investmentDraft.mode === 'buy' ? 'Bayar' : 'Jual'} $ {formatNumber(Math.abs(investmentPreview.netCashDelta), 2)}M untuk {formatNumber(investmentPreview.sharesMoved, 2)} saham · sim live.
+                  {investmentDraft.mode === 'sell' && investmentDraft.route === 'holders'
+                    ? 'Penjualan ke holder dilakukan lewat listing “Buka saham” agar order bisa dibeli parsial oleh beberapa investor.'
+                    : `${investmentDraft.mode === 'buy' ? 'Bayar' : 'Jual'} $ ${formatNumber(Math.abs(investmentPreview.netCashDelta), 2)}M untuk ${formatNumber(investmentPreview.sharesMoved, 2)} saham · fee ${formatNumber(investmentPreview.feeRate * 100, 1)}% · ${investmentPreview.counterpartyLabel}`}
                 </p>
               </div>
 
@@ -2215,11 +3878,21 @@ export function CpuFoundrySim() {
                   <span>Ownership setelah transaksi</span>
                   <strong>{formatNumber(investmentPreview.futureOwnership, 2)}%</strong>
                 </div>
+                <div>
+                  <span>Delta kas perusahaan</span>
+                  <strong>$ {formatNumber(investmentPreview.companyCashDelta, 2)}M</strong>
+                </div>
+                <div>
+                  <span>Delta nilai perusahaan</span>
+                  <strong>$ {formatNumber(investmentPreview.companyValueDelta, 2)}M</strong>
+                </div>
               </div>
 
               <button type="button" className={styles.primaryButton} onClick={investInCompany} disabled={investmentPreview.grossTradeValue < MIN_TRADE_AMOUNT}>
                 {investmentPreview.grossTradeValue < MIN_TRADE_AMOUNT
                   ? 'Nilai aktual terlalu kecil'
+                  : investmentDraft.mode === 'sell' && investmentDraft.route === 'holders'
+                    ? 'Gunakan Buka saham'
                   : investmentDraft.mode === 'buy'
                     ? 'Beli saham sekarang'
                     : 'Jual saham sekarang'}
