@@ -884,6 +884,28 @@ function getNpcById(game: GameState, investorId: string) {
   return game.npcs.find((npc) => npc.id === investorId) ?? null;
 }
 
+function getExecutiveAiActor(game: GameState, company: CompanyState, investorId: string): NpcInvestor {
+  const existingNpc = getNpcById(game, investorId);
+  if (existingNpc) return existingNpc;
+  const isFounder = investorId.startsWith('founder_');
+  const founderStrategy: StrategyStyle = company.marketShare > 20 ? 'balanced' : company.cash < 24 ? 'growth' : 'value';
+  return {
+    id: investorId,
+    name: investorDisplayName(game, investorId),
+    persona: isFounder ? 'Founder operator AI fallback' : 'Executive fallback AI',
+    strategy: investorId === game.player.id ? 'balanced' : founderStrategy,
+    cash: getInvestorCash(game, investorId),
+    focusCompany: company.key,
+    boldness: isFounder ? 0.7 : 0.62,
+    patience: isFounder ? 0.74 : 0.68,
+    horizonDays: isFounder ? 420 : 320,
+    reserveRatio: 0.24,
+    intelligence: isFounder ? 0.84 : 0.8,
+    analysisNote: `${investorDisplayName(game, investorId)} menjalankan fallback AI management untuk menjaga kesinambungan aksi.`,
+    active: true,
+  };
+}
+
 function isHumanExecutiveCandidateId(investorId: string) {
   return investorId.startsWith('npc_') || investorId.startsWith('player-') || investorId.startsWith('founder_');
 }
@@ -1584,6 +1606,8 @@ function transactShares(current: GameState, investorId: string, companyKey: Comp
       holderAllocation.fills.forEach((fill) => {
         companyAfterListings = {
           ...companyAfterListings,
+          cash: companyAfterListings.cash + fill.value,
+          capitalStrain: Math.max(0, companyAfterListings.capitalStrain - fill.value * 0.4),
           investors: {
             ...companyAfterListings.investors,
             [fill.sellerId]: Math.max(0, (companyAfterListings.investors[fill.sellerId] ?? 0) - fill.shares),
@@ -1598,10 +1622,9 @@ function transactShares(current: GameState, investorId: string, companyKey: Comp
         if ((companyAfterListings.investors[fill.sellerId] ?? 0) <= 0.01) {
           delete companyAfterListings.investors[fill.sellerId];
         }
-        next = applyCashToInvestor(next, fill.sellerId, fill.value);
         feed = addFeedEntry(
           feed,
-          `${formatDateFromDays(current.elapsedDays)}: ${investorDisplayName(current, fill.sellerId)} menjual ${formatNumber(fill.shares, 2)} saham ${company.name} kepada ${investorDisplayName(current, investorId)} via listing holder ${fill.priceMultiplier}x.`
+          `${formatDateFromDays(current.elapsedDays)}: Investasi holder senilai $${formatNumber(fill.value)}M pada ${company.name} dialihkan penuh ke kas perusahaan via listing ${fill.priceMultiplier}x.`
         );
       });
 
@@ -1694,10 +1717,12 @@ function transactShares(current: GameState, investorId: string, companyKey: Comp
   if (mode === 'buy') {
     const holderAllocation = allocateHolderBuyFromListings(company, getVisibleShareListings(company, investorId), preview.grossTradeValue);
     let feed = next.activityFeed;
+    let treasuryInjection = 0;
     holderAllocation.fills.forEach((fill) => {
       if (fill.shares <= 0.0001) return;
       remainingShares -= fill.shares;
       consumedValue += fill.value;
+      treasuryInjection += fill.value;
       const holderCurrentShares = next.companies[companyKey].investors[fill.sellerId] ?? 0;
       next.companies[companyKey].investors[fill.sellerId] = holderCurrentShares - fill.shares;
       if (next.companies[companyKey].investors[fill.sellerId] <= 0.01) {
@@ -1708,14 +1733,15 @@ function transactShares(current: GameState, investorId: string, companyKey: Comp
           ? { ...listing, sharesAvailable: Math.max(0, listing.sharesAvailable - fill.shares) }
           : listing)
         .filter((listing) => listing.sharesAvailable > 0.01);
-      next = applyCashToInvestor(next, fill.sellerId, fill.value);
       feed = addFeedEntry(
         feed,
-        `${formatDateFromDays(current.elapsedDays)}: ${investorDisplayName(current, fill.sellerId)} menjual ${formatNumber(fill.shares, 2)} saham ${company.name} kepada ${investorDisplayName(current, investorId)} via listing holder ${fill.priceMultiplier}x.`
+        `${formatDateFromDays(current.elapsedDays)}: Investasi holder senilai $${formatNumber(fill.value)}M pada ${company.name} masuk langsung ke kas perusahaan via listing ${fill.priceMultiplier}x.`
       );
     });
 
     next.companies[companyKey].investors[investorId] = (next.companies[companyKey].investors[investorId] ?? 0) + preview.sharesMoved - remainingShares;
+    next.companies[companyKey].cash += treasuryInjection;
+    next.companies[companyKey].capitalStrain = Math.max(0, next.companies[companyKey].capitalStrain - treasuryInjection * 0.4);
     next = applyCashToInvestor(next, investorId, -(consumedValue + consumedValue * preview.feeRate));
     next = {
       ...next,
@@ -2222,6 +2248,7 @@ function applyNpcCompanyAction(game: GameState, companyKey: CompanyKey, action: 
     const pricePreset = PRICE_PRESETS[priceIndex];
     const cpuScore = calculateCpuScore(company.upgrades);
     const launchRevenue = calculateLaunchRevenue(cpuScore, company.teams, company.marketShare, company.reputation, pricePreset.factor);
+    const wasCashCritical = company.cash <= 0.5;
     const reputationGain = Math.max(1.2, cpuScore / 240 + company.teams.marketing.count * 0.7 + pricePreset.reputationBonus);
     const marketShareGain = Math.min(4.8, cpuScore / 500 + company.teams.fabrication.count * 0.16 + pricePreset.marketBonus);
     const series = action.releaseSeries ?? `${company.name} G-Series`;
@@ -2245,7 +2272,7 @@ function applyNpcCompanyAction(game: GameState, companyKey: CompanyKey, action: 
       },
       activityFeed: addFeedEntry(
         game.activityFeed,
-        `${formatDateFromDays(game.elapsedDays)}: ${company.name} merilis ${series} ${cpuName} dan membukukan $${formatNumber(launchRevenue)}M.`
+        `${formatDateFromDays(game.elapsedDays)}: ${wasCashCritical ? '🚨 RILIS DARURAT' : 'Update produk'} — ${company.name} merilis ${series} ${cpuName} dan membukukan $${formatNumber(launchRevenue)}M.`
       ),
     };
   }
@@ -2402,8 +2429,8 @@ function runNpcChiefExecutiveTurn(current: GameState) {
 
   COMPANY_KEYS.forEach((companyKey) => {
     const company = next.companies[companyKey];
-    const ceoNpc = getNpcById(next, company.ceoId);
-    if (!ceoNpc) return;
+    const ceoNpcRecord = getNpcById(next, company.ceoId);
+    const ceoNpc = getExecutiveAiActor(next, company, company.ceoId);
     const releasePressure = getNpcReleasePressure(next, ceoNpc, company);
     const isEmergencyReview =
       releasePressure.canForceRelease
@@ -2431,7 +2458,7 @@ function runNpcChiefExecutiveTurn(current: GameState) {
       if (totalActions >= maxTotalActions) return;
       const actor = domain === 'general'
         ? ceoNpc
-        : getNpcById(workingGame, workingCompany.executives[domain === 'technology' ? 'cto' : domain === 'operations' ? 'coo' : domain === 'marketing' ? 'cmo' : 'cfo']?.occupantId ?? ceoNpc.id) ?? ceoNpc;
+        : getExecutiveAiActor(workingGame, workingCompany, workingCompany.executives[domain === 'technology' ? 'cto' : domain === 'operations' ? 'coo' : domain === 'marketing' ? 'cmo' : 'cfo']?.occupantId ?? ceoNpc.id);
       const domainCapacity = getNpcManagementActionCapacity(workingCompany, ceoNpc, domain);
       let domainActions = 0;
 
@@ -2469,7 +2496,9 @@ function runNpcChiefExecutiveTurn(current: GameState) {
 
     if (actionsTaken.length === 0) {
       next = workingGame;
-      ceoNpc.analysisNote = `${ceoNpc.name} menyelesaikan review manajemen ${workingCompany.name} dan memilih menunggu jendela aksi berikutnya di sekitar ${formatDateFromDays(nextReviewDay)}.`;
+      if (ceoNpcRecord) {
+        ceoNpcRecord.analysisNote = `${ceoNpc.name} menyelesaikan review manajemen ${workingCompany.name} dan memilih menunggu jendela aksi berikutnya di sekitar ${formatDateFromDays(nextReviewDay)}.`;
+      }
       return;
     }
 
@@ -2480,7 +2509,9 @@ function runNpcChiefExecutiveTurn(current: GameState) {
         `${formatDateFromDays(workingGame.elapsedDays)}: Tim manajemen ${workingCompany.name} mengeksekusi ${actionsTaken.join(' · ')}.`
       ),
     };
-    ceoNpc.analysisNote = `${ceoNpc.name} menyelaraskan eksekutif ${workingCompany.name}: ${actionsTaken.join(', ')}. Review berikutnya sekitar ${formatDateFromDays(nextReviewDay)}.`;
+    if (ceoNpcRecord) {
+      ceoNpcRecord.analysisNote = `${ceoNpc.name} menyelaraskan eksekutif ${workingCompany.name}: ${actionsTaken.join(', ')}. Review berikutnya sekitar ${formatDateFromDays(nextReviewDay)}.`;
+    }
   });
 
   return resolveGovernance(next);
