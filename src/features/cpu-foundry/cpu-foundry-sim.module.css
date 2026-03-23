@@ -416,6 +416,13 @@
   gap: 8px;
 }
 
+.compactHint {
+  margin: 8px 0 0;
+  color: #334155;
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
 .releasePreview,
 .loginPreview {
   display: grid;
@@ -430,11 +437,11 @@
 }
 
 .quickGrid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
 }
 
 .actionRow {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
 }
 
 .loginCard {
@@ -469,5 +476,34 @@
     min-height: auto;
     max-height: calc(100dvh - 32px);
     border-radius: 20px;
+  }
+}
+
+@media (max-width: 560px) {
+  .heroHeader,
+  .sliderHeader,
+  .itemTop,
+  .screenFrameHeader,
+  .modalHeader {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .topStrip,
+  .statGrid,
+  .infoRow,
+  .infoRowCompact,
+  .releasePreview,
+  .loginPreview {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .modalOverlay {
+    padding-inline: 8px;
+  }
+
+  .modalCard {
+    width: 100%;
+    max-height: min(88dvh, 760px);
   }
 }

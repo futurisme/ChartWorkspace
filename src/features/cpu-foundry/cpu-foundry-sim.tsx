@@ -114,7 +114,12 @@ type ReleaseDraft = {
 type InvestmentDraft = {
   company: CompanyKey;
   mode: InvestorActionMode;
-  amount: number;
+  sliderPercent: number;
+};
+
+type SliderStop = {
+  label: string;
+  value: number;
 };
 
 type TradePreview = {
@@ -150,7 +155,13 @@ const TOTAL_SHARES = 1000;
 const TRADING_FEE_RATE = 0.02;
 const MIN_TRADE_AMOUNT = 12;
 const COMPANY_KEYS: CompanyKey[] = ['cosmic', 'rmd', 'heroscop'];
-const INVESTMENT_OPTIONS = [20, 40, 80, 120, 180] as const;
+const TRANSACTION_SLIDER_STOPS: SliderStop[] = [
+  { label: '0%', value: 0 },
+  { label: '25%', value: 25 },
+  { label: '50%', value: 50 },
+  { label: '75%', value: 75 },
+  { label: '100%', value: 100 },
+];
 const PRICE_PRESETS = [
   { label: 'Murah', subtitle: 'Volume tinggi', factor: 0.86, reputationBonus: 0.4, marketBonus: 1.6 },
   { label: 'Seimbang', subtitle: 'Arus utama', factor: 1, reputationBonus: 0.8, marketBonus: 1 },
@@ -421,6 +432,16 @@ function getInvestorCash(game: GameState, investorId: string) {
   return game.npcs.find((npc) => npc.id === investorId)?.cash ?? 0;
 }
 
+function getMaxTradeValue(company: CompanyState, investorCash: number, currentShares: number, mode: InvestorActionMode) {
+  return mode === 'buy'
+    ? Math.max(0, Math.min(company.marketPoolShares * getSharePrice(company), investorCash / (1 + TRADING_FEE_RATE)))
+    : Math.max(0, currentShares * getSharePrice(company));
+}
+
+function getRequestedTradeValue(maxTradeValue: number, sliderPercent: number) {
+  return maxTradeValue * clamp(sliderPercent, 0, 100) / 100;
+}
+
 function getTradePreview(
   company: CompanyState,
   investorCash: number,
@@ -432,9 +453,7 @@ function getTradePreview(
   const sharePrice = getSharePrice(company);
   const marketCap = sharePrice * company.sharesOutstanding;
   const normalizedRequestedValue = Math.max(0, requestedValue);
-  const maxTradeValue = mode === 'buy'
-    ? Math.max(0, Math.min(company.marketPoolShares * sharePrice, investorCash / (1 + TRADING_FEE_RATE)))
-    : Math.max(0, currentShares * sharePrice);
+  const maxTradeValue = getMaxTradeValue(company, investorCash, currentShares, mode);
   const grossTradeValue = Math.min(normalizedRequestedValue, maxTradeValue);
   const sharesMoved = sharePrice > 0 ? grossTradeValue / sharePrice : 0;
   const feeValue = grossTradeValue * TRADING_FEE_RATE;
@@ -1114,7 +1133,7 @@ export function CpuFoundrySim() {
   const [openPanels, setOpenPanels] = useState<Record<PanelKey, boolean>>(DEFAULT_OPEN_PANELS);
   const [companyDetailPanels, setCompanyDetailPanels] = useState<Record<CompanyDetailPanelKey, boolean>>(DEFAULT_COMPANY_DETAIL_PANELS);
   const [releaseDraft, setReleaseDraft] = useState<ReleaseDraft>(DEFAULT_RELEASE_DRAFT);
-  const [investmentDraft, setInvestmentDraft] = useState<InvestmentDraft>({ company: 'cosmic', mode: 'buy', amount: 40 });
+  const [investmentDraft, setInvestmentDraft] = useState<InvestmentDraft>({ company: 'cosmic', mode: 'buy', sliderPercent: 50 });
   const [statusMessage, setStatusMessage] = useState('Buat profil dulu untuk masuk ke simulasi hidup investor CPU.');
   const [isReleaseMenuOpen, setIsReleaseMenuOpen] = useState(false);
   const [isInvestmentMenuOpen, setIsInvestmentMenuOpen] = useState(false);
@@ -1163,24 +1182,6 @@ export function CpuFoundrySim() {
     return () => window.clearInterval(interval);
   }, []);
 
-  useEffect(() => {
-    const html = document.documentElement;
-    const body = document.body;
-    const previousHtmlOverflow = html.style.overflow;
-    const previousBodyOverflow = body.style.overflow;
-    const previousBodyTouchAction = body.style.touchAction;
-
-    const isModalOpen = isReleaseMenuOpen || isInvestmentMenuOpen || isCompaniesFrameOpen || isInvestorFrameOpen || focusedCompanyKey !== null;
-    html.style.overflow = isModalOpen ? 'hidden' : 'auto';
-    body.style.overflow = isModalOpen ? 'hidden' : 'auto';
-    body.style.touchAction = 'pan-y';
-
-    return () => {
-      html.style.overflow = previousHtmlOverflow;
-      body.style.overflow = previousBodyOverflow;
-      body.style.touchAction = previousBodyTouchAction;
-    };
-  }, [focusedCompanyKey, isCompaniesFrameOpen, isInvestorFrameOpen, isReleaseMenuOpen, isInvestmentMenuOpen]);
 
   const togglePanel = (panel: PanelKey) => {
     setOpenPanels((current) => ({ ...current, [panel]: !current[panel] }));
@@ -1205,7 +1206,7 @@ export function CpuFoundrySim() {
       cpuName: 'PX-01',
       priceIndex: 1,
     });
-    setInvestmentDraft({ company: profileDraft.selectedCompany, mode: 'buy', amount: 40 });
+    setInvestmentDraft({ company: profileDraft.selectedCompany, mode: 'buy', sliderPercent: 50 });
     setInvestorFrameCompanyKey(profileDraft.selectedCompany);
   };
 
@@ -1214,7 +1215,7 @@ export function CpuFoundrySim() {
     setGame(null);
     setProfileDraft(DEFAULT_PROFILE_DRAFT);
     setReleaseDraft(DEFAULT_RELEASE_DRAFT);
-    setInvestmentDraft({ company: 'cosmic', mode: 'buy', amount: 40 });
+    setInvestmentDraft({ company: 'cosmic', mode: 'buy', sliderPercent: 50 });
     setStatusMessage('Profil dihapus. Kamu bisa membuat akun baru.');
     setIsInvestmentMenuOpen(false);
     setIsReleaseMenuOpen(false);
@@ -1241,12 +1242,14 @@ export function CpuFoundrySim() {
   const investmentPreview = useMemo(() => {
     if (!game) return null;
     const company = game.companies[investmentDraft.company];
+    const currentShares = company.investors[game.player.id] ?? 0;
+    const maxTradeValue = getMaxTradeValue(company, game.player.cash, currentShares, investmentDraft.mode);
     return getTradePreview(
       company,
       game.player.cash,
-      company.investors[game.player.id] ?? 0,
+      currentShares,
       investmentDraft.mode,
-      investmentDraft.amount
+      getRequestedTradeValue(maxTradeValue, investmentDraft.sliderPercent)
     );
   }, [game, investmentDraft]);
 
@@ -1290,10 +1293,11 @@ export function CpuFoundrySim() {
   };
 
   const investInCompany = () => {
-    if (!game) return;
+    if (!game || !investmentPreview) return;
     const company = game.companies[investmentDraft.company];
     const beforeWasCeo = company.ceoId === game.player.id;
-    const result = transactShares(game, game.player.id, investmentDraft.company, investmentDraft.mode, investmentDraft.amount);
+    const requestedTradeValue = getRequestedTradeValue(investmentPreview.maxTradeValue, investmentDraft.sliderPercent);
+    const result = transactShares(game, game.player.id, investmentDraft.company, investmentDraft.mode, requestedTradeValue);
     if (result.tradedValue <= 0) {
       setStatusMessage(investmentDraft.mode === 'buy' ? 'Dana pribadi atau likuiditas pasar tidak cukup untuk membeli saham.' : 'Jumlah saham yang ingin dijual belum cukup atau terlalu kecil.');
       return;
@@ -1455,7 +1459,7 @@ export function CpuFoundrySim() {
         <section className={styles.loginCard}>
           <p className={styles.eyebrow}>/game · profile login</p>
           <h1>Investor CPU Life</h1>
-          <p className={styles.subtitle}>Masuk dulu, buat profil, lalu mulai hidup sebagai investor yang bisa membeli atau menjual saham, merebut kursi CEO, dan bermain melawan minimal 20 AI NPC aktif.</p>
+          <p className={styles.subtitle}>Buat profil lalu masuk ke pasar saham CPU yang selalu berjalan realtime.</p>
 
           <label className={styles.field}>
             <span>Nama profil</span>
@@ -1645,7 +1649,7 @@ export function CpuFoundrySim() {
                         </div>
                         <span className={styles.costPill}>$ {formatNumber(npc.cash, 1)}M</span>
                       </div>
-                      <p className={styles.itemDescription}>Fokus saat ini: {game.companies[npc.focusCompany].name}. Horizon {formatNumber(npc.horizonDays)} hari. {npc.analysisNote}</p>
+                      <p className={styles.itemDescription}>{game.companies[npc.focusCompany].name} · {formatNumber(npc.horizonDays)} hari · {npc.analysisNote}</p>
                     </article>
                   ))}
                 </div>
@@ -1679,7 +1683,7 @@ export function CpuFoundrySim() {
             <div className={styles.screenFrameBody}>
               <div className={styles.memoCard}>
                 <p className={styles.panelTag}>Instruksi</p>
-                <p>Tap salah satu perusahaan untuk melihat valuasi, harga saham, dividen dinamis, gaji CEO, dewan direksi 7 kursi, dan struktur kepemilikan yang dapat menjatuhkan CEO ketika saham dijual.</p>
+                <p>Tap perusahaan untuk cek valuasi, harga saham, dan ownership live.</p>
               </div>
 
               <div className={styles.companyList}>
@@ -1711,7 +1715,7 @@ export function CpuFoundrySim() {
                           <strong>$ {formatNumber(getSharePrice(company) * company.sharesOutstanding, 1)}M</strong>
                         </div>
                       </div>
-                      <p className={styles.itemDescription}>Tap untuk memantau dewan, investor terbesar, dividen/share, gaji CEO, dan opsi beli/jual saham.</p>
+                      <p className={styles.itemDescription}>Pantau board, investor, dan trade live.</p>
                     </article>
                   </button>
                 ))}
@@ -1745,7 +1749,7 @@ export function CpuFoundrySim() {
 
               <div className={styles.memoCard}>
                 <p className={styles.panelTag}>Urutan investor</p>
-                <p>Panel ini menampilkan pemegang saham dari terbesar ke terkecil. CEO dipilih oleh dewan direksi, sehingga menjual saham besar dapat menurunkan kursi CEO meskipun masih punya saham.</p>
+                <p>Jual saham besar bisa langsung menggoyang kursi CEO.</p>
               </div>
 
               <div className={styles.panel}>
@@ -1766,7 +1770,7 @@ export function CpuFoundrySim() {
                         </div>
                         <span className={styles.costPill}>{formatNumber(entry.ownership, 1)}%</span>
                       </div>
-                      <p className={styles.itemDescription}>Saham: {formatNumber(entry.shares, 2)} lembar. Nilai pasar: $ {formatNumber(entry.amount, 1)}M. {game.companies[investorFrameCompanyKey].ceoId === entry.investorId ? 'Saat ini menjabat CEO.' : 'Masih berada di bawah CEO saat ini.'}</p>
+                      <p className={styles.itemDescription}>Saham {formatNumber(entry.shares, 2)} · Nilai $ {formatNumber(entry.amount, 1)}M · {game.companies[investorFrameCompanyKey].ceoId === entry.investorId ? 'CEO aktif.' : 'Investor aktif.'}</p>
                     </article>
                   ))}
                 </div>
@@ -1905,7 +1909,7 @@ export function CpuFoundrySim() {
                   <div className={styles.panelList}>
                     <div className={styles.memoCard}>
                       <p className={styles.panelTag}>Board system</p>
-                      <p>Setiap perusahaan memakai 7 kursi dewan: chair, pemegang saham besar, kursi pendiri, direktur independen finansial, dan wakil karyawan. Dewan memilih CEO berdasarkan kepemilikan, kontinuitas, kesehatan operasi, dan mood board.</p>
+                      <p>7 kursi dewan memilih CEO dari performa dan ownership.</p>
                     </div>
                     {focusedCompany.boardMembers.map((member) => (
                       <article key={member.id} className={styles.itemCard}>
@@ -1944,7 +1948,7 @@ export function CpuFoundrySim() {
                             </div>
                             <span className={styles.costPill}>{formatNumber(getOwnershipPercent(focusedCompany, investorId), 1)}%</span>
                           </div>
-                          <p className={styles.itemDescription}>Saham: {formatNumber(shares, 2)}. Nilai pasar: $ {formatNumber(shares * getSharePrice(focusedCompany), 1)}M. Menjual saham akan langsung mengubah voting dewan dan potensi kursi CEO.</p>
+                          <p className={styles.itemDescription}>Saham {formatNumber(shares, 2)} · Nilai $ {formatNumber(shares * getSharePrice(focusedCompany), 1)}M.</p>
                         </article>
                       ))}
                   </div>
@@ -2075,7 +2079,7 @@ export function CpuFoundrySim() {
                 <button type="button" className={investmentDraft.mode === 'sell' ? styles.quickButtonActive : styles.quickButton} onClick={() => setInvestmentDraft((current) => ({ ...current, mode: 'sell' }))}>
                   Sell
                 </button>
-                <button type="button" className={styles.quickButton} onClick={() => setInvestmentDraft((current) => ({ ...current, amount: 40 }))}>
+                <button type="button" className={styles.quickButton} onClick={() => setInvestmentDraft((current) => ({ ...current, sliderPercent: 50 }))}>
                   Reset
                 </button>
               </div>
@@ -2083,74 +2087,40 @@ export function CpuFoundrySim() {
               <div className={styles.sliderCard}>
                 <div className={styles.sliderHeader}>
                   <div>
-                    <p className={styles.panelTag}>Nilai transaksi</p>
-                    <strong>$ {formatNumber(investmentDraft.amount)}M</strong>
+                    <p className={styles.panelTag}>Slider transaksi</p>
+                    <strong>$ {formatNumber(investmentPreview.grossTradeValue, 2)}M · {formatNumber(investmentPreview.sharesMoved / game.companies[investmentDraft.company].sharesOutstanding * 100, 2)}%</strong>
                   </div>
                   <small>
-                    Cash: $ {formatNumber(game.player.cash, 1)}M · Saham kamu: {formatNumber(investmentPreview.currentShares, 2)} · Likuiditas pasar:
-                    {' '}$ {formatNumber(investmentPreview.marketLiquidityValue, 1)}M
+                    {investmentDraft.mode === 'buy' ? 'Max buy' : 'Max sell'}: $ {formatNumber(investmentPreview.maxTradeValue, 2)}M · Live
                   </small>
                 </div>
-                <input className={styles.slider} type="range" min={0} max={INVESTMENT_OPTIONS.length - 1} step={1} value={Math.max(0, INVESTMENT_OPTIONS.indexOf(investmentDraft.amount as (typeof INVESTMENT_OPTIONS)[number]))} onChange={(event) => setInvestmentDraft((current) => ({ ...current, amount: INVESTMENT_OPTIONS[Number(event.target.value)] }))} aria-label="Slider nilai transaksi" />
+                <input className={styles.slider} type="range" min={0} max={100} step={1} value={investmentDraft.sliderPercent} onChange={(event) => setInvestmentDraft((current) => ({ ...current, sliderPercent: Number(event.target.value) }))} aria-label="Slider nilai transaksi" />
                 <div className={styles.sliderLabels}>
-                  {INVESTMENT_OPTIONS.map((value) => (
-                    <span key={value}>{value}</span>
+                  {TRANSACTION_SLIDER_STOPS.map((stop) => (
+                    <span key={stop.value}>{stop.label}</span>
                   ))}
                 </div>
+                <p className={styles.compactHint}>
+                  {investmentDraft.mode === 'buy' ? 'Bayar' : 'Jual'} $ {formatNumber(Math.abs(investmentPreview.netCashDelta), 2)}M untuk {formatNumber(investmentPreview.sharesMoved, 2)} saham.
+                </p>
               </div>
 
               <div className={styles.releasePreview}>
                 <div>
-                  <span>Perusahaan</span>
-                  <strong>{game.companies[investmentDraft.company].name}</strong>
+                  <span>1 saham realtime</span>
+                  <strong>$ {formatNumber(investmentPreview.sharePrice, 2)}</strong>
                 </div>
                 <div>
-                  <span>Harga realtime</span>
-                  <strong>$ {formatNumber(investmentPreview.sharePrice, 2)} / share</strong>
+                  <span>Perusahaan</span>
+                  <strong>{game.companies[investmentDraft.company].name}</strong>
                 </div>
                 <div>
                   <span>Nilai perusahaan</span>
                   <strong>$ {formatNumber(investmentPreview.valuation, 1)}M</strong>
                 </div>
                 <div>
-                  <span>Market cap sinkron</span>
-                  <strong>$ {formatNumber(investmentPreview.marketCap, 1)}M</strong>
-                </div>
-                <div>
-                  <span>Harga × total saham</span>
-                  <strong>$ {formatNumber(investmentPreview.sharePrice * game.companies[investmentDraft.company].sharesOutstanding, 1)}M</strong>
-                </div>
-                <div>
-                  <span>Saham berpindah</span>
-                  <strong>{formatNumber(investmentPreview.sharesMoved, 2)} saham</strong>
-                </div>
-                <div>
-                  <span>Nilai transaksi aktual</span>
-                  <strong>$ {formatNumber(investmentPreview.grossTradeValue, 2)}M</strong>
-                </div>
-                <div>
-                  <span>Fee transaksi</span>
-                  <strong>$ {formatNumber(investmentPreview.feeValue, 2)}M</strong>
-                </div>
-                <div>
-                  <span>{investmentDraft.mode === 'buy' ? 'Total dibayar' : 'Kas diterima'}</span>
-                  <strong>$ {formatNumber(Math.abs(investmentPreview.netCashDelta), 2)}M</strong>
-                </div>
-                <div>
-                  <span>Ownership setelah aksi</span>
+                  <span>Ownership setelah transaksi</span>
                   <strong>{formatNumber(investmentPreview.futureOwnership, 2)}%</strong>
-                </div>
-                <div>
-                  <span>Nilai sahammu sekarang</span>
-                  <strong>$ {formatNumber(investmentPreview.currentHoldingValue, 2)}M</strong>
-                </div>
-                <div>
-                  <span>Nilai sahammu setelah aksi</span>
-                  <strong>$ {formatNumber(investmentPreview.futureHoldingValue, 2)}M</strong>
-                </div>
-                <div>
-                  <span>Risiko CEO</span>
-                  <strong>{investmentDraft.mode === 'sell' ? 'Bisa turun dari kursi CEO' : 'Bisa naik jika dukungan dewan cukup'}</strong>
                 </div>
               </div>
 
