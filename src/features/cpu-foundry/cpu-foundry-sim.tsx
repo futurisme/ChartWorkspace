@@ -5,7 +5,8 @@ import styles from './cpu-foundry-sim.module.css';
 
 type UpgradeKey = 'architecture' | 'lithography' | 'clockSpeed' | 'coreDesign' | 'cacheStack' | 'powerEfficiency';
 type TeamKey = 'researchers' | 'marketing' | 'fabrication';
-type PanelKey = 'profile' | 'market' | 'company' | 'intel';
+type PanelKey = 'profile' | 'intel';
+type CompanyDetailPanelKey = 'overview' | 'operations' | 'ownership' | 'intel';
 type CompanyKey = 'cosmic' | 'rmd' | 'heroscop';
 
 type UpgradeState = {
@@ -106,8 +107,12 @@ const PRICE_PRESETS = [
 ] as const;
 const DEFAULT_OPEN_PANELS: Record<PanelKey, boolean> = {
   profile: true,
-  market: true,
-  company: true,
+  intel: false,
+};
+const DEFAULT_COMPANY_DETAIL_PANELS: Record<CompanyDetailPanelKey, boolean> = {
+  overview: true,
+  operations: true,
+  ownership: false,
   intel: false,
 };
 const DEFAULT_PROFILE_DRAFT: ProfileDraft = {
@@ -500,6 +505,14 @@ function getSharePrice(company: CompanyState) {
   return Math.max(12, Math.round((company.cash * 0.08 + company.marketShare * 2.6 + company.reputation * 1.8 + company.bestCpuScore * 0.04) * 10) / 10);
 }
 
+function getCompanyInvestmentTotal(company: CompanyState) {
+  return Object.values(company.investors).reduce((sum, value) => sum + value, 0);
+}
+
+function getCompanyValuation(company: CompanyState) {
+  return Math.round((company.cash * 1.35 + getCompanyInvestmentTotal(company) * 1.1 + company.marketShare * 20 + company.reputation * 9 + company.bestCpuScore * 0.32) * 10) / 10;
+}
+
 function addFeedEntry(feed: string[], message: string) {
   return [message, ...feed].slice(0, 8);
 }
@@ -586,11 +599,14 @@ export function CpuFoundrySim() {
   const [game, setGame] = useState<GameState | null>(null);
   const [profileDraft, setProfileDraft] = useState<ProfileDraft>(DEFAULT_PROFILE_DRAFT);
   const [openPanels, setOpenPanels] = useState<Record<PanelKey, boolean>>(DEFAULT_OPEN_PANELS);
+  const [companyDetailPanels, setCompanyDetailPanels] = useState<Record<CompanyDetailPanelKey, boolean>>(DEFAULT_COMPANY_DETAIL_PANELS);
   const [releaseDraft, setReleaseDraft] = useState<ReleaseDraft>(DEFAULT_RELEASE_DRAFT);
   const [investmentDraft, setInvestmentDraft] = useState<InvestmentDraft>({ company: 'cosmic', amount: 40 });
   const [statusMessage, setStatusMessage] = useState('Buat profil dulu untuk masuk ke simulasi hidup investor CPU.');
   const [isReleaseMenuOpen, setIsReleaseMenuOpen] = useState(false);
   const [isInvestmentMenuOpen, setIsInvestmentMenuOpen] = useState(false);
+  const [isCompaniesFrameOpen, setIsCompaniesFrameOpen] = useState(false);
+  const [focusedCompanyKey, setFocusedCompanyKey] = useState<CompanyKey | null>(null);
 
   useEffect(() => {
     try {
@@ -630,7 +646,7 @@ export function CpuFoundrySim() {
     const previousBodyOverflow = body.style.overflow;
     const previousBodyTouchAction = body.style.touchAction;
 
-    const isModalOpen = isReleaseMenuOpen || isInvestmentMenuOpen;
+    const isModalOpen = isReleaseMenuOpen || isInvestmentMenuOpen || isCompaniesFrameOpen || focusedCompanyKey !== null;
     html.style.overflow = isModalOpen ? 'hidden' : 'auto';
     body.style.overflow = isModalOpen ? 'hidden' : 'auto';
     body.style.touchAction = 'pan-y';
@@ -640,10 +656,17 @@ export function CpuFoundrySim() {
       body.style.overflow = previousBodyOverflow;
       body.style.touchAction = previousBodyTouchAction;
     };
-  }, [isReleaseMenuOpen, isInvestmentMenuOpen]);
+  }, [focusedCompanyKey, isCompaniesFrameOpen, isReleaseMenuOpen, isInvestmentMenuOpen]);
 
   const togglePanel = (panel: PanelKey) => {
     setOpenPanels((current) => ({
+      ...current,
+      [panel]: !current[panel],
+    }));
+  };
+
+  const toggleCompanyDetailPanel = (panel: CompanyDetailPanelKey) => {
+    setCompanyDetailPanels((current) => ({
       ...current,
       [panel]: !current[panel],
     }));
@@ -676,12 +699,17 @@ export function CpuFoundrySim() {
     setStatusMessage('Profil dihapus. Kamu bisa membuat akun baru.');
     setIsInvestmentMenuOpen(false);
     setIsReleaseMenuOpen(false);
+    setIsCompaniesFrameOpen(false);
+    setFocusedCompanyKey(null);
   };
 
   const activeCompany = game ? game.companies[game.player.selectedCompany] : null;
+  const focusedCompany = game && focusedCompanyKey ? game.companies[focusedCompanyKey] : null;
   const activePricePreset = PRICE_PRESETS[releaseDraft.priceIndex];
   const isPlayerCeo = Boolean(game && activeCompany && activeCompany.ceoName === game.player.name);
+  const focusedPlayerIsCeo = Boolean(game && focusedCompany && focusedCompany.ceoName === game.player.name);
   const activeCpuScore = activeCompany ? calculateCpuScore(activeCompany.upgrades) : 0;
+  const focusedCpuScore = focusedCompany ? calculateCpuScore(focusedCompany.upgrades) : 0;
   const playerNetWorth = useMemo(() => {
     if (!game) return 0;
     const holdings = (Object.values(game.companies) as CompanyState[]).reduce((sum, company) => {
@@ -705,6 +733,23 @@ export function CpuFoundrySim() {
       ...current,
       series: `${game.companies[company].name} Prime`,
     }));
+  };
+
+  const openCompaniesFrame = () => {
+    setFocusedCompanyKey(null);
+    setIsCompaniesFrameOpen(true);
+  };
+
+  const openCompanyDetail = (company: CompanyKey) => {
+    switchCompany(company);
+    setFocusedCompanyKey(company);
+    setCompanyDetailPanels(DEFAULT_COMPANY_DETAIL_PANELS);
+    setIsCompaniesFrameOpen(false);
+  };
+
+  const closeCompanyDetail = () => {
+    setFocusedCompanyKey(null);
+    setIsCompaniesFrameOpen(true);
   };
 
   const investInCompany = () => {
@@ -945,11 +990,13 @@ export function CpuFoundrySim() {
     const leaderId = getLeadingInvestorId(company);
     const leadingOwner = investorDisplayName(game, leaderId);
     const sharePrice = getSharePrice(company);
+    const companyValue = getCompanyValuation(company);
     return {
       company,
       playerOwnership,
       leadingOwner,
       sharePrice,
+      companyValue,
     };
   });
 
@@ -975,14 +1022,14 @@ export function CpuFoundrySim() {
               <span>Net worth</span>
               <strong>$ {formatNumber(playerNetWorth, 1)}M</strong>
             </div>
-            <button type="button" className={styles.releaseTrigger} onClick={() => setIsInvestmentMenuOpen(true)}>
-              Beli saham
+            <button type="button" className={styles.releaseTrigger} onClick={openCompaniesFrame}>
+              Companies
             </button>
           </div>
 
           <div className={styles.statGrid}>
             <article className={styles.statChip}>
-              <span>Target aktif</span>
+              <span>Fokus aktif</span>
               <strong>{activeCompany?.name}</strong>
             </article>
             <article className={styles.statChip}>
@@ -994,7 +1041,7 @@ export function CpuFoundrySim() {
               <strong>{activeCompany ? `${formatNumber(getOwnershipPercent(activeCompany, game.player.id), 1)}%` : '0%'}</strong>
             </article>
             <article className={styles.statChip}>
-              <span>Feed</span>
+              <span>Status</span>
               <strong>{statusMessage}</strong>
             </article>
           </div>
@@ -1005,7 +1052,7 @@ export function CpuFoundrySim() {
             <button type="button" className={styles.panelToggle} onClick={() => togglePanel('profile')}>
               <div>
                 <p className={styles.panelTag}>Profile</p>
-                <h2>Akun & posisi</h2>
+                <h2>Akun ringkas & aksi cepat</h2>
               </div>
               <span>{openPanels.profile ? 'Tutup' : 'Buka'}</span>
             </button>
@@ -1025,13 +1072,23 @@ export function CpuFoundrySim() {
                     <strong>$ {formatNumber((activeCompany?.revenuePerSecond ?? 0) * (getOwnershipPercent(activeCompany!, game.player.id) / 100) * 0.12, 2)}M</strong>
                   </div>
                   <div>
-                    <span>Aksi</span>
-                    <strong>{isPlayerCeo ? 'Rilis & upgrade' : 'Beli saham lagi'}</strong>
+                    <span>Nilai perusahaan fokus</span>
+                    <strong>$ {formatNumber(activeCompany ? getCompanyValuation(activeCompany) : 0, 1)}M</strong>
                   </div>
                 </div>
+                <div className={styles.memoCard}>
+                  <p className={styles.panelTag}>Memo singkat</p>
+                  <p>{activeCompany?.lastRelease}</p>
+                </div>
                 <div className={styles.actionRow}>
+                  <button type="button" className={styles.primaryButton} onClick={openCompaniesFrame}>
+                    Companies
+                  </button>
                   <button type="button" className={styles.secondaryButton} onClick={() => setIsInvestmentMenuOpen(true)}>
-                    Tambah investasi
+                    Beli saham
+                  </button>
+                  <button type="button" className={styles.ghostButton} onClick={() => activeCompany && openCompanyDetail(activeCompany.key)}>
+                    Buka detail fokus
                   </button>
                   <button type="button" className={styles.ghostButton} onClick={resetProfile}>
                     Reset profil
@@ -1042,153 +1099,10 @@ export function CpuFoundrySim() {
           </section>
 
           <section className={styles.panel}>
-            <button type="button" className={styles.panelToggle} onClick={() => togglePanel('market')}>
-              <div>
-                <p className={styles.panelTag}>Market board</p>
-                <h2>Cosmic · RMD · Heroscop</h2>
-              </div>
-              <span>{openPanels.market ? 'Tutup' : 'Buka'}</span>
-            </button>
-            {openPanels.market ? (
-              <div className={styles.companyList}>
-                {companyCards.map(({ company, playerOwnership, leadingOwner, sharePrice }) => (
-                  <article key={company.key} className={styles.companyCard}>
-                    <div className={styles.itemTop}>
-                      <div>
-                        <p className={styles.itemLabel}>{company.focus}</p>
-                        <h3>{company.name}</h3>
-                      </div>
-                      <span className={styles.costPill}>$ {formatNumber(sharePrice, 1)} / share</span>
-                    </div>
-                    <div className={styles.infoRowCompact}>
-                      <div>
-                        <span>CEO</span>
-                        <strong>{company.ceoName}</strong>
-                      </div>
-                      <div>
-                        <span>Kepemilikanmu</span>
-                        <strong>{formatNumber(playerOwnership, 1)}%</strong>
-                      </div>
-                      <div>
-                        <span>Owner terbesar</span>
-                        <strong>{leadingOwner}</strong>
-                      </div>
-                      <div>
-                        <span>Market share</span>
-                        <strong>{formatNumber(company.marketShare, 1)}%</strong>
-                      </div>
-                    </div>
-                    <div className={styles.actionRow}>
-                      <button type="button" className={styles.secondaryButton} onClick={() => switchCompany(company.key)}>
-                        Pantau {company.name}
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.ghostButton}
-                        onClick={() => {
-                          switchCompany(company.key);
-                          setInvestmentDraft({ company: company.key, amount: investmentDraft.amount });
-                          setIsInvestmentMenuOpen(true);
-                        }}
-                      >
-                        Invest
-                      </button>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            ) : null}
-          </section>
-
-          <section className={styles.panel}>
-            <button type="button" className={styles.panelToggle} onClick={() => togglePanel('company')}>
-              <div>
-                <p className={styles.panelTag}>Company control</p>
-                <h2>{activeCompany?.name} command</h2>
-              </div>
-              <span>{openPanels.company ? 'Tutup' : 'Buka'}</span>
-            </button>
-            {openPanels.company && activeCompany ? (
-              <div className={styles.panelList}>
-                <div className={styles.memoCard}>
-                  <p className={styles.panelTag}>Memo perusahaan</p>
-                  <p>{activeCompany.lastRelease}</p>
-                </div>
-
-                <div className={styles.infoRow}>
-                  <div>
-                    <span>Kas perusahaan</span>
-                    <strong>$ {formatNumber(activeCompany.cash, 1)}M</strong>
-                  </div>
-                  <div>
-                    <span>Research</span>
-                    <strong>{formatNumber(activeCompany.research, 1)} RP</strong>
-                  </div>
-                  <div>
-                    <span>RP / detik</span>
-                    <strong>{formatNumber(activeCompany.researchPerSecond, 1)}</strong>
-                  </div>
-                  <div>
-                    <span>CPU score</span>
-                    <strong>{formatNumber(activeCpuScore, 0)}</strong>
-                  </div>
-                </div>
-
-                <div className={styles.actionRow}>
-                  <button type="button" className={styles.primaryButton} onClick={() => setIsReleaseMenuOpen(true)} disabled={!isPlayerCeo}>
-                    {isPlayerCeo ? 'Release CPU' : 'Harus jadi CEO'}
-                  </button>
-                  <button type="button" className={styles.ghostButton} onClick={() => setIsInvestmentMenuOpen(true)}>
-                    Tambah saham
-                  </button>
-                </div>
-
-                {(Object.entries(activeCompany.upgrades) as [UpgradeKey, UpgradeState][]).map(([key, upgrade]) => {
-                  const cost = getUpgradeCost(key, upgrade, activeCompany);
-                  return (
-                    <article key={key} className={styles.itemCard}>
-                      <div className={styles.itemTop}>
-                        <div>
-                          <p className={styles.itemLabel}>{upgrade.label}</p>
-                          <h3>{getDisplayedUpgradeValue(key, upgrade)}</h3>
-                        </div>
-                        <span className={styles.costPill}>{formatNumber(cost)} RP</span>
-                      </div>
-                      <p className={styles.itemDescription}>{upgrade.description}</p>
-                      <button type="button" className={styles.secondaryButton} onClick={() => improveUpgrade(key)} disabled={!isPlayerCeo || activeCompany.research < cost}>
-                        {!isPlayerCeo ? 'CEO only' : activeCompany.research >= cost ? 'Upgrade' : 'RP kurang'}
-                      </button>
-                    </article>
-                  );
-                })}
-
-                {(Object.entries(activeCompany.teams) as [TeamKey, TeamState][]).map(([key, team]) => {
-                  const cost = getTeamCost(team);
-                  return (
-                    <article key={key} className={styles.itemCard}>
-                      <div className={styles.itemTop}>
-                        <div>
-                          <p className={styles.itemLabel}>{team.label}</p>
-                          <h3>{formatNumber(team.count)} aktif</h3>
-                        </div>
-                        <span className={styles.costPill}>$ {formatNumber(cost)}M</span>
-                      </div>
-                      <p className={styles.itemDescription}>{team.description}</p>
-                      <button type="button" className={styles.secondaryButton} onClick={() => hireTeam(key)} disabled={!isPlayerCeo || activeCompany.cash < cost}>
-                        {!isPlayerCeo ? 'CEO only' : activeCompany.cash >= cost ? 'Expand' : 'Dana kurang'}
-                      </button>
-                    </article>
-                  );
-                })}
-              </div>
-            ) : null}
-          </section>
-
-          <section className={styles.panel}>
             <button type="button" className={styles.panelToggle} onClick={() => togglePanel('intel')}>
               <div>
                 <p className={styles.panelTag}>NPC intel</p>
-                <h2>Investor smart & timeline</h2>
+                <h2>Feed ringkas & tekanan investor</h2>
               </div>
               <span>{openPanels.intel ? 'Tutup' : 'Buka'}</span>
             </button>
@@ -1204,7 +1118,7 @@ export function CpuFoundrySim() {
                         </div>
                         <span className={styles.costPill}>$ {formatNumber(npc.cash, 1)}M</span>
                       </div>
-                      <p className={styles.itemDescription}>Fokus saat ini: {game.companies[npc.focusCompany].name}. Jika kepemilikan mereka paling besar, kursi CEO tetap aman di tangan NPC itu.</p>
+                      <p className={styles.itemDescription}>Fokus saat ini: {game.companies[npc.focusCompany].name}. Mereka akan terus menambah saham agar kursi CEO tidak mudah direbut.</p>
                     </article>
                   ))}
                 </div>
@@ -1222,6 +1136,306 @@ export function CpuFoundrySim() {
         </section>
       </main>
 
+      {isCompaniesFrameOpen ? (
+        <div className={styles.screenFrameOverlay} role="presentation" onClick={() => setIsCompaniesFrameOpen(false)}>
+          <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label="Daftar perusahaan" onClick={(event) => event.stopPropagation()}>
+            <div className={styles.screenFrameHeader}>
+              <div>
+                <p className={styles.panelTag}>Companies</p>
+                <h2>Pantau 3 perusahaan CPU</h2>
+              </div>
+              <button type="button" className={styles.closeButton} onClick={() => setIsCompaniesFrameOpen(false)} aria-label="Tutup daftar perusahaan">
+                ✕
+              </button>
+            </div>
+
+            <div className={styles.screenFrameBody}>
+              <div className={styles.memoCard}>
+                <p className={styles.panelTag}>Instruksi</p>
+                <p>Tap salah satu card perusahaan untuk membuka frame penuh yang menampilkan semua data penting, nilai perusahaan, kepemilikan, upgrade, tim, dan akses aksi.</p>
+              </div>
+
+              <div className={styles.companyList}>
+                {companyCards.map(({ company, playerOwnership, leadingOwner, sharePrice, companyValue }) => (
+                  <button key={company.key} type="button" className={styles.companyCardButton} onClick={() => openCompanyDetail(company.key)}>
+                    <article className={styles.companyCard}>
+                      <div className={styles.itemTop}>
+                        <div>
+                          <p className={styles.itemLabel}>{company.focus}</p>
+                          <h3>{company.name}</h3>
+                        </div>
+                        <span className={styles.costPill}>$ {formatNumber(sharePrice, 1)} / share</span>
+                      </div>
+                      <div className={styles.infoRowCompact}>
+                        <div>
+                          <span>CEO</span>
+                          <strong>{company.ceoName}</strong>
+                        </div>
+                        <div>
+                          <span>Value</span>
+                          <strong>$ {formatNumber(companyValue, 1)}M</strong>
+                        </div>
+                        <div>
+                          <span>Kepemilikanmu</span>
+                          <strong>{formatNumber(playerOwnership, 1)}%</strong>
+                        </div>
+                        <div>
+                          <span>Owner terbesar</span>
+                          <strong>{leadingOwner}</strong>
+                        </div>
+                      </div>
+                    </article>
+                  </button>
+                ))}
+              </div>
+
+              <button type="button" className={styles.ghostButton} onClick={() => setIsCompaniesFrameOpen(false)}>
+                Go back
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {focusedCompany && game ? (
+        <div className={styles.screenFrameOverlay} role="presentation" onClick={closeCompanyDetail}>
+          <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label={`Detail perusahaan ${focusedCompany.name}`} onClick={(event) => event.stopPropagation()}>
+            <div className={styles.screenFrameHeader}>
+              <div>
+                <p className={styles.panelTag}>Company detail</p>
+                <h2>{focusedCompany.name} full frame</h2>
+              </div>
+              <button type="button" className={styles.closeButton} onClick={closeCompanyDetail} aria-label="Kembali ke daftar perusahaan">
+                ←
+              </button>
+            </div>
+
+            <div className={styles.screenFrameBody}>
+              <div className={styles.heroMiniCard}>
+                <div className={styles.infoRow}>
+                  <div>
+                    <span>Founder</span>
+                    <strong>{focusedCompany.founder}</strong>
+                  </div>
+                  <div>
+                    <span>CEO</span>
+                    <strong>{focusedCompany.ceoName}</strong>
+                  </div>
+                  <div>
+                    <span>Value</span>
+                    <strong>$ {formatNumber(getCompanyValuation(focusedCompany), 1)}M</strong>
+                  </div>
+                  <div>
+                    <span>CPU score</span>
+                    <strong>{formatNumber(focusedCpuScore, 0)}</strong>
+                  </div>
+                </div>
+                <div className={styles.actionRow}>
+                  <button type="button" className={styles.ghostButton} onClick={closeCompanyDetail}>
+                    Go back
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    onClick={() => {
+                      switchCompany(focusedCompany.key);
+                      setInvestmentDraft((current) => ({ ...current, company: focusedCompany.key }));
+                      setIsInvestmentMenuOpen(true);
+                    }}
+                  >
+                    Beli saham
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.primaryButton}
+                    onClick={() => {
+                      switchCompany(focusedCompany.key);
+                      setIsReleaseMenuOpen(true);
+                    }}
+                    disabled={!focusedPlayerIsCeo}
+                  >
+                    {focusedPlayerIsCeo ? 'Release CPU' : 'Harus jadi CEO'}
+                  </button>
+                  <button type="button" className={styles.ghostButton} onClick={() => switchCompany(focusedCompany.key)}>
+                    Jadikan fokus aktif
+                  </button>
+                </div>
+              </div>
+
+              <section className={styles.panel}>
+                <button type="button" className={styles.panelToggle} onClick={() => toggleCompanyDetailPanel('overview')}>
+                  <div>
+                    <p className={styles.panelTag}>Overview</p>
+                    <h2>Kondisi perusahaan</h2>
+                  </div>
+                  <span>{companyDetailPanels.overview ? 'Tutup' : 'Buka'}</span>
+                </button>
+                {companyDetailPanels.overview ? (
+                  <div className={styles.panelBody}>
+                    <div className={styles.infoRow}>
+                      <div>
+                        <span>Kas</span>
+                        <strong>$ {formatNumber(focusedCompany.cash, 1)}M</strong>
+                      </div>
+                      <div>
+                        <span>Research</span>
+                        <strong>{formatNumber(focusedCompany.research, 1)} RP</strong>
+                      </div>
+                      <div>
+                        <span>Market share</span>
+                        <strong>{formatNumber(focusedCompany.marketShare, 1)}%</strong>
+                      </div>
+                      <div>
+                        <span>Reputasi</span>
+                        <strong>{formatNumber(focusedCompany.reputation, 1)}</strong>
+                      </div>
+                      <div>
+                        <span>RP/s</span>
+                        <strong>{formatNumber(focusedCompany.researchPerSecond, 1)}</strong>
+                      </div>
+                      <div>
+                        <span>Cash/s</span>
+                        <strong>$ {formatNumber(focusedCompany.revenuePerSecond, 1)}M</strong>
+                      </div>
+                    </div>
+                    <div className={styles.memoCard}>
+                      <p className={styles.panelTag}>Memo terbaru</p>
+                      <p>{focusedCompany.lastRelease}</p>
+                    </div>
+                  </div>
+                ) : null}
+              </section>
+
+              <section className={styles.panel}>
+                <button type="button" className={styles.panelToggle} onClick={() => toggleCompanyDetailPanel('ownership')}>
+                  <div>
+                    <p className={styles.panelTag}>Ownership</p>
+                    <h2>Investor & kendali CEO</h2>
+                  </div>
+                  <span>{companyDetailPanels.ownership ? 'Tutup' : 'Buka'}</span>
+                </button>
+                {companyDetailPanels.ownership ? (
+                  <div className={styles.panelList}>
+                    {Object.entries(focusedCompany.investors)
+                      .sort(([, left], [, right]) => right - left)
+                      .map(([investorId, amount]) => (
+                        <article key={investorId} className={styles.itemCard}>
+                          <div className={styles.itemTop}>
+                            <div>
+                              <p className={styles.itemLabel}>Investor</p>
+                              <h3>{investorDisplayName(game, investorId)}</h3>
+                            </div>
+                            <span className={styles.costPill}>{formatNumber(getOwnershipPercent(focusedCompany, investorId), 1)}%</span>
+                          </div>
+                          <p className={styles.itemDescription}>Modal tertanam: $ {formatNumber(amount, 1)}M. Investor terbesar otomatis memegang kursi CEO.</p>
+                        </article>
+                      ))}
+                  </div>
+                ) : null}
+              </section>
+
+              <section className={styles.panel}>
+                <button type="button" className={styles.panelToggle} onClick={() => toggleCompanyDetailPanel('operations')}>
+                  <div>
+                    <p className={styles.panelTag}>Operations</p>
+                    <h2>Upgrade CPU & tim</h2>
+                  </div>
+                  <span>{companyDetailPanels.operations ? 'Tutup' : 'Buka'}</span>
+                </button>
+                {companyDetailPanels.operations ? (
+                  <div className={styles.panelList}>
+                    {(Object.entries(focusedCompany.upgrades) as [UpgradeKey, UpgradeState][]).map(([key, upgrade]) => {
+                      const cost = getUpgradeCost(key, upgrade, focusedCompany);
+                      return (
+                        <article key={key} className={styles.itemCard}>
+                          <div className={styles.itemTop}>
+                            <div>
+                              <p className={styles.itemLabel}>{upgrade.label}</p>
+                              <h3>{getDisplayedUpgradeValue(key, upgrade)}</h3>
+                            </div>
+                            <span className={styles.costPill}>{formatNumber(cost)} RP</span>
+                          </div>
+                          <p className={styles.itemDescription}>{upgrade.description}</p>
+                          <button
+                            type="button"
+                            className={styles.secondaryButton}
+                            onClick={() => {
+                              switchCompany(focusedCompany.key);
+                              improveUpgrade(key);
+                            }}
+                            disabled={!focusedPlayerIsCeo || focusedCompany.research < cost}
+                          >
+                            {!focusedPlayerIsCeo ? 'CEO only' : focusedCompany.research >= cost ? 'Upgrade' : 'RP kurang'}
+                          </button>
+                        </article>
+                      );
+                    })}
+
+                    {(Object.entries(focusedCompany.teams) as [TeamKey, TeamState][]).map(([key, team]) => {
+                      const cost = getTeamCost(team);
+                      return (
+                        <article key={key} className={styles.itemCard}>
+                          <div className={styles.itemTop}>
+                            <div>
+                              <p className={styles.itemLabel}>{team.label}</p>
+                              <h3>{formatNumber(team.count)} aktif</h3>
+                            </div>
+                            <span className={styles.costPill}>$ {formatNumber(cost)}M</span>
+                          </div>
+                          <p className={styles.itemDescription}>{team.description}</p>
+                          <button
+                            type="button"
+                            className={styles.secondaryButton}
+                            onClick={() => {
+                              switchCompany(focusedCompany.key);
+                              hireTeam(key);
+                            }}
+                            disabled={!focusedPlayerIsCeo || focusedCompany.cash < cost}
+                          >
+                            {!focusedPlayerIsCeo ? 'CEO only' : focusedCompany.cash >= cost ? 'Expand' : 'Dana kurang'}
+                          </button>
+                        </article>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </section>
+
+              <section className={styles.panel}>
+                <button type="button" className={styles.panelToggle} onClick={() => toggleCompanyDetailPanel('intel')}>
+                  <div>
+                    <p className={styles.panelTag}>Intel</p>
+                    <h2>Release & tekanan pasar</h2>
+                  </div>
+                  <span>{companyDetailPanels.intel ? 'Tutup' : 'Buka'}</span>
+                </button>
+                {companyDetailPanels.intel ? (
+                  <div className={styles.panelBody}>
+                    <div className={styles.infoRow}>
+                      <div>
+                        <span>Release count</span>
+                        <strong>{formatNumber(focusedCompany.releaseCount)}</strong>
+                      </div>
+                      <div>
+                        <span>Best score</span>
+                        <strong>{formatNumber(focusedCompany.bestCpuScore, 0)}</strong>
+                      </div>
+                      <div>
+                        <span>Total investasi</span>
+                        <strong>$ {formatNumber(getCompanyInvestmentTotal(focusedCompany), 1)}M</strong>
+                      </div>
+                      <div>
+                        <span>Harga saham</span>
+                        <strong>$ {formatNumber(getSharePrice(focusedCompany), 1)}</strong>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </section>
+            </div>
+          </section>
+        </div>
+      ) : null}
       {isInvestmentMenuOpen && game ? (
         <div className={styles.modalOverlay} role="presentation" onClick={() => setIsInvestmentMenuOpen(false)}>
           <section className={styles.modalCard} role="dialog" aria-modal="true" aria-label="Investasi saham" onClick={(event) => event.stopPropagation()}>
