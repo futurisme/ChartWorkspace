@@ -1,10 +1,10 @@
 .shell {
   min-height: 100dvh;
-  padding: 10px 10px 20px;
+  padding: 10px 10px 22px;
   overflow-x: hidden;
   background:
-    radial-gradient(circle at top, rgba(56, 189, 248, 0.12), transparent 34%),
-    linear-gradient(180deg, #050816 0%, #080d19 44%, #02040c 100%);
+    radial-gradient(circle at top, rgba(56, 189, 248, 0.12), transparent 32%),
+    linear-gradient(180deg, #040816 0%, #070d1b 52%, #02040c 100%);
   color: #eff6ff;
   font-family: Inter, Arial, sans-serif;
 }
@@ -16,19 +16,24 @@
 .itemCard,
 .modalCard,
 .sliderCard,
-.releasePreview {
+.releasePreview,
+.loginCard,
+.companyCard,
+.feedItem {
   border: 1px solid rgba(148, 163, 184, 0.14);
-  background: rgba(7, 12, 26, 0.92);
-  box-shadow: 0 10px 24px rgba(2, 6, 23, 0.32);
+  background: rgba(8, 12, 26, 0.92);
+  box-shadow: 0 10px 24px rgba(2, 6, 23, 0.28);
 }
 
 .heroCard,
 .panel,
-.modalCard {
+.modalCard,
+.loginCard {
   border-radius: 16px;
 }
 
-.heroCard {
+.heroCard,
+.loginCard {
   padding: 10px;
 }
 
@@ -37,10 +42,12 @@
 .statChip span,
 .topStrip span,
 .infoRow span,
+.infoRowCompact span,
 .field span,
 .sliderLabels span,
 .releasePreview span,
-.itemLabel {
+.itemLabel,
+.loginPreview span {
   text-transform: uppercase;
   letter-spacing: 0.11em;
   font-size: 0.64rem;
@@ -54,10 +61,11 @@
   align-items: flex-start;
 }
 
-.heroHeader h1 {
+.heroHeader h1,
+.loginCard h1 {
   margin: 4px 0 0;
   font-size: 1.32rem;
-  line-height: 1;
+  line-height: 1.05;
 }
 
 .yearBadge {
@@ -73,16 +81,22 @@
 .subtitle {
   margin-top: 8px;
   font-size: 0.84rem;
-  line-height: 1.35;
+  line-height: 1.38;
   color: #dbeafe;
 }
 
 .topStrip,
 .statGrid,
 .infoRow,
+.infoRowCompact,
 .panelBody,
 .panelList,
-.modalBody {
+.modalBody,
+.companyList,
+.feedList,
+.npcList,
+.quickGrid,
+.actionRow {
   display: grid;
   gap: 8px;
 }
@@ -98,7 +112,10 @@
 .memoCard,
 .itemCard,
 .sliderCard,
-.releasePreview {
+.releasePreview,
+.loginPreview,
+.companyCard,
+.feedItem {
   border-radius: 12px;
   padding: 10px;
 }
@@ -106,7 +123,9 @@
 .topStrip strong,
 .statChip strong,
 .infoRow strong,
-.releasePreview strong {
+.infoRowCompact strong,
+.releasePreview strong,
+.loginPreview strong {
   display: block;
   margin-top: 4px;
   font-size: 0.88rem;
@@ -115,19 +134,54 @@
 .releaseTrigger,
 .primaryButton,
 .secondaryButton,
+.ghostButton,
 .panelToggle,
-.closeButton {
+.closeButton,
+.quickButton,
+.quickButtonActive {
   border: none;
   font: inherit;
+}
+
+.releaseTrigger,
+.primaryButton,
+.quickButtonActive {
+  background: linear-gradient(135deg, #f59e0b 0%, #fb7185 100%);
+  color: #111827;
 }
 
 .releaseTrigger {
   border-radius: 12px;
   padding: 10px 12px;
-  background: linear-gradient(135deg, #f59e0b 0%, #fb7185 100%);
-  color: #111827;
   font-weight: 800;
   white-space: nowrap;
+}
+
+.primaryButton,
+.secondaryButton,
+.ghostButton,
+.quickButton,
+.quickButtonActive {
+  width: 100%;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-weight: 700;
+}
+
+.secondaryButton {
+  background: linear-gradient(135deg, #38bdf8 0%, #8b5cf6 100%);
+  color: white;
+}
+
+.ghostButton,
+.quickButton {
+  background: rgba(148, 163, 184, 0.12);
+  color: #e2e8f0;
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled {
+  opacity: 0.45;
 }
 
 .statGrid {
@@ -139,7 +193,7 @@
   display: grid;
   gap: 8px;
   margin-top: 10px;
-  max-width: 720px;
+  max-width: 760px;
 }
 
 .panel {
@@ -161,7 +215,8 @@
 
 .panelToggle h2,
 .itemCard h3,
-.modalHeader h2 {
+.modalHeader h2,
+.companyCard h3 {
   margin: 4px 0 0;
   font-size: 0.96rem;
 }
@@ -176,12 +231,20 @@
 }
 
 .panelBody,
-.panelList {
+.panelList,
+.companyList,
+.feedList,
+.npcList {
   padding: 0 12px 12px;
 }
 
-.infoRow {
+.infoRow,
+.infoRowCompact {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.infoRowCompact strong {
+  font-size: 0.8rem;
 }
 
 .memoCard p,
@@ -209,29 +272,6 @@
   font-weight: 700;
 }
 
-.secondaryButton,
-.primaryButton {
-  width: 100%;
-  border-radius: 12px;
-  padding: 10px 12px;
-  font-weight: 700;
-}
-
-.secondaryButton {
-  margin-top: 8px;
-  background: linear-gradient(135deg, #38bdf8 0%, #8b5cf6 100%);
-  color: white;
-}
-
-.primaryButton {
-  background: linear-gradient(135deg, #f59e0b 0%, #fb7185 100%);
-  color: #111827;
-}
-
-.secondaryButton:disabled {
-  opacity: 0.45;
-}
-
 .modalOverlay {
   position: fixed;
   inset: 0;
@@ -240,12 +280,12 @@
   align-items: flex-end;
   justify-content: center;
   padding: 14px 10px calc(14px + env(safe-area-inset-bottom));
-  background: rgba(2, 6, 23, 0.7);
+  background: rgba(2, 6, 23, 0.72);
 }
 
 .modalCard {
   width: min(100%, 520px);
-  max-height: min(82dvh, 680px);
+  max-height: min(84dvh, 700px);
   overflow: auto;
   -webkit-overflow-scrolling: touch;
 }
@@ -307,6 +347,7 @@
 .sliderHeader small {
   color: #93c5fd;
   font-size: 0.76rem;
+  text-align: right;
 }
 
 .slider {
@@ -321,10 +362,30 @@
   gap: 8px;
 }
 
-.releasePreview {
+.releasePreview,
+.loginPreview {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+}
+
+.feedItem {
+  color: #dbeafe;
+  line-height: 1.35;
+  font-size: 0.82rem;
+}
+
+.quickGrid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.actionRow {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.loginCard {
+  max-width: 520px;
+  margin: 0 auto;
 }
 
 @media (min-width: 768px) {
@@ -335,7 +396,13 @@
   }
 
   .heroCard,
-  .panelStack {
-    width: min(100%, 720px);
+  .panelStack,
+  .loginCard {
+    width: min(100%, 760px);
+  }
+
+  .companyList,
+  .npcList {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
