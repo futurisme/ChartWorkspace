@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import styles from './cpu-foundry-sim.module.css';
 
 type UpgradeKey = 'architecture' | 'lithography' | 'clockSpeed' | 'coreDesign' | 'cacheStack' | 'powerEfficiency';
@@ -1162,7 +1162,7 @@ function planNpcExecutiveAssignments(game: GameState, company: CompanyState, ceo
     const decision = boardApproveExecutiveDecision(game, company, boardMembers, role, { type: decisionType, candidateId: candidate.candidateId });
     const proposerId = getBoardProposalActorId(game, company, { preferredRole: role, domain: EXECUTIVE_ROLE_META[role].domain });
     const initialVotes: Record<string, 'yes' | 'no'> = {};
-    if (boardMembers.some((member) => member.id === proposerId)) {
+    if (proposerId !== game.player.id && boardMembers.some((member) => member.id === proposerId)) {
       initialVotes[proposerId] = 'yes';
     }
     const tally = tallyBoardVoteWeights(boardMembers, initialVotes);
@@ -2882,7 +2882,7 @@ function runNpcChiefExecutiveTurn(current: GameState) {
         const investmentDecision = boardApproveCompanyInvestment(sourceCompany, bestTarget.targetCompany, proposedAmount);
         const proposerId = getBoardProposalActorId(workingGame, sourceCompany, { preferredRole: 'cfo', domain: 'finance' });
         const initialVotes: Record<string, 'yes' | 'no'> = {};
-        if (sourceCompany.boardMembers.some((member) => member.id === proposerId)) {
+        if (proposerId !== workingGame.player.id && sourceCompany.boardMembers.some((member) => member.id === proposerId)) {
           initialVotes[proposerId] = 'yes';
         }
         const tally = tallyBoardVoteWeights(sourceCompany.boardMembers, initialVotes);
@@ -3154,6 +3154,7 @@ export function CpuFoundrySim() {
   const [focusedCompanyKey, setFocusedCompanyKey] = useState<CompanyKey | null>(null);
   const [newsCompanyFilter, setNewsCompanyFilter] = useState<'all' | CompanyKey>('all');
   const [companyDetailBackTarget, setCompanyDetailBackTarget] = useState<'game' | 'companies' | 'investor' | 'news' | 'forbes'>('companies');
+  const pausedRef = useRef(false);
   const hasPendingPlayerBoardVote = useMemo(() => {
     if (!game) return false;
     return COMPANY_KEYS.some((key) => {
@@ -3166,6 +3167,10 @@ export function CpuFoundrySim() {
     });
   }, [game]);
   const isGamePaused = isInvestmentMenuOpen || hasPendingPlayerBoardVote;
+
+  useEffect(() => {
+    pausedRef.current = isGamePaused;
+  }, [isGamePaused]);
 
   useEffect(() => {
     try {
@@ -3231,6 +3236,7 @@ export function CpuFoundrySim() {
   useEffect(() => {
     if (isGamePaused) return undefined;
     const interval = window.setInterval(() => {
+      if (pausedRef.current) return;
       setGame((current) => (current ? simulateTick(current) : current));
     }, TICK_MS);
     return () => window.clearInterval(interval);
