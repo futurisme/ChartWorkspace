@@ -1482,7 +1482,7 @@ function resolveGovernance(game: GameState) {
       const shareholderSeats = Array.from(new Set(majorIds)).slice(0, 5);
       shareholderSeats.forEach((investorId, index) => {
         boardMembers.push({
-          id: `${key}_board_${investorId}`,
+          id: investorId,
           name: investorDisplayName(game, investorId),
           seatType: index === 0 ? 'chair' : investorId === company.founderInvestorId ? 'founder' : 'shareholder',
           voteWeight: 1 + getOwnershipPercent(company, investorId) / 18,
@@ -3190,6 +3190,7 @@ export function CpuFoundrySim() {
   const focusedPlayerIsCeo = Boolean(game && focusedCompany && focusedCompany.ceoId === game.player.id);
   const activePlayerExecutiveRoles = activeCompany && game ? getExecutiveRolesForInvestor(activeCompany, game.player.id) : [];
   const focusedPlayerExecutiveRoles = focusedCompany && game ? getExecutiveRolesForInvestor(focusedCompany, game.player.id) : [];
+  const focusedPlayerIsBoardMember = Boolean(focusedCompany && game && focusedCompany.boardMembers.some((member) => member.id === game.player.id));
   const focusedCanManageTechnology = Boolean(focusedCompany && game && hasCompanyAuthority(focusedCompany, game.player.id, 'technology'));
   const focusedCanManageFinance = Boolean(focusedCompany && game && hasCompanyAuthority(focusedCompany, game.player.id, 'finance'));
   const focusedCanReleaseCpu = Boolean(focusedCompany && game && hasCompanyAuthority(focusedCompany, game.player.id, 'release'));
@@ -4302,6 +4303,14 @@ export function CpuFoundrySim() {
                       <p className={styles.panelTag}>Board system</p>
                       <p>7 kursi dewan memilih CEO dari performa dan ownership, lalu ikut menekan/usul struktur COO, CFO, CTO, dan CMO bila perusahaan membutuhkannya.</p>
                     </div>
+                    {focusedPlayerIsBoardMember ? (
+                      <div className={styles.memoCard}>
+                        <p className={styles.panelTag}>Mandat dewan player</p>
+                        <p>
+                          Kamu sedang duduk sebagai anggota Dewan Direksi {focusedCompany.name}. Proposal aktif akan muncul sebagai pop-up voting sampai 7 hari berakhir.
+                        </p>
+                      </div>
+                    ) : null}
                     {focusedCompany.boardMembers.map((member) => (
                       <article key={member.id} className={styles.itemCard}>
                         <div className={styles.itemTop}>
