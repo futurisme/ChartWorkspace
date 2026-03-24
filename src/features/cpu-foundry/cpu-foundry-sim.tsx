@@ -2209,6 +2209,8 @@ function scoreNpcReleaseAction(game: GameState, npc: NpcInvestor, company: Compa
   const reputationNeed = clamp((50 - company.reputation) / 50, 0, 1);
   const priceIndex = chooseNpcReleasePriceIndex(npc, company, cpuDelta, cashEmergency);
   const staleness = clamp(daysSinceRelease / 90, 0, 2.2);
+  const inNormalCadenceMode = !cashMeltdown;
+  if (inNormalCadenceMode && daysSinceRelease < 28) return null;
   if (cashMeltdown && !emergencyCadenceReady) return null;
   const tooSoonWithNoDistance =
     daysSinceRelease < releaseWindow
@@ -2226,21 +2228,24 @@ function scoreNpcReleaseAction(game: GameState, npc: NpcInvestor, company: Compa
         : 0;
   const pricePreset = PRICE_PRESETS[priceIndex];
   const launchRevenue = calculateLaunchRevenue(currentCpuScore, company.teams, company.marketShare, company.reputation, pricePreset.factor);
+  const launchRevenueSignal = Math.log10(1 + Math.max(0, launchRevenue));
   const releaseCadencePressure = clamp((daysSinceRelease - releaseWindow) / Math.max(8, releaseWindow), 0, 2.4);
   const upgradeMomentumPressure = clamp((releaseCadenceTarget - daysSinceRelease) / Math.max(6, releaseCadenceTarget), 0, 1.2) * (cpuDelta > 6 ? 1 : 0);
   const urgentCashPressure = Math.max(cashEmergency, cashReserveGap * 0.9);
   const crisisBoost = canForceRelease ? 9 + Math.max(0, 1.6 - company.cash) * 0.7 : 0;
+  const normalCadenceBoost = inNormalCadenceMode ? clamp((daysSinceRelease - 28) / 32, 0, 1.8) : 0;
   const score = (
     urgentCashPressure * 7.6
     + cpuDelta * 0.042
     + staleness * 1.65
     + releaseCadencePressure * 2.1
+    + normalCadenceBoost * 1.6
     + upgradeMomentumPressure * 1.7
     + marketNeed * 1.4
     + reputationNeed * 0.8
     + management.researchOverflow * 0.32
     + npc.intelligence * 0.44
-    + launchRevenue * 0.006
+    + launchRevenueSignal * 0.9
     + crisisBoost
     - repeatedSpecPenalty
   );
