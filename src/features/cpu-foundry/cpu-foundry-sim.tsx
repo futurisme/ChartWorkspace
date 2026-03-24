@@ -3154,6 +3154,18 @@ export function CpuFoundrySim() {
   const [focusedCompanyKey, setFocusedCompanyKey] = useState<CompanyKey | null>(null);
   const [newsCompanyFilter, setNewsCompanyFilter] = useState<'all' | CompanyKey>('all');
   const [companyDetailBackTarget, setCompanyDetailBackTarget] = useState<'game' | 'companies' | 'investor' | 'news' | 'forbes'>('companies');
+  const hasPendingPlayerBoardVote = useMemo(() => {
+    if (!game) return false;
+    return COMPANY_KEYS.some((key) => {
+      const company = game.companies[key];
+      const vote = company.activeBoardVote;
+      if (!vote) return false;
+      if (!company.boardMembers.some((member) => member.id === game.player.id)) return false;
+      if (game.elapsedDays > vote.endDay) return false;
+      return !(vote.memberVotes ?? {})[game.player.id];
+    });
+  }, [game]);
+  const isGamePaused = isInvestmentMenuOpen || hasPendingPlayerBoardVote;
 
   useEffect(() => {
     try {
@@ -3217,11 +3229,12 @@ export function CpuFoundrySim() {
   }, [game]);
 
   useEffect(() => {
+    if (isGamePaused) return undefined;
     const interval = window.setInterval(() => {
       setGame((current) => (current ? simulateTick(current) : current));
     }, TICK_MS);
     return () => window.clearInterval(interval);
-  }, []);
+  }, [isGamePaused]);
 
   useEffect(() => {
     const html = document.documentElement;
@@ -3329,6 +3342,7 @@ export function CpuFoundrySim() {
         const playerIsBoardMember = company.boardMembers.some((member) => member.id === game.player.id);
         if (!playerIsBoardMember || !company.activeBoardVote) return null;
         if (game.elapsedDays > company.activeBoardVote.endDay) return null;
+        if ((company.activeBoardVote.memberVotes ?? {})[game.player.id]) return null;
         return { companyKey: key, company, vote: company.activeBoardVote };
       })
       .filter((entry): entry is { companyKey: CompanyKey; company: CompanyState; vote: BoardVoteState } => Boolean(entry))
