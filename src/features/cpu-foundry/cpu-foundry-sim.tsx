@@ -1151,12 +1151,13 @@ function planNpcExecutiveAssignments(game: GameState, company: CompanyState, ceo
     if (!candidate || candidate.score < (mustFillRoles.includes(role) ? 1.05 : 1.2)) return;
     const decisionType: 'appoint' | 'replace' = currentExecutive ? 'replace' : 'appoint';
     const decision = boardApproveExecutiveDecision(game, company, boardMembers, role, { type: decisionType, candidateId: candidate.candidateId });
+    const proposerId = getBoardProposalActorId(game, company, { preferredRole: role, domain: EXECUTIVE_ROLE_META[role].domain });
     latestBoardVote = {
       id: `${company.key}-${role}-${game.elapsedDays}`,
       kind: decisionType === 'appoint' ? 'pengangkatan' : 'penggantian',
-      proposerId: ceoId,
+      proposerId,
       subject: `${EXECUTIVE_ROLE_META[role].title} → ${investorDisplayName(game, candidate.candidateId)}`,
-      reason: `${ceoNpc.name} mengusulkan penyesuaian ${EXECUTIVE_ROLE_META[role].title} untuk kebutuhan ${EXECUTIVE_ROLE_META[role].domain}.`,
+      reason: `${investorDisplayName(game, proposerId)} mengusulkan penyesuaian ${EXECUTIVE_ROLE_META[role].title} untuk kebutuhan ${EXECUTIVE_ROLE_META[role].domain}.`,
       yesWeight: decision.yesWeight,
       noWeight: decision.noWeight,
       startDay: game.elapsedDays,
@@ -1197,6 +1198,28 @@ function getExecutiveCoverage(company: CompanyState, role: ExecutiveRole) {
 
 function getExecutiveRolesForInvestor(company: CompanyState, investorId: string) {
   return EXECUTIVE_ROLES.filter((role) => company.executives[role]?.occupantId === investorId);
+}
+
+
+function getBoardProposalActorId(
+  game: GameState,
+  company: CompanyState,
+  opts?: { preferredRole?: ExecutiveRole; domain?: ExecutiveDomain }
+) {
+  const preferredRole = opts?.preferredRole;
+  if (preferredRole) {
+    const preferredOccupantId = company.executives[preferredRole]?.occupantId;
+    if (preferredOccupantId && isHumanExecutiveCandidateId(preferredOccupantId)) return preferredOccupantId;
+  }
+  const domain = opts?.domain;
+  if (domain) {
+    const domainRole = EXECUTIVE_ROLES.find((role) => EXECUTIVE_ROLE_META[role].domain === domain);
+    const domainOccupantId = domainRole ? company.executives[domainRole]?.occupantId : null;
+    if (domainOccupantId && isHumanExecutiveCandidateId(domainOccupantId)) return domainOccupantId;
+  }
+  if (isHumanExecutiveCandidateId(company.ceoId)) return company.ceoId;
+  const boardNpc = company.boardMembers.find((member) => member.id !== company.ceoId && game.npcs.some((npc) => npc.id === member.id));
+  return boardNpc?.id ?? company.ceoId;
 }
 
 function hasCompanyAuthority(company: CompanyState, investorId: string, domain: ExecutiveDomain | 'release') {
@@ -2723,12 +2746,13 @@ function runNpcChiefExecutiveTurn(current: GameState) {
       if (bestTarget) {
         const proposedAmount = clamp(sourceCompany.cash * 0.14, 8, investableCash * 0.82);
         const investmentDecision = boardApproveCompanyInvestment(sourceCompany, bestTarget.targetCompany, proposedAmount);
+        const proposerId = getBoardProposalActorId(workingGame, sourceCompany, { preferredRole: 'cfo', domain: 'finance' });
         const investmentVote: BoardVoteState = {
           id: `${companyKey}-invest-${workingGame.elapsedDays}`,
           kind: 'investasi',
-          proposerId: sourceCompany.ceoId,
+          proposerId,
           subject: `${sourceCompany.name} → ${bestTarget.targetCompany.name}`,
-          reason: `${sourceCompany.ceoName} mengusulkan investasi strategis antar-perusahaan.`,
+          reason: `${investorDisplayName(workingGame, proposerId)} mengusulkan investasi strategis antar-perusahaan.`,
           investmentValue: proposedAmount,
           yesWeight: investmentDecision.yesWeight,
           noWeight: investmentDecision.noWeight,
