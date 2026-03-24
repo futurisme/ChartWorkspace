@@ -237,15 +237,15 @@ const PRICE_PRESETS = [
   { label: 'Mahal', subtitle: 'Flagship premium', factor: 1.28, reputationBonus: 1.25, marketBonus: 0.55 },
 ] as const;
 const DEFAULT_OPEN_PANELS: Record<PanelKey, boolean> = {
-  profile: true,
+  profile: false,
   intel: false,
 };
 const DEFAULT_COMPANY_DETAIL_PANELS: Record<CompanyDetailPanelKey, boolean> = {
-  overview: true,
-  management: true,
-  operations: true,
+  overview: false,
+  management: false,
+  operations: false,
   ownership: false,
-  governance: true,
+  governance: false,
   intel: false,
 };
 const DEFAULT_PROFILE_DRAFT: ProfileDraft = {
@@ -1074,27 +1074,30 @@ function sanitizeExecutiveAssignments(game: GameState, company: CompanyState, ce
 }
 
 function planNpcExecutiveAssignments(game: GameState, company: CompanyState, ceoId: string) {
-  const ceoNpc = getNpcById(game, ceoId);
-  if (!ceoNpc) {
-    const sanitized = sanitizeExecutiveAssignments(game, company, ceoId);
-    const payroll = EXECUTIVE_ROLES.reduce((sum, role) => sum + (sanitized[role]?.salaryPerDay ?? 0), 0);
-    return {
-      executives: sanitized,
-      executivePayrollPerDay: payroll,
-      executivePulse: `${company.ceoName} menjaga struktur eksekutif tetap manual dan selektif.`,
-    };
-  }
+  const ceoNpc = getExecutiveAiActor(game, company, ceoId);
 
   const intelligence = ceoNpc.intelligence;
-  const threshold = 0.46 + (1 - intelligence) * 0.18;
+  const threshold = 0.34 + (1 - intelligence) * 0.12;
   const pool = getExecutiveCandidatePool(game, company, ceoId);
   const used = new Set<string>();
-  const executives = createEmptyExecutiveMap();
+  const executives = sanitizeExecutiveAssignments(game, company, ceoId);
+  EXECUTIVE_ROLES.forEach((role) => {
+    if (executives[role]) {
+      used.add(executives[role]!.occupantId);
+    }
+  });
   const chosenRoles: ExecutiveRole[] = [];
+  const rankedNeeds = EXECUTIVE_ROLES
+    .map((role) => ({ role, need: calculateExecutiveNeed(role, company) }))
+    .sort((left, right) => right.need - left.need);
+  const mustFillRoles = rankedNeeds
+    .filter((entry) => entry.need > 0.56 && !executives[entry.role])
+    .slice(0, 2)
+    .map((entry) => entry.role);
 
   EXECUTIVE_ROLES.forEach((role) => {
     const need = calculateExecutiveNeed(role, company);
-    if (need < threshold) return;
+    if (need < threshold && !mustFillRoles.includes(role)) return;
     const currentOccupantId = company.executives?.[role]?.occupantId;
     const candidate = pool
       .filter((candidateId) => !used.has(candidateId))
@@ -1104,7 +1107,7 @@ function planNpcExecutiveAssignments(game: GameState, company: CompanyState, ceo
       }))
       .sort((left, right) => right.score - left.score)[0];
 
-    if (!candidate || candidate.score < 1.2) return;
+    if (!candidate || candidate.score < (mustFillRoles.includes(role) ? 1.05 : 1.2)) return;
     used.add(candidate.candidateId);
     chosenRoles.push(role);
     executives[role] = createExecutiveRecord(
@@ -1390,8 +1393,8 @@ function resolveGovernance(game: GameState) {
 
       const [ceoId] = Array.from(boardVotes.entries()).sort((left, right) => right[1] - left[1])[0] ?? [company.founderInvestorId, 0];
       const sanitizedExecutives = sanitizeExecutiveAssignments(game, company, ceoId);
-      const ceoNpc = getNpcById(game, ceoId);
-      const executivePlan = getNpcById(game, ceoId)
+      const ceoNpc = ceoId === game.player.id ? null : getExecutiveAiActor(game, company, ceoId);
+      const executivePlan = ceoId !== game.player.id
         ? planNpcExecutiveAssignments(game, company, ceoId)
         : {
             executives: sanitizedExecutives,
