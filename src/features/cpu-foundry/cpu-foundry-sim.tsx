@@ -41,6 +41,22 @@ type BoardMember = {
   agenda: string;
 };
 
+type BoardVoteKind = 'pengangkatan' | 'penggantian' | 'pemecatan' | 'investasi';
+
+type BoardVoteState = {
+  id: string;
+  kind: BoardVoteKind;
+  proposerId: string;
+  subject: string;
+  reason: string;
+  investmentValue?: number;
+  withdrawalValue?: number;
+  yesWeight: number;
+  noWeight: number;
+  startDay: number;
+  endDay: number;
+};
+
 type CompanyExecutive = {
   role: ExecutiveRole;
   title: string;
@@ -102,6 +118,7 @@ type CompanyState = {
   nextManagementReviewDay: number;
   capitalStrain: number;
   shareListings: ShareListing[];
+  activeBoardVote: BoardVoteState | null;
 };
 
 type PlayerProfile = {
@@ -1106,6 +1123,7 @@ function planNpcExecutiveAssignments(game: GameState, company: CompanyState, ceo
     }
   });
   const chosenRoles: ExecutiveRole[] = [];
+  let latestBoardVote: BoardVoteState | null = null;
   const rankedNeeds = EXECUTIVE_ROLES
     .map((role) => ({ role, need: calculateExecutiveNeed(role, company) }))
     .sort((left, right) => right.need - left.need);
@@ -1132,7 +1150,19 @@ function planNpcExecutiveAssignments(game: GameState, company: CompanyState, ceo
 
     if (!candidate || candidate.score < (mustFillRoles.includes(role) ? 1.05 : 1.2)) return;
     const decisionType: 'appoint' | 'replace' = currentExecutive ? 'replace' : 'appoint';
-    if (!boardApproveExecutiveDecision(game, company, boardMembers, role, { type: decisionType, candidateId: candidate.candidateId })) {
+    const decision = boardApproveExecutiveDecision(game, company, boardMembers, role, { type: decisionType, candidateId: candidate.candidateId });
+    latestBoardVote = {
+      id: `${company.key}-${role}-${game.elapsedDays}`,
+      kind: decisionType === 'appoint' ? 'pengangkatan' : 'penggantian',
+      proposerId: ceoId,
+      subject: `${EXECUTIVE_ROLE_META[role].title} → ${investorDisplayName(game, candidate.candidateId)}`,
+      reason: `${ceoNpc.name} mengusulkan penyesuaian ${EXECUTIVE_ROLE_META[role].title} untuk kebutuhan ${EXECUTIVE_ROLE_META[role].domain}.`,
+      yesWeight: decision.yesWeight,
+      noWeight: decision.noWeight,
+      startDay: game.elapsedDays,
+      endDay: game.elapsedDays + 7,
+    };
+    if (!decision.approved) {
       return;
     }
     used.add(candidate.candidateId);
@@ -1157,6 +1187,7 @@ function planNpcExecutiveAssignments(game: GameState, company: CompanyState, ceo
     executives,
     executivePayrollPerDay,
     executivePulse,
+    activeBoardVote: latestBoardVote,
   };
 }
 
@@ -1205,7 +1236,11 @@ function boardApproveExecutiveDecision(
     const voteSignal = need * 0.9 + candidateScore * 0.55 + seatBias - continuityPenalty * 0.85;
     return voteSignal >= 0.72 ? sum + member.voteWeight : sum;
   }, 0);
-  return supportWeight / totalWeight >= 0.5;
+  return {
+    approved: supportWeight / totalWeight >= 0.5,
+    yesWeight: supportWeight,
+    noWeight: Math.max(0, totalWeight - supportWeight),
+  };
 }
 
 function boardApproveCompanyInvestment(sourceCompany: CompanyState, targetCompany: CompanyState, amount: number) {
@@ -1217,7 +1252,11 @@ function boardApproveCompanyInvestment(sourceCompany: CompanyState, targetCompan
     const voteSignal = targetQuality + sourceSafety * 0.72 + seatBias;
     return voteSignal >= 0.62 ? sum + member.voteWeight : sum;
   }, 0);
-  return supportWeight / totalWeight >= 0.5;
+  return {
+    approved: supportWeight / totalWeight >= 0.5,
+    yesWeight: supportWeight,
+    noWeight: Math.max(0, totalWeight - supportWeight),
+  };
 }
 
 function createGenerativeNpcs(seed: string, count: number, offset = 0): NpcInvestor[] {
@@ -1312,6 +1351,7 @@ function createCompany(config: {
       nextManagementReviewDay: 3,
       capitalStrain: 0,
       shareListings: [],
+      activeBoardVote: null,
     } satisfies CompanyState,
   };
 }
@@ -1467,7 +1507,10 @@ function resolveGovernance(game: GameState) {
             executives: sanitizedExecutives,
             executivePayrollPerDay: EXECUTIVE_ROLES.reduce((sum, role) => sum + (sanitizedExecutives[role]?.salaryPerDay ?? 0), 0),
             executivePulse: company.executivePulse || `${investorDisplayName(game, ceoId)} menjaga struktur eksekutif secara manual.`,
+            activeBoardVote: null as BoardVoteState | null,
           };
+      const ongoingBoardVote = company.activeBoardVote && game.elapsedDays <= company.activeBoardVote.endDay ? company.activeBoardVote : null;
+      const activeBoardVote = executivePlan.activeBoardVote ?? ongoingBoardVote;
       const executiveCoverage =
         getExecutiveCoverage({ ...company, executives: executivePlan.executives }, 'coo')
         + getExecutiveCoverage({ ...company, executives: executivePlan.executives }, 'cfo')
@@ -1524,6 +1567,7 @@ function resolveGovernance(game: GameState) {
           emergencyReleaseAnchorDay: resetEmergencyRelease ? null : company.emergencyReleaseAnchorDay,
           emergencyReleaseCount: resetEmergencyRelease ? 0 : company.emergencyReleaseCount,
           lastEmergencyReleaseDay: resetEmergencyRelease ? null : company.lastEmergencyReleaseDay,
+          activeBoardVote,
           shareListings: sanitizeShareListings(company),
         },
       ];
@@ -2678,7 +2722,30 @@ function runNpcChiefExecutiveTurn(current: GameState) {
       const bestTarget = investmentTargets[0];
       if (bestTarget) {
         const proposedAmount = clamp(sourceCompany.cash * 0.14, 8, investableCash * 0.82);
-        if (boardApproveCompanyInvestment(sourceCompany, bestTarget.targetCompany, proposedAmount)) {
+        const investmentDecision = boardApproveCompanyInvestment(sourceCompany, bestTarget.targetCompany, proposedAmount);
+        const investmentVote: BoardVoteState = {
+          id: `${companyKey}-invest-${workingGame.elapsedDays}`,
+          kind: 'investasi',
+          proposerId: sourceCompany.ceoId,
+          subject: `${sourceCompany.name} → ${bestTarget.targetCompany.name}`,
+          reason: `${sourceCompany.ceoName} mengusulkan investasi strategis antar-perusahaan.`,
+          investmentValue: proposedAmount,
+          yesWeight: investmentDecision.yesWeight,
+          noWeight: investmentDecision.noWeight,
+          startDay: workingGame.elapsedDays,
+          endDay: workingGame.elapsedDays + 7,
+        };
+        workingGame = {
+          ...workingGame,
+          companies: {
+            ...workingGame.companies,
+            [companyKey]: {
+              ...workingGame.companies[companyKey],
+              activeBoardVote: investmentVote,
+            },
+          },
+        };
+        if (investmentDecision.approved) {
           const corporateInvestorId = getCorporateInvestorId(companyKey);
           const investmentTrade = transactShares(workingGame, corporateInvestorId, bestTarget.targetKey, 'buy', proposedAmount, 'company');
           if (investmentTrade.tradedValue > 0) {
@@ -2940,6 +3007,7 @@ export function CpuFoundrySim() {
               emergencyReleaseAnchorDay: company.emergencyReleaseAnchorDay ?? null,
               emergencyReleaseCount: company.emergencyReleaseCount ?? 0,
               lastEmergencyReleaseDay: company.lastEmergencyReleaseDay ?? null,
+              activeBoardVote: company.activeBoardVote ?? null,
               shareListings: sanitizeShareListings({
                 ...company,
                 shareListings: company.shareListings ?? [],
@@ -3078,6 +3146,20 @@ export function CpuFoundrySim() {
     };
     return [buildEntry(game.player.id), ...game.npcs.map((npc) => buildEntry(npc.id))]
       .sort((left, right) => right.total - left.total);
+  }, [game]);
+  const activePlayerBoardVote = useMemo(() => {
+    if (!game) return null;
+    const votes = COMPANY_KEYS
+      .map((key) => {
+        const company = game.companies[key];
+        const playerIsBoardMember = company.boardMembers.some((member) => member.id === game.player.id);
+        if (!playerIsBoardMember || !company.activeBoardVote) return null;
+        if (game.elapsedDays > company.activeBoardVote.endDay) return null;
+        return { companyKey: key, company, vote: company.activeBoardVote };
+      })
+      .filter((entry): entry is { companyKey: CompanyKey; company: CompanyState; vote: BoardVoteState } => Boolean(entry))
+      .sort((left, right) => right.vote.startDay - left.vote.startDay);
+    return votes[0] ?? null;
   }, [game]);
   const activePricePreset = PRICE_PRESETS[releaseDraft.priceIndex];
   const isPlayerCeo = Boolean(game && activeCompany && activeCompany.ceoId === game.player.id);
@@ -3913,6 +3995,63 @@ export function CpuFoundrySim() {
                     </p>
                   </article>
                 ))}
+              </div>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {activePlayerBoardVote ? (
+        <div className={styles.modalOverlay} role="presentation" onClick={() => {}}>
+          <section className={styles.modalCard} role="dialog" aria-modal="true" aria-label="Voting dewan direksi" onClick={(event) => event.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <div>
+                <p className={styles.panelTag}>Board voting (7 hari)</p>
+                <h2>{activePlayerBoardVote.company.name}</h2>
+              </div>
+            </div>
+            <div className={styles.modalBody}>
+              <div className={styles.infoRow}>
+                <div>
+                  <span>Jenis voting</span>
+                  <strong>{activePlayerBoardVote.vote.kind}</strong>
+                </div>
+                <div>
+                  <span>Pengusul</span>
+                  <strong>{investorDisplayName(game, activePlayerBoardVote.vote.proposerId)}</strong>
+                </div>
+                <div>
+                  <span>Subjek</span>
+                  <strong>{activePlayerBoardVote.vote.subject}</strong>
+                </div>
+                <div>
+                  <span>Sisa hari</span>
+                  <strong>{formatNumber(Math.max(0, activePlayerBoardVote.vote.endDay - game.elapsedDays), 1)}</strong>
+                </div>
+                <div>
+                  <span>Setuju</span>
+                  <strong>{formatNumber(activePlayerBoardVote.vote.yesWeight, 2)}</strong>
+                </div>
+                <div>
+                  <span>Tidak setuju</span>
+                  <strong>{formatNumber(activePlayerBoardVote.vote.noWeight, 2)}</strong>
+                </div>
+                {activePlayerBoardVote.vote.investmentValue ? (
+                  <div>
+                    <span>Kas diinvestasikan</span>
+                    <strong>$ {formatMoneyCompact(activePlayerBoardVote.vote.investmentValue, 2)}</strong>
+                  </div>
+                ) : null}
+                {activePlayerBoardVote.vote.withdrawalValue ? (
+                  <div>
+                    <span>Kas ditarik</span>
+                    <strong>$ {formatMoneyCompact(activePlayerBoardVote.vote.withdrawalValue, 2)}</strong>
+                  </div>
+                ) : null}
+              </div>
+              <div className={styles.memoCard}>
+                <p className={styles.panelTag}>Alasan</p>
+                <p>{activePlayerBoardVote.vote.reason}</p>
               </div>
             </div>
           </section>
