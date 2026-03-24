@@ -1486,7 +1486,7 @@ export function CpuFoundrySim() {
                       </div>
                       <div>
                         <span>Harga saham</span>
-                        <strong>$ {formatNumber(getSharePrice(focusedCompany), 2)}</strong>
+                        <strong>{formatCurrencyCompact(getSharePrice(focusedCompany), 2)}</strong>
                       </div>
                       <div>
                         <span>Treasury/market</span>
@@ -1498,7 +1498,7 @@ export function CpuFoundrySim() {
                       </div>
                       <div>
                         <span>Nilai/lembar intrinsik</span>
-                        <strong>$ {formatNumber(getCompanyValuation(focusedCompany) / focusedCompany.sharesOutstanding, 2)}</strong>
+                        <strong>{formatCurrencyCompact(getCompanyValuation(focusedCompany) / focusedCompany.sharesOutstanding, 2)}</strong>
                       </div>
                       <div>
                         <span>Capital strain</span>
@@ -1912,7 +1912,7 @@ export function CpuFoundrySim() {
               <div className={styles.releasePreview}>
                 <div>
                   <span>1 saham realtime</span>
-                  <strong>$ {formatNumber(investmentPreview.sharePrice, 2)}</strong>
+                  <strong>{formatCurrencyCompact(investmentPreview.sharePrice, 2)}</strong>
                 </div>
                 <div>
                   <span>Perusahaan</span>
