@@ -1629,10 +1629,12 @@ function transactShares(current: GameState, investorId: string, companyKey: Comp
       let companyAfterListings = refreshedCompany;
       let feed = next.activityFeed;
       holderAllocation.fills.forEach((fill) => {
+        const treasuryFee = fill.value * 0.12;
+        const sellerProceed = fill.value - treasuryFee;
         companyAfterListings = {
           ...companyAfterListings,
-          cash: companyAfterListings.cash + fill.value,
-          capitalStrain: Math.max(0, companyAfterListings.capitalStrain - fill.value * 0.4),
+          cash: companyAfterListings.cash + treasuryFee,
+          capitalStrain: Math.max(0, companyAfterListings.capitalStrain - treasuryFee * 0.4),
           investors: {
             ...companyAfterListings.investors,
             [fill.sellerId]: Math.max(0, (companyAfterListings.investors[fill.sellerId] ?? 0) - fill.shares),
@@ -1647,9 +1649,10 @@ function transactShares(current: GameState, investorId: string, companyKey: Comp
         if ((companyAfterListings.investors[fill.sellerId] ?? 0) <= 0.01) {
           delete companyAfterListings.investors[fill.sellerId];
         }
+        next = applyCashToInvestor(next, fill.sellerId, sellerProceed);
         feed = addFeedEntry(
           feed,
-          `${formatDateFromDays(current.elapsedDays)}: Investasi holder senilai $${formatMoneyCompact(fill.value)} pada ${company.name} dialihkan penuh ke kas perusahaan via listing ${fill.priceMultiplier}x.`
+          `${formatDateFromDays(current.elapsedDays)}: ${investorDisplayName(current, fill.sellerId)} menjual ${formatNumber(fill.shares, 2)} saham ${company.name} via listing ${fill.priceMultiplier}x, menerima $${formatMoneyCompact(sellerProceed)} (fee treasury $${formatMoneyCompact(treasuryFee)}).`
         );
       });
 
@@ -1745,9 +1748,11 @@ function transactShares(current: GameState, investorId: string, companyKey: Comp
     let treasuryInjection = 0;
     holderAllocation.fills.forEach((fill) => {
       if (fill.shares <= 0.0001) return;
+      const treasuryFee = fill.value * 0.12;
+      const sellerProceed = fill.value - treasuryFee;
       remainingShares -= fill.shares;
       consumedValue += fill.value;
-      treasuryInjection += fill.value;
+      treasuryInjection += treasuryFee;
       const holderCurrentShares = next.companies[companyKey].investors[fill.sellerId] ?? 0;
       next.companies[companyKey].investors[fill.sellerId] = holderCurrentShares - fill.shares;
       if (next.companies[companyKey].investors[fill.sellerId] <= 0.01) {
@@ -1758,9 +1763,10 @@ function transactShares(current: GameState, investorId: string, companyKey: Comp
           ? { ...listing, sharesAvailable: Math.max(0, listing.sharesAvailable - fill.shares) }
           : listing)
         .filter((listing) => listing.sharesAvailable > 0.01);
+      next = applyCashToInvestor(next, fill.sellerId, sellerProceed);
       feed = addFeedEntry(
         feed,
-        `${formatDateFromDays(current.elapsedDays)}: Investasi holder senilai $${formatMoneyCompact(fill.value)} pada ${company.name} masuk langsung ke kas perusahaan via listing ${fill.priceMultiplier}x.`
+        `${formatDateFromDays(current.elapsedDays)}: ${investorDisplayName(current, fill.sellerId)} menjual ${formatNumber(fill.shares, 2)} saham ${company.name} via listing ${fill.priceMultiplier}x, menerima $${formatMoneyCompact(sellerProceed)} (fee treasury $${formatMoneyCompact(treasuryFee)}).`
       );
     });
 
