@@ -255,6 +255,8 @@ export function CpuFoundrySim() {
           intelligence: npc.intelligence ?? 0.72,
           analysisNote: npc.analysisNote ?? 'Masih memetakan ulang peluang pasar.',
           active: true,
+          lastActionDay: npc.lastActionDay ?? -30,
+          convictionBias: npc.convictionBias ?? 0,
         })),
       });
       setGame(normalized);
@@ -349,6 +351,7 @@ export function CpuFoundrySim() {
 
   const activeCompany = game ? game.companies[game.player.selectedCompany] : null;
   const focusedCompany = game && focusedCompanyKey ? game.companies[focusedCompanyKey] : null;
+  const formatCurrencyCompact = (valueInMillions: number, decimals = 2) => `$ ${formatMoneyCompact(valueInMillions, decimals)}`;
   const newsItems = useMemo(() => {
     if (!game) return [];
     const parsed = game.activityFeed
@@ -396,6 +399,20 @@ export function CpuFoundrySim() {
       .sort((left, right) => right.vote.startDay - left.vote.startDay);
     return votes[0] ?? null;
   }, [game]);
+  const activePlayerBoardVoteMeta = useMemo(() => {
+    if (!activePlayerBoardVote || !game) return null;
+    const memberVotes = activePlayerBoardVote.vote.memberVotes ?? {};
+    const aiBoardMembers = activePlayerBoardVote.company.boardMembers.filter((member) => member.id !== game.player.id);
+    const aiVotesCast = aiBoardMembers.filter((member) => memberVotes[member.id]).length;
+    const totalVotesCast = Object.keys(memberVotes).length;
+    return {
+      aiVotesCast,
+      aiTotalVoters: aiBoardMembers.length,
+      totalVotesCast,
+      totalVoters: activePlayerBoardVote.company.boardMembers.length,
+      playerCanVote: aiVotesCast >= aiBoardMembers.length,
+    };
+  }, [activePlayerBoardVote, game]);
   const activePricePreset = PRICE_PRESETS[releaseDraft.priceIndex];
   const isPlayerCeo = Boolean(game && activeCompany && activeCompany.ceoId === game.player.id);
   const focusedPlayerIsCeo = Boolean(game && focusedCompany && focusedCompany.ceoId === game.player.id);
@@ -1112,7 +1129,7 @@ export function CpuFoundrySim() {
                           <p className={styles.itemLabel}>{company.focus}</p>
                           <h3>{company.name}</h3>
                         </div>
-                        <span className={styles.costPill}>$ {formatNumber(sharePrice, 2)} / share</span>
+                        <span className={styles.costPill}>{formatCurrencyCompact(sharePrice, 2)} / share</span>
                       </div>
                       <div className={styles.infoRowCompact}>
                         <div>
@@ -1121,7 +1138,7 @@ export function CpuFoundrySim() {
                         </div>
                         <div>
                           <span>Value</span>
-                          <strong>$ {formatNumber(companyValue, 1)}M</strong>
+                          <strong>{formatCurrencyCompact(companyValue, 2)}</strong>
                         </div>
                         <div>
                           <span>Kepemilikanmu</span>
@@ -1129,7 +1146,7 @@ export function CpuFoundrySim() {
                         </div>
                         <div>
                           <span>Market cap</span>
-                          <strong>$ {formatNumber(getSharePrice(company) * company.sharesOutstanding, 1)}M</strong>
+                          <strong>{formatCurrencyCompact(getSharePrice(company) * company.sharesOutstanding, 2)}</strong>
                         </div>
                         <div>
                           <span>Exec seats</span>
@@ -1191,7 +1208,7 @@ export function CpuFoundrySim() {
                         </div>
                         <span className={styles.costPill}>{formatNumber(entry.ownership, 1)}%</span>
                       </div>
-                      <p className={styles.itemDescription}>Saham {formatNumber(entry.shares, 2)} · Nilai $ {formatNumber(entry.amount, 1)}M · {game.companies[investorFrameCompanyKey].ceoId === entry.investorId ? 'CEO aktif.' : 'Investor aktif.'}</p>
+                      <p className={styles.itemDescription}>Saham {formatNumber(entry.shares, 2)} · Nilai {formatCurrencyCompact(entry.amount, 2)} · {game.companies[investorFrameCompanyKey].ceoId === entry.investorId ? 'CEO aktif.' : 'Investor aktif.'}</p>
                     </article>
                   ))}
                 </div>
@@ -1307,6 +1324,14 @@ export function CpuFoundrySim() {
                   <strong>{formatNumber(Math.max(0, activePlayerBoardVote.vote.endDay - game.elapsedDays), 1)}</strong>
                 </div>
                 <div>
+                  <span>Total vote masuk</span>
+                  <strong>{formatNumber(activePlayerBoardVoteMeta?.totalVotesCast ?? 0)} / {formatNumber(activePlayerBoardVoteMeta?.totalVoters ?? 0)} anggota</strong>
+                </div>
+                <div>
+                  <span>Vote AI masuk</span>
+                  <strong>{formatNumber(activePlayerBoardVoteMeta?.aiVotesCast ?? 0)} / {formatNumber(activePlayerBoardVoteMeta?.aiTotalVoters ?? 0)} anggota</strong>
+                </div>
+                <div>
                   <span>Setuju</span>
                   <strong>{formatNumber(activePlayerBoardVote.vote.yesWeight, 2)} bobot</strong>
                 </div>
@@ -1330,13 +1355,18 @@ export function CpuFoundrySim() {
               <div className={styles.memoCard}>
                 <p className={styles.panelTag}>Alasan</p>
                 <p>{activePlayerBoardVote.vote.reason}</p>
+                {activePlayerBoardVoteMeta && !activePlayerBoardVoteMeta.playerCanVote ? (
+                  <p className={styles.itemDescription}>
+                    Tunggu semua direktur AI selesai voting dulu. Kamu akan voting terakhir setelah total suara AI terkumpul.
+                  </p>
+                ) : null}
               </div>
               <div className={styles.actionRow}>
                 <button
                   type="button"
                   className={styles.secondaryButton}
                   onClick={() => castPlayerBoardVote(activePlayerBoardVote.companyKey, 'yes')}
-                  disabled={game.elapsedDays > activePlayerBoardVote.vote.endDay}
+                  disabled={game.elapsedDays > activePlayerBoardVote.vote.endDay || !activePlayerBoardVoteMeta?.playerCanVote}
                 >
                   Setuju
                 </button>
@@ -1344,7 +1374,7 @@ export function CpuFoundrySim() {
                   type="button"
                   className={styles.ghostButton}
                   onClick={() => castPlayerBoardVote(activePlayerBoardVote.companyKey, 'no')}
-                  disabled={game.elapsedDays > activePlayerBoardVote.vote.endDay}
+                  disabled={game.elapsedDays > activePlayerBoardVote.vote.endDay || !activePlayerBoardVoteMeta?.playerCanVote}
                 >
                   Tolak
                 </button>
@@ -1500,7 +1530,7 @@ export function CpuFoundrySim() {
                     <div className={styles.infoRow}>
                       <div>
                         <span>Payroll eksekutif</span>
-                        <strong>$ {formatNumber(focusedCompany.executivePayrollPerDay, 2)}M/hari</strong>
+                        <strong>{formatCurrencyCompact(focusedCompany.executivePayrollPerDay, 2)}/hari</strong>
                       </div>
                       <div>
                         <span>Kandidat manusia</span>
@@ -1688,7 +1718,7 @@ export function CpuFoundrySim() {
                             </div>
                             <span className={styles.costPill}>{formatNumber(getOwnershipPercent(focusedCompany, investorId), 1)}%</span>
                           </div>
-                          <p className={styles.itemDescription}>Saham {formatNumber(shares, 2)} · Nilai $ {formatNumber(shares * getSharePrice(focusedCompany), 1)}M.</p>
+                          <p className={styles.itemDescription}>Saham {formatNumber(shares, 2)} · Nilai {formatCurrencyCompact(shares * getSharePrice(focusedCompany), 2)}.</p>
                         </article>
                       ))}
                   </div>
@@ -1733,7 +1763,7 @@ export function CpuFoundrySim() {
                               <p className={styles.itemLabel}>{team.label}</p>
                               <h3>{formatNumber(team.count)} aktif</h3>
                             </div>
-                            <span className={styles.costPill}>$ {formatNumber(cost)}M</span>
+                            <span className={styles.costPill}>{formatCurrencyCompact(cost, 2)}</span>
                           </div>
                           <p className={styles.itemDescription}>{team.description}</p>
                           <button
@@ -1791,7 +1821,7 @@ export function CpuFoundrySim() {
                       </div>
                       <div>
                         <span>Total investasi</span>
-                        <strong>$ {formatNumber(getCompanyInvestmentTotal(focusedCompany), 1)}M</strong>
+                        <strong>{formatCurrencyCompact(getCompanyInvestmentTotal(focusedCompany), 2)}</strong>
                       </div>
                       <div>
                         <span>Payout ratio</span>
@@ -1860,10 +1890,10 @@ export function CpuFoundrySim() {
                 <div className={styles.sliderHeader}>
                   <div>
                     <p className={styles.panelTag}>Slider transaksi</p>
-                    <strong>$ {formatNumber(investmentPreview.grossTradeValue, 2)}M · {formatNumber(investmentPreview.sharesMoved / game.companies[investmentDraft.company].sharesOutstanding * 100, 2)}%</strong>
+                    <strong>{formatCurrencyCompact(investmentPreview.grossTradeValue, 2)} · {formatNumber(investmentPreview.sharesMoved / game.companies[investmentDraft.company].sharesOutstanding * 100, 2)}%</strong>
                   </div>
                   <small>
-                    {investmentDraft.mode === 'buy' ? 'Max buy' : 'Max sell'}: $ {formatNumber(investmentPreview.maxTradeValue, 2)}M · {investmentPreview.routeLabel}
+                    {investmentDraft.mode === 'buy' ? 'Max buy' : 'Max sell'}: {formatCurrencyCompact(investmentPreview.maxTradeValue, 2)} · {investmentPreview.routeLabel}
                   </small>
                 </div>
                 <input className={styles.slider} type="range" min={0} max={100} step={1} value={investmentDraft.sliderPercent} onChange={(event) => setInvestmentDraft((current) => ({ ...current, sliderPercent: Number(event.target.value) }))} aria-label="Slider nilai transaksi" />
@@ -1875,7 +1905,7 @@ export function CpuFoundrySim() {
                 <p className={styles.compactHint}>
                   {investmentDraft.mode === 'sell' && investmentDraft.route === 'holders'
                     ? 'Penjualan ke holder dilakukan lewat listing “Buka saham” agar order bisa dibeli parsial oleh beberapa investor.'
-                    : `${investmentDraft.mode === 'buy' ? 'Bayar' : 'Jual'} $ ${formatNumber(Math.abs(investmentPreview.netCashDelta), 2)}M untuk ${formatNumber(investmentPreview.sharesMoved, 2)} saham · fee ${formatNumber(investmentPreview.feeRate * 100, 1)}% · ${investmentPreview.counterpartyLabel}`}
+                    : `${investmentDraft.mode === 'buy' ? 'Bayar' : 'Jual'} ${formatCurrencyCompact(Math.abs(investmentPreview.netCashDelta), 2)} untuk ${formatNumber(investmentPreview.sharesMoved, 2)} saham · fee ${formatNumber(investmentPreview.feeRate * 100, 1)}% · ${investmentPreview.counterpartyLabel}`}
                 </p>
               </div>
 
@@ -1890,7 +1920,7 @@ export function CpuFoundrySim() {
                 </div>
                 <div>
                   <span>Nilai perusahaan</span>
-                  <strong>$ {formatNumber(investmentPreview.valuation, 1)}M</strong>
+                  <strong>{formatCurrencyCompact(investmentPreview.valuation, 2)}</strong>
                 </div>
                 <div>
                   <span>Ownership setelah transaksi</span>
@@ -1898,11 +1928,11 @@ export function CpuFoundrySim() {
                 </div>
                 <div>
                   <span>Delta kas perusahaan</span>
-                  <strong>$ {formatNumber(investmentPreview.companyCashDelta, 2)}M</strong>
+                  <strong>{formatCurrencyCompact(investmentPreview.companyCashDelta, 2)}</strong>
                 </div>
                 <div>
                   <span>Delta nilai perusahaan</span>
-                  <strong>$ {formatNumber(investmentPreview.companyValueDelta, 2)}M</strong>
+                  <strong>{formatCurrencyCompact(investmentPreview.companyValueDelta, 2)}</strong>
                 </div>
               </div>
 
@@ -1966,7 +1996,7 @@ export function CpuFoundrySim() {
                 </div>
                 <div>
                   <span>Estimasi laba</span>
-                  <strong>$ {formatNumber(calculateLaunchRevenue(activeCpuScore, activeCompany.teams, activeCompany.marketShare, activeCompany.reputation, activePricePreset.factor), 0)}M</strong>
+                  <strong>{formatCurrencyCompact(calculateLaunchRevenue(activeCpuScore, activeCompany.teams, activeCompany.marketShare, activeCompany.reputation, activePricePreset.factor), 2)}</strong>
                 </div>
               </div>
 
