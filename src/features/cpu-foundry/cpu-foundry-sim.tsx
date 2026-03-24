@@ -343,6 +343,21 @@ function formatNumber(value: number, decimals = 0) {
   }).format(value);
 }
 
+function formatMoneyCompact(valueInMillions: number, decimals = 2) {
+  const absoluteDollars = Math.abs(valueInMillions) * 1_000_000;
+  const units: Array<{ suffix: 'QA' | 'T' | 'B' | 'M' | 'K'; value: number }> = [
+    { suffix: 'QA', value: 1_000_000_000_000_000 },
+    { suffix: 'T', value: 1_000_000_000_000 },
+    { suffix: 'B', value: 1_000_000_000 },
+    { suffix: 'M', value: 1_000_000 },
+    { suffix: 'K', value: 1_000 },
+  ];
+  const matched = units.find((unit) => absoluteDollars >= unit.value);
+  if (!matched) return `${valueInMillions < 0 ? '-' : ''}${formatNumber(absoluteDollars, 0)}`;
+  const normalized = absoluteDollars / matched.value;
+  return `${valueInMillions < 0 ? '-' : ''}${formatNumber(normalized, decimals)}${matched.suffix}`;
+}
+
 function formatDateFromDays(daysElapsed: number) {
   const date = new Date(START_DATE_UTC + Math.floor(daysElapsed) * 24 * 60 * 60 * 1000);
   const day = String(date.getUTCDate()).padStart(2, '0');
@@ -1499,7 +1514,7 @@ function createInitialGameState(profile: ProfileDraft): GameState {
     companies,
     npcs,
     activityFeed: [
-      `01/01/00: Profil ${profile.name.trim() || 'Player'} dibuat dengan modal awal $${formatNumber(PLAYER_STARTING_CASH)}M.`,
+      `01/01/00: Profil ${profile.name.trim() || 'Player'} dibuat dengan modal awal $${formatMoneyCompact(PLAYER_STARTING_CASH)}.`,
       `01/01/00: 20 AI NPC aktif dibangkitkan dengan strategi value, growth, dividend, activist, dan balanced.`,
       `01/01/00: Dewan direksi 7 kursi aktif di tiap perusahaan untuk memilih CEO secara dinamis.`,
       `01/01/00: Semua perusahaan mulai dari valuasi rendah, kas terbatas, dan free float tipis sehingga setiap suntikan modal terasa nyata.`,
@@ -1634,7 +1649,7 @@ function transactShares(current: GameState, investorId: string, companyKey: Comp
         }
         feed = addFeedEntry(
           feed,
-          `${formatDateFromDays(current.elapsedDays)}: Investasi holder senilai $${formatNumber(fill.value)}M pada ${company.name} dialihkan penuh ke kas perusahaan via listing ${fill.priceMultiplier}x.`
+          `${formatDateFromDays(current.elapsedDays)}: Investasi holder senilai $${formatMoneyCompact(fill.value)} pada ${company.name} dialihkan penuh ke kas perusahaan via listing ${fill.priceMultiplier}x.`
         );
       });
 
@@ -1745,7 +1760,7 @@ function transactShares(current: GameState, investorId: string, companyKey: Comp
         .filter((listing) => listing.sharesAvailable > 0.01);
       feed = addFeedEntry(
         feed,
-        `${formatDateFromDays(current.elapsedDays)}: Investasi holder senilai $${formatNumber(fill.value)}M pada ${company.name} masuk langsung ke kas perusahaan via listing ${fill.priceMultiplier}x.`
+        `${formatDateFromDays(current.elapsedDays)}: Investasi holder senilai $${formatMoneyCompact(fill.value)} pada ${company.name} masuk langsung ke kas perusahaan via listing ${fill.priceMultiplier}x.`
       );
     });
 
@@ -2131,24 +2146,26 @@ function getNpcReleasePressure(game: GameState, npc: NpcInvestor, company: Compa
   const cpuDelta = currentCpuScore - company.lastReleaseCpuScore;
   const cashEmergency = clamp((28 - company.cash) / 28, 0, 2.8);
   const cashReserveGap = clamp((management.cashReserveTarget - company.cash) / Math.max(1, management.cashReserveTarget), 0, 2.4);
-  const severeCashCrisis = company.cash <= Math.max(1, management.cashReserveTarget * 0.04);
-  const cashMeltdown = company.cash < 1;
-  const nearZeroCash = company.cash <= 1.6;
+  const severeCashCrisis = company.cash <= Math.max(2.5, management.cashReserveTarget * 0.08);
+  const cashMeltdown = company.cash < 10;
+  const nearZeroCash = company.cash <= 2;
   const baseReleaseWindow = clamp(Math.round(24 - npc.boldness * 6 - npc.intelligence * 3), 14, 30);
-  const releaseCadenceTarget = cpuDelta > 24
-    ? 14
-    : cpuDelta > 12
-      ? 21
-      : 30;
+  const releaseCadenceTarget = cashMeltdown
+    ? 7
+    : cpuDelta > 32
+      ? 28
+      : cpuDelta > 18
+        ? 42
+        : 56;
   const momentumWindowBias = clamp(Math.round((releaseCadenceTarget - baseReleaseWindow) * 0.8), -10, 10);
-  const tunedReleaseWindow = clamp(baseReleaseWindow + momentumWindowBias, 14, 30);
-  const releaseWindow = cashEmergency > 0.7 ? Math.max(14, tunedReleaseWindow - 3) : tunedReleaseWindow;
+  const tunedReleaseWindow = clamp(baseReleaseWindow + momentumWindowBias, 28, 60);
+  const releaseWindow = cashMeltdown ? 7 : (cashEmergency > 0.7 ? Math.max(28, tunedReleaseWindow - 4) : tunedReleaseWindow);
   const emergencyAnchorDay = company.emergencyReleaseAnchorDay;
   const emergencyReleaseCount = company.emergencyReleaseCount ?? 0;
   const weeksSinceEmergencyAnchor = emergencyAnchorDay === null ? 0 : Math.floor(Math.max(0, game.elapsedDays - emergencyAnchorDay) / 7);
   const allowedEmergencyReleaseCount = emergencyAnchorDay === null ? 1 : weeksSinceEmergencyAnchor + 1;
   const emergencyCadenceReady = cashMeltdown && emergencyReleaseCount < allowedEmergencyReleaseCount;
-  const canForceRelease = emergencyCadenceReady && (severeCashCrisis || nearZeroCash || (cashEmergency > 0.85 && cashReserveGap > 0.5));
+  const canForceRelease = emergencyCadenceReady && (severeCashCrisis || nearZeroCash || (cashEmergency > 0.52 && cashReserveGap > 0.32));
   const releaseDistance =
     Math.max(0, cpuDelta) * 0.68
     + Math.max(0, daysSinceRelease - releaseWindow) * 0.12
@@ -2241,7 +2258,7 @@ function scoreNpcReleaseAction(game: GameState, npc: NpcInvestor, company: Compa
     score,
     label: `Release CPU ${releaseCpuName}`,
     rationale: canForceRelease
-      ? 'kas < $1M: rilis darurat mingguan aktif untuk menyelamatkan runway'
+      ? 'kas < $10M: rilis darurat mingguan aktif untuk menyelamatkan runway'
       : cashEmergency > 0.6
         ? 'mengisi kas darurat lewat produk terbaik yang siap dijual'
       : cpuDelta > 18
@@ -2263,7 +2280,7 @@ function applyNpcCompanyAction(game: GameState, companyKey: CompanyKey, action: 
     const cpuScore = calculateCpuScore(company.upgrades);
     const launchRevenue = calculateLaunchRevenue(cpuScore, company.teams, company.marketShare, company.reputation, pricePreset.factor);
     const wasCashCritical = company.cash <= 0.5;
-    const isEmergencyRelease = action.forceImmediate && company.cash < 1;
+    const isEmergencyRelease = action.forceImmediate && company.cash < 10;
     const nextCash = company.cash + launchRevenue;
     const emergencyAnchorDay = isEmergencyRelease
       ? (company.emergencyReleaseAnchorDay ?? game.elapsedDays)
@@ -2300,7 +2317,7 @@ function applyNpcCompanyAction(game: GameState, companyKey: CompanyKey, action: 
       },
       activityFeed: addFeedEntry(
         game.activityFeed,
-        `${formatDateFromDays(game.elapsedDays)}: ${wasCashCritical ? '🚨 RILIS DARURAT' : 'Update produk'} — ${company.name} merilis ${series} ${cpuName} dan membukukan $${formatNumber(launchRevenue)}M.`
+        `${formatDateFromDays(game.elapsedDays)}: ${wasCashCritical ? '🚨 RILIS DARURAT' : 'Update produk'} — ${company.name} merilis ${series} ${cpuName} dan membukukan $${formatMoneyCompact(launchRevenue)}.`
       ),
     };
   }
@@ -2462,7 +2479,7 @@ function runNpcChiefExecutiveTurn(current: GameState) {
     const releasePressure = getNpcReleasePressure(next, ceoNpc, company);
     const isEmergencyReview =
       releasePressure.canForceRelease
-      || (company.cash <= Math.max(9, releasePressure.management.cashReserveTarget * 0.32))
+      || (company.cash < 10)
       || (releasePressure.cpuDelta > 8 && releasePressure.daysSinceRelease >= 8)
       || (releasePressure.cpuDelta > 3 && releasePressure.daysSinceRelease >= 26);
     if (next.elapsedDays < company.nextManagementReviewDay && !isEmergencyReview) return;
@@ -3200,7 +3217,7 @@ export function CpuFoundrySim() {
       },
       activityFeed: addFeedEntry(
         game.activityFeed,
-        `${formatDateFromDays(game.elapsedDays)}: ${activeCompany.name} merilis ${series} ${cpuName} dan membukukan $${formatNumber(launchRevenue)}M.`
+        `${formatDateFromDays(game.elapsedDays)}: ${activeCompany.name} merilis ${series} ${cpuName} dan membukukan $${formatMoneyCompact(launchRevenue)}.`
       ),
     });
 
@@ -3324,7 +3341,7 @@ export function CpuFoundrySim() {
           <div className={styles.loginPreview}>
             <div>
               <span>Modal awal</span>
-              <strong>$ {formatNumber(PLAYER_STARTING_CASH)}M</strong>
+              <strong>$ {formatMoneyCompact(PLAYER_STARTING_CASH)}</strong>
             </div>
             <div>
               <span>Waktu game</span>
@@ -3361,11 +3378,11 @@ export function CpuFoundrySim() {
           <div className={styles.topStrip}>
             <div>
               <span>Cash pribadi</span>
-              <strong>$ {formatNumber(game.player.cash, 1)}M</strong>
+              <strong>$ {formatMoneyCompact(game.player.cash, 2)}</strong>
             </div>
             <div>
               <span>Net worth</span>
-              <strong>$ {formatNumber(playerNetWorth, 1)}M</strong>
+              <strong>$ {formatMoneyCompact(playerNetWorth, 2)}</strong>
             </div>
             <button type="button" className={styles.releaseTrigger} onClick={openCompaniesFrame}>
               Companies
@@ -3420,15 +3437,15 @@ export function CpuFoundrySim() {
                   </div>
                   <div>
                     <span>Dividen/hari</span>
-                    <strong>$ {formatNumber((activeCompany?.dividendPerShare ?? 0) * (activeCompany?.investors[game.player.id] ?? 0), 2)}M</strong>
+                    <strong>$ {formatMoneyCompact((activeCompany?.dividendPerShare ?? 0) * (activeCompany?.investors[game.player.id] ?? 0), 2)}</strong>
                   </div>
                   <div>
                     <span>Gaji CEO/hari</span>
-                    <strong>$ {formatNumber(isPlayerCeo && activeCompany ? activeCompany.ceoSalaryPerDay : 0, 2)}M</strong>
+                    <strong>$ {formatMoneyCompact(isPlayerCeo && activeCompany ? activeCompany.ceoSalaryPerDay : 0, 2)}</strong>
                   </div>
                   <div>
                     <span>Nilai perusahaan fokus</span>
-                    <strong>$ {formatNumber(activeCompany ? getCompanyValuation(activeCompany) : 0, 1)}M</strong>
+                    <strong>$ {formatMoneyCompact(activeCompany ? getCompanyValuation(activeCompany) : 0, 2)}</strong>
                   </div>
                   <div>
                     <span>Kepemilikan</span>
@@ -3651,7 +3668,7 @@ export function CpuFoundrySim() {
                   </div>
                   <div>
                     <span>Value</span>
-                    <strong>$ {formatNumber(getCompanyValuation(focusedCompany), 1)}M</strong>
+                    <strong>$ {formatMoneyCompact(getCompanyValuation(focusedCompany), 2)}</strong>
                   </div>
                   <div>
                     <span>CPU score</span>
@@ -3659,11 +3676,11 @@ export function CpuFoundrySim() {
                   </div>
                   <div>
                     <span>Dividen/share/hari</span>
-                    <strong>$ {formatNumber(focusedCompany.dividendPerShare, 3)}M</strong>
+                    <strong>$ {formatMoneyCompact(focusedCompany.dividendPerShare, 2)}</strong>
                   </div>
                   <div>
                     <span>Gaji CEO/hari</span>
-                    <strong>$ {formatNumber(focusedCompany.ceoSalaryPerDay, 2)}M</strong>
+                    <strong>$ {formatMoneyCompact(focusedCompany.ceoSalaryPerDay, 2)}</strong>
                   </div>
                   <div>
                     <span>Eksekutif aktif</span>
@@ -3671,7 +3688,7 @@ export function CpuFoundrySim() {
                   </div>
                   <div>
                     <span>Payroll eksekutif</span>
-                    <strong>$ {formatNumber(focusedCompany.executivePayrollPerDay, 2)}M</strong>
+                    <strong>$ {formatMoneyCompact(focusedCompany.executivePayrollPerDay, 2)}</strong>
                   </div>
                 </div>
                 <div className={styles.actionRow}>
@@ -3703,7 +3720,7 @@ export function CpuFoundrySim() {
                     <div className={styles.infoRow}>
                       <div>
                         <span>Kas</span>
-                        <strong>$ {formatNumber(focusedCompany.cash, 1)}M</strong>
+                        <strong>$ {formatMoneyCompact(focusedCompany.cash, 2)}</strong>
                       </div>
                       <div>
                         <span>Research</span>
@@ -3723,7 +3740,7 @@ export function CpuFoundrySim() {
                       </div>
                       <div>
                         <span>Cash/hari</span>
-                        <strong>$ {formatNumber(focusedCompany.revenuePerDay, 1)}M</strong>
+                        <strong>$ {formatMoneyCompact(focusedCompany.revenuePerDay, 2)}</strong>
                       </div>
                       <div>
                         <span>Harga saham</span>
@@ -3735,7 +3752,7 @@ export function CpuFoundrySim() {
                       </div>
                       <div>
                         <span>Market cap</span>
-                        <strong>$ {formatNumber(getSharePrice(focusedCompany) * focusedCompany.sharesOutstanding, 1)}M</strong>
+                        <strong>$ {formatMoneyCompact(getSharePrice(focusedCompany) * focusedCompany.sharesOutstanding, 2)}</strong>
                       </div>
                       <div>
                         <span>Nilai/lembar intrinsik</span>
@@ -3743,7 +3760,7 @@ export function CpuFoundrySim() {
                       </div>
                       <div>
                         <span>Capital strain</span>
-                        <strong>$ {formatNumber(focusedCompany.capitalStrain, 1)}M</strong>
+                        <strong>$ {formatMoneyCompact(focusedCompany.capitalStrain, 2)}</strong>
                       </div>
                     </div>
                     <div className={styles.memoCard}>
