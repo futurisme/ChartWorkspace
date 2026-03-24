@@ -302,13 +302,13 @@
   z-index: 60;
   isolation: isolate;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: center;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   touch-action: pan-y;
-  padding: 14px 10px calc(14px + env(safe-area-inset-bottom));
+  padding: max(10px, env(safe-area-inset-top)) 10px max(12px, env(safe-area-inset-bottom));
   background: rgba(255, 255, 255, 0.78);
 }
 
@@ -357,8 +357,8 @@
 }
 
 .modalCard {
-  width: min(100%, 520px);
-  max-height: min(84dvh, 700px);
+  width: min(100%, 440px);
+  max-height: min(82dvh, 640px);
   overflow: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
@@ -584,8 +584,8 @@
   }
 
   .modalCard {
-    width: 100%;
-    max-height: min(88dvh, 760px);
+    width: min(100%, 420px);
+    max-height: min(86dvh, 720px);
   }
 }
 

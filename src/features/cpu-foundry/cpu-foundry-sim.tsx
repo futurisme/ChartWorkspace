@@ -49,6 +49,7 @@ type BoardVoteState = {
   proposerId: string;
   subject: string;
   reason: string;
+  memberVotes: Record<string, 'yes' | 'no'>;
   investmentValue?: number;
   withdrawalValue?: number;
   yesWeight: number;
@@ -1152,16 +1153,22 @@ function planNpcExecutiveAssignments(game: GameState, company: CompanyState, ceo
     const decisionType: 'appoint' | 'replace' = currentExecutive ? 'replace' : 'appoint';
     const decision = boardApproveExecutiveDecision(game, company, boardMembers, role, { type: decisionType, candidateId: candidate.candidateId });
     const proposerId = getBoardProposalActorId(game, company, { preferredRole: role, domain: EXECUTIVE_ROLE_META[role].domain });
+    const initialVotes: Record<string, 'yes' | 'no'> = {};
+    if (boardMembers.some((member) => member.id === proposerId)) {
+      initialVotes[proposerId] = 'yes';
+    }
+    const tally = tallyBoardVoteWeights(boardMembers, initialVotes);
     latestBoardVote = {
       id: `${company.key}-${role}-${game.elapsedDays}`,
       kind: decisionType === 'appoint' ? 'pengangkatan' : 'penggantian',
       proposerId,
       subject: `${EXECUTIVE_ROLE_META[role].title} → ${investorDisplayName(game, candidate.candidateId)}`,
       reason: `${investorDisplayName(game, proposerId)} mengusulkan penyesuaian ${EXECUTIVE_ROLE_META[role].title} untuk kebutuhan ${EXECUTIVE_ROLE_META[role].domain}.`,
-      yesWeight: decision.yesWeight,
-      noWeight: decision.noWeight,
+      memberVotes: initialVotes,
+      yesWeight: tally.yesWeight,
+      noWeight: tally.noWeight,
       startDay: game.elapsedDays,
-      endDay: game.elapsedDays + 7,
+      endDay: game.elapsedDays + 3,
     };
     if (!decision.approved) {
       return;
@@ -1280,6 +1287,77 @@ function boardApproveCompanyInvestment(sourceCompany: CompanyState, targetCompan
     yesWeight: supportWeight,
     noWeight: Math.max(0, totalWeight - supportWeight),
   };
+}
+
+function tallyBoardVoteWeights(boardMembers: BoardMember[], memberVotes: Record<string, 'yes' | 'no'>) {
+  return boardMembers.reduce(
+    (acc, member) => {
+      const choice = memberVotes[member.id];
+      if (choice === 'yes') acc.yesWeight += member.voteWeight;
+      if (choice === 'no') acc.noWeight += member.voteWeight;
+      return acc;
+    },
+    { yesWeight: 0, noWeight: 0 }
+  );
+}
+
+function decideBoardMemberVote(game: GameState, company: CompanyState, vote: BoardVoteState, member: BoardMember) {
+  const seatBias =
+    member.seatType === 'chair'
+      ? 0.08
+      : member.seatType === 'founder'
+        ? 0.06
+        : member.seatType === 'independent'
+          ? 0.03
+          : member.seatType === 'employee'
+            ? 0.02
+            : 0.04;
+  const boardHealth = company.boardMood * 0.55 + clamp(company.reputation / 100, 0, 1) * 0.22;
+  const capitalSignal = vote.kind === 'investasi'
+    ? clamp(company.cash / 220, 0, 0.22) - clamp(company.capitalStrain / 240, 0, 0.18)
+    : vote.kind === 'penggantian' || vote.kind === 'pemecatan'
+      ? -0.04
+      : 0.04;
+  const random = createSeededRandom(`${vote.id}-${member.id}-${Math.floor(game.elapsedDays)}`)();
+  const noise = (random - 0.5) * 0.16;
+  return boardHealth + seatBias + capitalSignal + noise >= 0.58 ? 'yes' : 'no';
+}
+
+function progressBoardVotes(game: GameState) {
+  const companies = { ...game.companies };
+  let changed = false;
+  (Object.entries(game.companies) as [CompanyKey, CompanyState][]).forEach(([key, company]) => {
+    const vote = company.activeBoardVote;
+    if (!vote) return;
+    if (game.elapsedDays > vote.endDay) {
+      companies[key] = {
+        ...company,
+        activeBoardVote: null,
+      };
+      changed = true;
+      return;
+    }
+    const pendingAiMembers = company.boardMembers.filter((member) => !vote.memberVotes[member.id] && member.id !== game.player.id);
+    if (pendingAiMembers.length === 0) return;
+    const daysLeft = Math.max(0, Math.ceil(vote.endDay - game.elapsedDays));
+    const castCount = daysLeft <= 0 ? pendingAiMembers.length : Math.max(1, Math.ceil(pendingAiMembers.length / (daysLeft + 1)));
+    const nextVotes = { ...vote.memberVotes };
+    pendingAiMembers.slice(0, castCount).forEach((member) => {
+      nextVotes[member.id] = decideBoardMemberVote(game, company, vote, member);
+    });
+    const tally = tallyBoardVoteWeights(company.boardMembers, nextVotes);
+    companies[key] = {
+      ...company,
+      activeBoardVote: {
+        ...vote,
+        memberVotes: nextVotes,
+        yesWeight: tally.yesWeight,
+        noWeight: tally.noWeight,
+      },
+    };
+    changed = true;
+  });
+  return changed ? { ...game, companies } : game;
 }
 
 function createGenerativeNpcs(seed: string, count: number, offset = 0): NpcInvestor[] {
@@ -2116,6 +2194,7 @@ function simulateTick(current: GameState) {
   }
 
   if (reachedNewDay) {
+    nextState = progressBoardVotes(nextState);
     nextState = maybeGenerateMoreNpcs(nextState);
   }
 
@@ -2747,17 +2826,23 @@ function runNpcChiefExecutiveTurn(current: GameState) {
         const proposedAmount = clamp(sourceCompany.cash * 0.14, 8, investableCash * 0.82);
         const investmentDecision = boardApproveCompanyInvestment(sourceCompany, bestTarget.targetCompany, proposedAmount);
         const proposerId = getBoardProposalActorId(workingGame, sourceCompany, { preferredRole: 'cfo', domain: 'finance' });
+        const initialVotes: Record<string, 'yes' | 'no'> = {};
+        if (sourceCompany.boardMembers.some((member) => member.id === proposerId)) {
+          initialVotes[proposerId] = 'yes';
+        }
+        const tally = tallyBoardVoteWeights(sourceCompany.boardMembers, initialVotes);
         const investmentVote: BoardVoteState = {
           id: `${companyKey}-invest-${workingGame.elapsedDays}`,
           kind: 'investasi',
           proposerId,
           subject: `${sourceCompany.name} → ${bestTarget.targetCompany.name}`,
           reason: `${investorDisplayName(workingGame, proposerId)} mengusulkan investasi strategis antar-perusahaan.`,
+          memberVotes: initialVotes,
           investmentValue: proposedAmount,
-          yesWeight: investmentDecision.yesWeight,
-          noWeight: investmentDecision.noWeight,
+          yesWeight: tally.yesWeight,
+          noWeight: tally.noWeight,
           startDay: workingGame.elapsedDays,
-          endDay: workingGame.elapsedDays + 7,
+          endDay: workingGame.elapsedDays + 3,
         };
         workingGame = {
           ...workingGame,
@@ -3626,6 +3711,48 @@ export function CpuFoundrySim() {
     setStatusMessage(direction === 'up' ? 'Payout policy dinaikkan sedikit.' : 'Payout policy dibuat lebih defensif.');
   };
 
+  const castPlayerBoardVote = (companyKey: CompanyKey, choice: 'yes' | 'no') => {
+    if (!game) return;
+    const company = game.companies[companyKey];
+    const vote = company.activeBoardVote;
+    if (!vote) return;
+    if (!company.boardMembers.some((member) => member.id === game.player.id)) {
+      setStatusMessage('Hanya anggota Dewan Direksi yang dapat memberi vote.');
+      return;
+    }
+    if (game.elapsedDays > vote.endDay) {
+      setStatusMessage('Voting ini sudah berakhir.');
+      return;
+    }
+    setGame((current) => {
+      if (!current) return current;
+      const currentCompany = current.companies[companyKey];
+      const currentVote = currentCompany.activeBoardVote;
+      if (!currentVote) return current;
+      const memberVotes = {
+        ...currentVote.memberVotes,
+        [current.player.id]: choice,
+      };
+      const tally = tallyBoardVoteWeights(currentCompany.boardMembers, memberVotes);
+      return {
+        ...current,
+        companies: {
+          ...current.companies,
+          [companyKey]: {
+            ...currentCompany,
+            activeBoardVote: {
+              ...currentVote,
+              memberVotes,
+              yesWeight: tally.yesWeight,
+              noWeight: tally.noWeight,
+            },
+          },
+        },
+      };
+    });
+    setStatusMessage(choice === 'yes' ? 'Kamu memilih SETUJU.' : 'Kamu memilih TOLAK.');
+  };
+
   if (!game) {
     return (
       <main className={styles.shell}>
@@ -4031,7 +4158,7 @@ export function CpuFoundrySim() {
           <section className={styles.modalCard} role="dialog" aria-modal="true" aria-label="Voting dewan direksi" onClick={(event) => event.stopPropagation()}>
             <div className={styles.modalHeader}>
               <div>
-                <p className={styles.panelTag}>Board voting (7 hari)</p>
+                <p className={styles.panelTag}>Board voting (3 hari)</p>
                 <h2>{activePlayerBoardVote.company.name}</h2>
               </div>
             </div>
@@ -4055,11 +4182,11 @@ export function CpuFoundrySim() {
                 </div>
                 <div>
                   <span>Setuju</span>
-                  <strong>{formatNumber(activePlayerBoardVote.vote.yesWeight, 2)}</strong>
+                  <strong>{formatNumber(activePlayerBoardVote.vote.yesWeight, 2)} bobot</strong>
                 </div>
                 <div>
                   <span>Tidak setuju</span>
-                  <strong>{formatNumber(activePlayerBoardVote.vote.noWeight, 2)}</strong>
+                  <strong>{formatNumber(activePlayerBoardVote.vote.noWeight, 2)} bobot</strong>
                 </div>
                 {activePlayerBoardVote.vote.investmentValue ? (
                   <div>
@@ -4077,6 +4204,24 @@ export function CpuFoundrySim() {
               <div className={styles.memoCard}>
                 <p className={styles.panelTag}>Alasan</p>
                 <p>{activePlayerBoardVote.vote.reason}</p>
+              </div>
+              <div className={styles.actionRow}>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={() => castPlayerBoardVote(activePlayerBoardVote.companyKey, 'yes')}
+                  disabled={game.elapsedDays > activePlayerBoardVote.vote.endDay}
+                >
+                  Setuju
+                </button>
+                <button
+                  type="button"
+                  className={styles.ghostButton}
+                  onClick={() => castPlayerBoardVote(activePlayerBoardVote.companyKey, 'no')}
+                  disabled={game.elapsedDays > activePlayerBoardVote.vote.endDay}
+                >
+                  Tolak
+                </button>
               </div>
             </div>
           </section>
