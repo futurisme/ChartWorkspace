@@ -82,6 +82,9 @@ type CompanyState = {
   lastReleaseDay: number;
   lastReleaseCpuScore: number;
   lastReleasePriceIndex: number;
+  emergencyReleaseAnchorDay: number | null;
+  emergencyReleaseCount: number;
+  lastEmergencyReleaseDay: number | null;
   upgrades: Record<UpgradeKey, UpgradeState>;
   teams: Record<TeamKey, TeamState>;
   investors: Record<string, number>;
@@ -1183,6 +1186,9 @@ function createCompany(config: {
       lastReleaseDay: 0,
       lastReleaseCpuScore: calculateCpuScore(config.upgrades),
       lastReleasePriceIndex: 1,
+      emergencyReleaseAnchorDay: null,
+      emergencyReleaseCount: 0,
+      lastEmergencyReleaseDay: null,
       upgrades: config.upgrades,
       teams: config.teams,
       investors: {
@@ -1391,6 +1397,7 @@ function resolveGovernance(game: GameState) {
       );
       const dividendPerShare = Math.max(0.01, ((revenuePerDay * 0.42) * payoutRatio) / company.sharesOutstanding);
       const ceoSalaryPerDay = Math.max(0.6, valuation * 0.0009 + revenuePerDay * 0.022 + getOwnershipPercent(company, ceoId) * 0.04);
+      const resetEmergencyRelease = company.cash > 10;
 
       return [
         key,
@@ -1409,6 +1416,9 @@ function resolveGovernance(game: GameState) {
           executivePayrollPerDay: executivePlan.executivePayrollPerDay,
           executivePulse: executivePlan.executivePulse,
           nextManagementReviewDay: company.nextManagementReviewDay ?? game.elapsedDays + (ceoNpc ? getManagementCadenceDays(company, ceoNpc) : 14),
+          emergencyReleaseAnchorDay: resetEmergencyRelease ? null : company.emergencyReleaseAnchorDay,
+          emergencyReleaseCount: resetEmergencyRelease ? 0 : company.emergencyReleaseCount,
+          lastEmergencyReleaseDay: resetEmergencyRelease ? null : company.lastEmergencyReleaseDay,
           shareListings: sanitizeShareListings(company),
         },
       ];
@@ -2121,23 +2131,24 @@ function getNpcReleasePressure(game: GameState, npc: NpcInvestor, company: Compa
   const cpuDelta = currentCpuScore - company.lastReleaseCpuScore;
   const cashEmergency = clamp((28 - company.cash) / 28, 0, 2.8);
   const cashReserveGap = clamp((management.cashReserveTarget - company.cash) / Math.max(1, management.cashReserveTarget), 0, 2.4);
-  const severeCashCrisis = company.cash <= Math.max(5.5, management.cashReserveTarget * 0.1);
-  const cashMeltdown = company.cash <= Math.max(9, management.cashReserveTarget * 0.32);
+  const severeCashCrisis = company.cash <= Math.max(1, management.cashReserveTarget * 0.04);
+  const cashMeltdown = company.cash < 1;
   const nearZeroCash = company.cash <= 1.6;
-  const baseReleaseWindow = clamp(Math.round(24 - npc.boldness * 7 - npc.intelligence * 4), 8, 30);
-  const releaseCadenceTarget = cpuDelta > 28
-    ? 7
-    : cpuDelta > 18
-      ? 12
-      : cpuDelta > 10
-        ? 18
-        : cpuDelta > 4
-          ? 24
-          : 30;
+  const baseReleaseWindow = clamp(Math.round(24 - npc.boldness * 6 - npc.intelligence * 3), 14, 30);
+  const releaseCadenceTarget = cpuDelta > 24
+    ? 14
+    : cpuDelta > 12
+      ? 21
+      : 30;
   const momentumWindowBias = clamp(Math.round((releaseCadenceTarget - baseReleaseWindow) * 0.8), -10, 10);
-  const tunedReleaseWindow = clamp(baseReleaseWindow + momentumWindowBias, 7, 30);
-  const releaseWindow = cashEmergency > 0.7 ? Math.max(6, tunedReleaseWindow - 7) : cashEmergency > 0.45 ? Math.max(7, tunedReleaseWindow - 4) : tunedReleaseWindow;
-  const canForceRelease = cashMeltdown || severeCashCrisis || nearZeroCash || (cashEmergency > 1.1 && cashReserveGap > 0.9);
+  const tunedReleaseWindow = clamp(baseReleaseWindow + momentumWindowBias, 14, 30);
+  const releaseWindow = cashEmergency > 0.7 ? Math.max(14, tunedReleaseWindow - 3) : tunedReleaseWindow;
+  const emergencyAnchorDay = company.emergencyReleaseAnchorDay;
+  const emergencyReleaseCount = company.emergencyReleaseCount ?? 0;
+  const weeksSinceEmergencyAnchor = emergencyAnchorDay === null ? 0 : Math.floor(Math.max(0, game.elapsedDays - emergencyAnchorDay) / 7);
+  const allowedEmergencyReleaseCount = emergencyAnchorDay === null ? 1 : weeksSinceEmergencyAnchor + 1;
+  const emergencyCadenceReady = cashMeltdown && emergencyReleaseCount < allowedEmergencyReleaseCount;
+  const canForceRelease = emergencyCadenceReady && (severeCashCrisis || nearZeroCash || (cashEmergency > 0.85 && cashReserveGap > 0.5));
   const releaseDistance =
     Math.max(0, cpuDelta) * 0.68
     + Math.max(0, daysSinceRelease - releaseWindow) * 0.12
@@ -2152,6 +2163,7 @@ function getNpcReleasePressure(game: GameState, npc: NpcInvestor, company: Compa
     cashReserveGap,
     cashMeltdown,
     nearZeroCash,
+    emergencyCadenceReady,
     releaseWindow,
     releaseCadenceTarget,
     canForceRelease,
@@ -2170,6 +2182,7 @@ function scoreNpcReleaseAction(game: GameState, npc: NpcInvestor, company: Compa
     cashReserveGap,
     cashMeltdown,
     nearZeroCash,
+    emergencyCadenceReady,
     releaseWindow,
     releaseCadenceTarget,
     canForceRelease,
@@ -2179,11 +2192,12 @@ function scoreNpcReleaseAction(game: GameState, npc: NpcInvestor, company: Compa
   const reputationNeed = clamp((50 - company.reputation) / 50, 0, 1);
   const priceIndex = chooseNpcReleasePriceIndex(npc, company, cpuDelta, cashEmergency);
   const staleness = clamp(daysSinceRelease / 90, 0, 2.2);
+  if (cashMeltdown && !emergencyCadenceReady) return null;
   const tooSoonWithNoDistance =
     daysSinceRelease < releaseWindow
     && releaseDistance < 5.4
     && cashEmergency < 0.6
-    && !cashMeltdown
+    && !emergencyCadenceReady
     && !canForceRelease;
   if (tooSoonWithNoDistance) return null;
   const repeatedSpecPenalty = daysSinceRelease < 28 && cpuDelta < 10 && priceIndex === company.lastReleasePriceIndex
@@ -2198,7 +2212,7 @@ function scoreNpcReleaseAction(game: GameState, npc: NpcInvestor, company: Compa
   const releaseCadencePressure = clamp((daysSinceRelease - releaseWindow) / Math.max(8, releaseWindow), 0, 2.4);
   const upgradeMomentumPressure = clamp((releaseCadenceTarget - daysSinceRelease) / Math.max(6, releaseCadenceTarget), 0, 1.2) * (cpuDelta > 6 ? 1 : 0);
   const urgentCashPressure = Math.max(cashEmergency, cashReserveGap * 0.9);
-  const crisisBoost = canForceRelease ? 11 + Math.max(0, 1.8 - company.cash) * 0.8 : 0;
+  const crisisBoost = canForceRelease ? 9 + Math.max(0, 1.6 - company.cash) * 0.7 : 0;
   const score = (
     urgentCashPressure * 7.6
     + cpuDelta * 0.042
@@ -2227,7 +2241,7 @@ function scoreNpcReleaseAction(game: GameState, npc: NpcInvestor, company: Compa
     score,
     label: `Release CPU ${releaseCpuName}`,
     rationale: canForceRelease
-      ? 'krisis kas: wajib monetisasi CPU tercanggih secepat mungkin untuk menyelamatkan runway'
+      ? 'kas < $1M: rilis darurat mingguan aktif untuk menyelamatkan runway'
       : cashEmergency > 0.6
         ? 'mengisi kas darurat lewat produk terbaik yang siap dijual'
       : cpuDelta > 18
@@ -2249,6 +2263,17 @@ function applyNpcCompanyAction(game: GameState, companyKey: CompanyKey, action: 
     const cpuScore = calculateCpuScore(company.upgrades);
     const launchRevenue = calculateLaunchRevenue(cpuScore, company.teams, company.marketShare, company.reputation, pricePreset.factor);
     const wasCashCritical = company.cash <= 0.5;
+    const isEmergencyRelease = action.forceImmediate && company.cash < 1;
+    const nextCash = company.cash + launchRevenue;
+    const emergencyAnchorDay = isEmergencyRelease
+      ? (company.emergencyReleaseAnchorDay ?? game.elapsedDays)
+      : (nextCash > 10 ? null : company.emergencyReleaseAnchorDay);
+    const emergencyReleaseCount = isEmergencyRelease
+      ? (company.emergencyReleaseCount ?? 0) + 1
+      : (nextCash > 10 ? 0 : company.emergencyReleaseCount);
+    const lastEmergencyReleaseDay = isEmergencyRelease
+      ? game.elapsedDays
+      : (nextCash > 10 ? null : company.lastEmergencyReleaseDay);
     const reputationGain = Math.max(1.2, cpuScore / 240 + company.teams.marketing.count * 0.7 + pricePreset.reputationBonus);
     const marketShareGain = Math.min(4.8, cpuScore / 500 + company.teams.fabrication.count * 0.16 + pricePreset.marketBonus);
     const series = action.releaseSeries ?? `${company.name} G-Series`;
@@ -2259,7 +2284,7 @@ function applyNpcCompanyAction(game: GameState, companyKey: CompanyKey, action: 
         ...game.companies,
         [companyKey]: {
           ...company,
-          cash: company.cash + launchRevenue,
+          cash: nextCash,
           reputation: clamp(company.reputation + reputationGain, 10, 100),
           marketShare: clamp(company.marketShare + marketShareGain, 3, 75),
           releaseCount: company.releaseCount + 1,
@@ -2267,6 +2292,9 @@ function applyNpcCompanyAction(game: GameState, companyKey: CompanyKey, action: 
           lastReleaseDay: game.elapsedDays,
           lastReleaseCpuScore: cpuScore,
           lastReleasePriceIndex: priceIndex,
+          emergencyReleaseAnchorDay: emergencyAnchorDay,
+          emergencyReleaseCount: emergencyReleaseCount,
+          lastEmergencyReleaseDay: lastEmergencyReleaseDay,
           lastRelease: `${series} ${cpuName} rilis ${formatDateFromDays(game.elapsedDays)} (${pricePreset.label.toLowerCase()}).`,
         },
       },
@@ -2725,6 +2753,9 @@ export function CpuFoundrySim() {
               lastReleaseDay: company.lastReleaseDay ?? 0,
               lastReleaseCpuScore: company.lastReleaseCpuScore ?? calculateCpuScore(company.upgrades),
               lastReleasePriceIndex: company.lastReleasePriceIndex ?? 1,
+              emergencyReleaseAnchorDay: company.emergencyReleaseAnchorDay ?? null,
+              emergencyReleaseCount: company.emergencyReleaseCount ?? 0,
+              lastEmergencyReleaseDay: company.lastEmergencyReleaseDay ?? null,
               shareListings: sanitizeShareListings({
                 ...company,
                 shareListings: company.shareListings ?? [],
