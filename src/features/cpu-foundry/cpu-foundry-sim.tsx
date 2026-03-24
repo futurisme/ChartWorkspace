@@ -243,7 +243,8 @@ const NPC_GROWTH_BATCH = 3;
 const EXECUTIVE_MIN_TENURE_DAYS = 30;
 const BOARD_VOTE_WINDOW_DAYS = 30;
 const BOARD_VOTE_LIMIT_PER_WINDOW = 2;
-const TOTAL_SHARES = 1000;
+const TOTAL_SHARES = 10000;
+const INITIAL_FOUNDER_OWNERSHIP_RATIO = 0.52;
 const COMPANY_TRADE_FEE_RATE = 0.018;
 const HOLDER_TRADE_FEE_RATE = 0.052;
 const MIN_TRADE_AMOUNT = 0.1;
@@ -1440,6 +1441,8 @@ function createCompany(config: {
 }) {
   const founderInvestorId = `founder_${config.key}`;
   const boardMood = 0.6;
+  const founderShares = Math.round(TOTAL_SHARES * INITIAL_FOUNDER_OWNERSHIP_RATIO);
+  const marketPoolShares = Math.max(0, TOTAL_SHARES - founderShares);
   const revenuePerDay = calculateRevenuePerDay(config.teams, config.upgrades, config.marketShare, config.reputation, boardMood);
   const researchPerDay = calculateResearchPerDay(config.teams, config.upgrades);
   return {
@@ -1469,10 +1472,10 @@ function createCompany(config: {
       upgrades: config.upgrades,
       teams: config.teams,
       investors: {
-        [founderInvestorId]: 940,
+        [founderInvestorId]: founderShares,
       },
       sharesOutstanding: TOTAL_SHARES,
-      marketPoolShares: 60,
+      marketPoolShares,
       dividendPerShare: 0.01,
       payoutRatio: 0.1,
       ceoSalaryPerDay: 2.4,
@@ -1781,7 +1784,7 @@ function createInitialGameState(profile: ProfileDraft): GameState {
   const npcs = createGenerativeNpcs(npcSeed, INITIAL_NPC_COUNT);
 
   npcs.forEach((npc) => {
-    npc.analysisNote = `${npc.name} masih observasi dan belum berani masuk besar karena mayoritas perusahaan masih founder-led serta free float sangat tipis.`;
+    npc.analysisNote = `${npc.name} mulai agresif menilai valuasi, arus kas, kualitas manajemen, dan momentum riset untuk membangun posisi besar lintas perusahaan.`;
   });
 
   return resolveGovernance({
@@ -2261,12 +2264,14 @@ function scoreCompanyForNpc(npc: NpcInvestor, company: CompanyState) {
   const performanceSignal = getCompanyPerformanceScore(company) / 25;
   const stressLevel = getCompanyStressLevel(company);
   const founderControl = getOwnershipPercent(company, company.founderInvestorId) / 100;
-  const outsideOwnership = clamp(1 - founderControl - company.marketPoolShares / company.sharesOutstanding, 0, 1);
-  const treasuryLiquidity = clamp(company.marketPoolShares / 90, 0, 1.2);
+  const freeFloatRatio = clamp(company.marketPoolShares / Math.max(1, company.sharesOutstanding), 0, 1);
+  const nonFounderOwnership = clamp(1 - founderControl, 0, 1);
+  const outsideOwnership = clamp(nonFounderOwnership - freeFloatRatio, 0, 1);
+  const treasuryLiquidity = clamp(freeFloatRatio * 4.2, 0, 1.4);
   const strainPenalty = company.capitalStrain / Math.max(30, valuation);
   const discoverySignal = clamp((company.marketShare / 30 + company.reputation / 55 + company.researchPerDay / 20) / 3, 0, 1.4);
-  const entryFriction = founderControl > 0.84 && company.marketShare < 24 ? (founderControl - 0.84) * 2.2 : 0;
-  const momentumSignal = discoverySignal * 0.9 + outsideOwnership * 0.65 + treasuryLiquidity * 0.24 + company.releaseCount * 0.08;
+  const governanceOpenness = clamp((company.boardMood - 0.35) * 1.1 + freeFloatRatio * 0.9, 0, 1.6);
+  const momentumSignal = discoverySignal * 0.88 + outsideOwnership * 0.58 + treasuryLiquidity * 0.28 + governanceOpenness * 0.22 + company.releaseCount * 0.08;
   const managementPenalty = stressLevel * 2.6 + strainPenalty * 1.8;
   const strategyBias =
     npc.strategy === 'value'
@@ -2280,7 +2285,7 @@ function scoreCompanyForNpc(npc: NpcInvestor, company: CompanyState) {
             : valueSignal * 1.2 + growthSignal * 1.3 + dividendYield * 1.1 + performanceSignal * 0.45 + momentumSignal * 0.24;
 
   const longTermFit = npc.horizonDays / 365 * 0.35 + npc.patience * 0.6 + npc.intelligence * 0.34;
-  const liquidityPenalty = entryFriction * Math.max(0.2, 1 - npc.boldness * 0.6) + Math.max(0, 0.25 - treasuryLiquidity) * 0.65 - discoverySignal * npc.intelligence * 0.12;
+  const liquidityPenalty = Math.max(0, 0.2 - treasuryLiquidity) * (0.48 + (1 - npc.boldness) * 0.28) - discoverySignal * npc.intelligence * 0.14;
   const crowdConfidence = discoverySignal * (0.4 + npc.intelligence * 0.25) + outsideOwnership * 0.32 + treasuryLiquidity * 0.18;
   return {
     sharePrice,
@@ -3036,16 +3041,17 @@ function runNpcTurn(current: GameState) {
       next = listingDecision.next;
     }
     const bestOutrunsFocus = best.finalScore - currentFocus.finalScore;
-    const shouldTrim = currentFocus.ownership > 4
+    const targetCoreOwnership = clamp(6 + currentFocus.discoverySignal * 8 + npc.boldness * 10 + npc.intelligence * 6, 5, 34);
+    const shouldTrim = currentFocus.ownership > targetCoreOwnership
       && (
-        bestOutrunsFocus > 0.85
+        bestOutrunsFocus > 1.1
         || currentFocus.dividendYield < 0.08
         || currentFocus.company.boardMood < 0.45
-        || currentFocus.stressLevel > 0.55
-        || currentFocus.liquidityPenalty > 0.22
+        || currentFocus.stressLevel > 0.64
+        || currentFocus.liquidityPenalty > 0.3
       );
-    const shouldExit = currentFocus.ownership > 1.2
-      && (currentFocus.stressLevel > 0.72 || currentFocus.company.cash < 70 || currentFocus.performanceSignal < 1.55 || currentFocus.finalScore < 1.55);
+    const shouldExit = currentFocus.ownership > 2.4
+      && (currentFocus.stressLevel > 0.8 || currentFocus.company.cash < 52 || currentFocus.performanceSignal < 1.35 || currentFocus.finalScore < 1.3);
 
     if (shouldTrim || shouldExit) {
       const urgentExit = shouldExit && (currentFocus.stressLevel > 0.82 || npc.cash < reserveCash * 0.55);
@@ -3082,20 +3088,26 @@ function runNpcTurn(current: GameState) {
     const conviction = best.finalScore - (second?.finalScore ?? 0);
     const isFreshEntry = (best.company.investors[npc.id] ?? 0) < 0.01;
     const scoutingThreshold = isFreshEntry
-      ? 0.2 + Math.max(0, 0.24 - best.discoverySignal * 0.12) + Math.max(0, best.founderControl - 0.88) * 0.9
+      ? 0.18 + Math.max(0, 0.2 - best.discoverySignal * 0.12) + Math.max(0, 0.1 - best.momentumSignal * 0.06)
       : 0.12;
     if (affordable < MIN_TRADE_AMOUNT || conviction < scoutingThreshold) {
       npc.analysisNote = `${best.company.name} tetap dipantau. ${npc.name} memilih menahan kas karena spread peluang belum cukup tebal.`;
       return;
     }
 
+    const desiredOwnership = clamp(
+      4 + best.discoverySignal * 7 + best.momentumSignal * 4.4 + npc.boldness * 8 + npc.intelligence * 6.5 + Math.max(0, conviction) * 1.6,
+      3,
+      40
+    );
+    const ownershipGapRatio = clamp((desiredOwnership - best.ownership) / Math.max(1, desiredOwnership), 0.12, 1);
     const starterDiscipline = isFreshEntry
-      ? clamp(0.18 + best.discoverySignal * 0.22 + best.momentumSignal * 0.12 - Math.max(0, best.founderControl - 0.9) * 0.5, 0.12, 0.46)
-      : clamp(0.32 + best.discoverySignal * 0.18 + npc.boldness * 0.12, 0.22, 0.68);
+      ? clamp(0.18 + best.discoverySignal * 0.22 + best.momentumSignal * 0.16, 0.14, 0.56)
+      : clamp(0.3 + best.discoverySignal * 0.17 + npc.boldness * 0.14 + ownershipGapRatio * 0.22, 0.22, 0.82);
     const budget = clamp(
       best.sharePrice * (1.4 + npc.boldness * 1.9 + npc.intelligence * 1.1) + conviction * (16 + best.discoverySignal * 10),
       MIN_TRADE_AMOUNT,
-      affordable * starterDiscipline
+      affordable * starterDiscipline * ownershipGapRatio
     );
     const buyPreview = getTradePreview(next, best.company, npc.id, npc.cash, best.company.investors[npc.id] ?? 0, 'buy', budget, 'auto');
     const buyResult = transactShares(next, npc.id, best.key, 'buy', budget, 'auto');
