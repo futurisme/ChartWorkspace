@@ -52,6 +52,7 @@ type CompanyExecutive = {
   effectiveness: number;
   mandate: string;
   note: string;
+  appointedDay: number;
 };
 
 type ShareListing = {
@@ -219,6 +220,7 @@ const MAX_ACTIVE_NPCS = 35;
 const NPC_GROWTH_START_DAY = 180;
 const NPC_GROWTH_INTERVAL_DAYS = 60;
 const NPC_GROWTH_BATCH = 3;
+const EXECUTIVE_MIN_TENURE_DAYS = 30;
 const TOTAL_SHARES = 1000;
 const COMPANY_TRADE_FEE_RATE = 0.018;
 const HOLDER_TRADE_FEE_RATE = 0.052;
@@ -574,8 +576,20 @@ function getOwnershipPercent(company: CompanyState, investorId: string) {
   return shares / company.sharesOutstanding * 100;
 }
 
+function getCorporateInvestorId(companyKey: CompanyKey) {
+  return `corp_${companyKey}`;
+}
+
+function getCompanyKeyFromCorporateInvestorId(investorId: string): CompanyKey | null {
+  if (!investorId.startsWith('corp_')) return null;
+  const key = investorId.replace('corp_', '') as CompanyKey;
+  return COMPANY_KEYS.includes(key) ? key : null;
+}
+
 function getInvestorCash(game: GameState, investorId: string) {
   if (investorId === game.player.id) return game.player.cash;
+  const corporateCompanyKey = getCompanyKeyFromCorporateInvestorId(investorId);
+  if (corporateCompanyKey) return game.companies[corporateCompanyKey].cash;
   return game.npcs.find((npc) => npc.id === investorId)?.cash ?? 0;
 }
 
@@ -908,6 +922,8 @@ function addFeedEntry(feed: string[], message: string) {
 
 function investorDisplayName(game: GameState, investorId: string) {
   if (investorId === game.player.id) return game.player.name;
+  const corporateCompanyKey = getCompanyKeyFromCorporateInvestorId(investorId);
+  if (corporateCompanyKey) return `${game.companies[corporateCompanyKey].name}*`;
   const npc = game.npcs.find((entry) => entry.id === investorId);
   if (npc) return npc.name;
   if (investorId.startsWith('founder_')) {
@@ -1027,7 +1043,8 @@ function createExecutiveRecord(
   role: ExecutiveRole,
   occupantId: string,
   appointedBy: string,
-  note: string
+  note: string,
+  appointedDay: number = game.elapsedDays
 ): CompanyExecutive {
   const meta = EXECUTIVE_ROLE_META[role];
   const baseScore = getExecutiveCandidateScore(game, company, occupantId, role);
@@ -1044,6 +1061,7 @@ function createExecutiveRecord(
     effectiveness,
     mandate: meta.mandate,
     note,
+    appointedDay,
   };
 }
 
@@ -1067,13 +1085,14 @@ function sanitizeExecutiveAssignments(game: GameState, company: CompanyState, ce
       role,
       current.occupantId,
       current.appointedBy || ceoId,
-      current.note || `${EXECUTIVE_ROLE_META[role].title} menjaga ${company.name} tetap disiplin.`
+      current.note || `${EXECUTIVE_ROLE_META[role].title} menjaga ${company.name} tetap disiplin.`,
+      current.appointedDay ?? game.elapsedDays
     );
   });
   return assignments;
 }
 
-function planNpcExecutiveAssignments(game: GameState, company: CompanyState, ceoId: string) {
+function planNpcExecutiveAssignments(game: GameState, company: CompanyState, ceoId: string, boardMembers: BoardMember[]) {
   const ceoNpc = getExecutiveAiActor(game, company, ceoId);
 
   const intelligence = ceoNpc.intelligence;
@@ -1099,6 +1118,10 @@ function planNpcExecutiveAssignments(game: GameState, company: CompanyState, ceo
     const need = calculateExecutiveNeed(role, company);
     if (need < threshold && !mustFillRoles.includes(role)) return;
     const currentOccupantId = company.executives?.[role]?.occupantId;
+    const currentExecutive = company.executives?.[role] ?? null;
+    if (currentExecutive && isExecutiveTenureLocked(currentExecutive, game.elapsedDays) && currentExecutive.effectiveness >= 0.82) {
+      return;
+    }
     const candidate = pool
       .filter((candidateId) => !used.has(candidateId))
       .map((candidateId) => ({
@@ -1108,6 +1131,10 @@ function planNpcExecutiveAssignments(game: GameState, company: CompanyState, ceo
       .sort((left, right) => right.score - left.score)[0];
 
     if (!candidate || candidate.score < (mustFillRoles.includes(role) ? 1.05 : 1.2)) return;
+    const decisionType: 'appoint' | 'replace' = currentExecutive ? 'replace' : 'appoint';
+    if (!boardApproveExecutiveDecision(game, company, boardMembers, role, { type: decisionType, candidateId: candidate.candidateId })) {
+      return;
+    }
     used.add(candidate.candidateId);
     chosenRoles.push(role);
     executives[role] = createExecutiveRecord(
@@ -1116,7 +1143,8 @@ function planNpcExecutiveAssignments(game: GameState, company: CompanyState, ceo
       role,
       candidate.candidateId,
       ceoId,
-      `${ceoNpc.name} menunjuk ${investorDisplayName(game, candidate.candidateId)} sebagai ${EXECUTIVE_ROLE_META[role].title} karena kebutuhan ${EXECUTIVE_ROLE_META[role].domain}.`
+      `${ceoNpc.name} menunjuk ${investorDisplayName(game, candidate.candidateId)} sebagai ${EXECUTIVE_ROLE_META[role].title} melalui persetujuan dewan karena kebutuhan ${EXECUTIVE_ROLE_META[role].domain}.`,
+      game.elapsedDays
     );
   });
 
@@ -1151,6 +1179,45 @@ function getBoardExecutiveSignals(company: CompanyState) {
   const missingRoles = EXECUTIVE_ROLES.filter((role) => !company.executives[role] && calculateExecutiveNeed(role, company) > 0.62);
   const underPressureRoles = EXECUTIVE_ROLES.filter((role) => company.executives[role] && company.executives[role]!.effectiveness < 0.84);
   return { missingRoles, underPressureRoles };
+}
+
+function isExecutiveTenureLocked(executive: CompanyExecutive | null, currentDay: number) {
+  if (!executive) return false;
+  return currentDay - (executive.appointedDay ?? currentDay) < EXECUTIVE_MIN_TENURE_DAYS;
+}
+
+function boardApproveExecutiveDecision(
+  game: GameState,
+  company: CompanyState,
+  boardMembers: BoardMember[],
+  role: ExecutiveRole,
+  proposal: { type: 'appoint' | 'replace' | 'dismiss'; candidateId?: string }
+) {
+  const currentExecutive = company.executives[role];
+  const totalWeight = boardMembers.reduce((sum, member) => sum + member.voteWeight, 0) || 1;
+  const supportWeight = boardMembers.reduce((sum, member) => {
+    const seatBias = member.seatType === 'independent' ? 0.08 : member.seatType === 'employee' ? 0.03 : 0;
+    const need = calculateExecutiveNeed(role, company);
+    const candidateScore = proposal.candidateId ? getExecutiveCandidateScore(game, company, proposal.candidateId, role) : 0;
+    const continuityPenalty = proposal.type === 'dismiss' || proposal.type === 'replace'
+      ? Math.max(0, EXECUTIVE_MIN_TENURE_DAYS - (game.elapsedDays - (currentExecutive?.appointedDay ?? game.elapsedDays))) / EXECUTIVE_MIN_TENURE_DAYS
+      : 0;
+    const voteSignal = need * 0.9 + candidateScore * 0.55 + seatBias - continuityPenalty * 0.85;
+    return voteSignal >= 0.72 ? sum + member.voteWeight : sum;
+  }, 0);
+  return supportWeight / totalWeight >= 0.5;
+}
+
+function boardApproveCompanyInvestment(sourceCompany: CompanyState, targetCompany: CompanyState, amount: number) {
+  const totalWeight = sourceCompany.boardMembers.reduce((sum, member) => sum + member.voteWeight, 0) || 1;
+  const supportWeight = sourceCompany.boardMembers.reduce((sum, member) => {
+    const targetQuality = targetCompany.marketShare * 0.015 + targetCompany.reputation * 0.012 + calculateCpuScore(targetCompany.upgrades) * 0.00018;
+    const sourceSafety = clamp((sourceCompany.cash - amount) / Math.max(1, sourceCompany.cash), 0, 1);
+    const seatBias = member.seatType === 'independent' ? 0.1 : member.seatType === 'employee' ? -0.04 : 0.02;
+    const voteSignal = targetQuality + sourceSafety * 0.72 + seatBias;
+    return voteSignal >= 0.62 ? sum + member.voteWeight : sum;
+  }, 0);
+  return supportWeight / totalWeight >= 0.5;
 }
 
 function createGenerativeNpcs(seed: string, count: number, offset = 0): NpcInvestor[] {
@@ -1395,7 +1462,7 @@ function resolveGovernance(game: GameState) {
       const sanitizedExecutives = sanitizeExecutiveAssignments(game, company, ceoId);
       const ceoNpc = ceoId === game.player.id ? null : getExecutiveAiActor(game, company, ceoId);
       const executivePlan = ceoId !== game.player.id
-        ? planNpcExecutiveAssignments(game, company, ceoId)
+        ? planNpcExecutiveAssignments(game, company, ceoId, boardMembers)
         : {
             executives: sanitizedExecutives,
             executivePayrollPerDay: EXECUTIVE_ROLES.reduce((sum, role) => sum + (sanitizedExecutives[role]?.salaryPerDay ?? 0), 0),
@@ -1586,6 +1653,19 @@ function applyCashToInvestor(game: GameState, investorId: string, amount: number
       player: {
         ...game.player,
         cash: game.player.cash + amount,
+      },
+    };
+  }
+  const corporateCompanyKey = getCompanyKeyFromCorporateInvestorId(investorId);
+  if (corporateCompanyKey) {
+    return {
+      ...game,
+      companies: {
+        ...game.companies,
+        [corporateCompanyKey]: {
+          ...game.companies[corporateCompanyKey],
+          cash: Math.max(0, game.companies[corporateCompanyKey].cash + amount),
+        },
       },
     };
   }
@@ -1882,6 +1962,7 @@ function simulateTick(current: GameState) {
 
   let nextPlayerCash = governedCurrent.player.cash;
   const npcCashMap = new Map(governedCurrent.npcs.map((npc) => [npc.id, npc.cash]));
+  const corporateCashDelta = new Map<CompanyKey, number>();
 
   const companies = Object.fromEntries(
     (Object.entries(governedCurrent.companies) as [CompanyKey, CompanyState][]).map(([key, governedCompany]) => {
@@ -1896,7 +1977,14 @@ function simulateTick(current: GameState) {
       Object.entries(governedCompany.investors).forEach(([investorId, shares]) => {
         const payout = shares * governedCompany.dividendPerShare * tickDays;
         if (investorId === governedCurrent.player.id) nextPlayerCash += payout;
-        else npcCashMap.set(investorId, (npcCashMap.get(investorId) ?? 0) + payout);
+        else {
+          const corporateCompanyKey = getCompanyKeyFromCorporateInvestorId(investorId);
+          if (corporateCompanyKey) {
+            corporateCashDelta.set(corporateCompanyKey, (corporateCashDelta.get(corporateCompanyKey) ?? 0) + payout);
+          } else {
+            npcCashMap.set(investorId, (npcCashMap.get(investorId) ?? 0) + payout);
+          }
+        }
       });
 
       const ceoSalary = governedCompany.ceoSalaryPerDay * tickDays;
@@ -1939,6 +2027,21 @@ function simulateTick(current: GameState) {
     })),
     companies,
   });
+
+  if (corporateCashDelta.size > 0) {
+    nextState = {
+      ...nextState,
+      companies: {
+        ...nextState.companies,
+      },
+    };
+    corporateCashDelta.forEach((delta, companyKey) => {
+      nextState.companies[companyKey] = {
+        ...nextState.companies[companyKey],
+        cash: Math.max(0, nextState.companies[companyKey].cash + delta),
+      };
+    });
+  }
 
   if (nextState.tickCount % NPC_ACTION_EVERY_TICKS === 0) {
     nextState = runNpcTurn(nextState);
@@ -2560,6 +2663,32 @@ function runNpcChiefExecutiveTurn(current: GameState) {
         if (action.type === 'payout' || action.type === 'release') break;
       }
     });
+
+    const sourceCompany = workingGame.companies[companyKey];
+    const investableCash = Math.max(0, sourceCompany.cash - 18);
+    if (investableCash > 8 && sourceCompany.boardMembers.length > 0) {
+      const investmentTargets = COMPANY_KEYS
+        .filter((targetKey) => targetKey !== companyKey)
+        .map((targetKey) => {
+          const targetCompany = workingGame.companies[targetKey];
+          const attractiveness = targetCompany.marketShare * 0.7 + targetCompany.reputation * 0.45 + calculateCpuScore(targetCompany.upgrades) * 0.02;
+          return { targetKey, targetCompany, attractiveness };
+        })
+        .sort((left, right) => right.attractiveness - left.attractiveness);
+      const bestTarget = investmentTargets[0];
+      if (bestTarget) {
+        const proposedAmount = clamp(sourceCompany.cash * 0.14, 8, investableCash * 0.82);
+        if (boardApproveCompanyInvestment(sourceCompany, bestTarget.targetCompany, proposedAmount)) {
+          const corporateInvestorId = getCorporateInvestorId(companyKey);
+          const investmentTrade = transactShares(workingGame, corporateInvestorId, bestTarget.targetKey, 'buy', proposedAmount, 'company');
+          if (investmentTrade.tradedValue > 0) {
+            workingGame = investmentTrade.next;
+            workingCompany = workingGame.companies[companyKey];
+            actionsTaken.push(`Board ${sourceCompany.name}: Investasi ke ${bestTarget.targetCompany.name}`);
+          }
+        }
+      }
+    }
 
     const nextReviewDay = workingGame.elapsedDays + getManagementCadenceDays(workingCompany, ceoNpc);
     workingGame = resolveGovernance({
