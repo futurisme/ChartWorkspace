@@ -659,3 +659,89 @@
     font-size: 0.8rem;
   }
 }
+
+/* Mobile-first compact override for /game */
+@media (max-width: 767px) {
+  .shell {
+    padding: 4px 4px 8px;
+    background: linear-gradient(180deg, #dbeafe 0%, #cbd5e1 45%, #e2e8f0 100%);
+    color: #020617;
+  }
+
+  .heroCard,
+  .panel,
+  .memoCard,
+  .itemCard,
+  .companyCard,
+  .heroMiniCard,
+  .feedItem,
+  .screenFrameCard {
+    border-color: rgba(2, 6, 23, 0.24);
+    box-shadow: 0 1px 5px rgba(15, 23, 42, 0.16);
+    border-radius: 8px;
+  }
+
+  .heroCard,
+  .loginCard,
+  .topStrip > div,
+  .statChip,
+  .memoCard,
+  .itemCard,
+  .sliderCard,
+  .releasePreview,
+  .loginPreview,
+  .heroMiniCard,
+  .companyCard,
+  .feedItem {
+    padding: 5px;
+  }
+
+  .panelStack,
+  .panelBody,
+  .panelList,
+  .companyList,
+  .feedList,
+  .npcList,
+  .screenFrameBody,
+  .modalBody,
+  .actionRow {
+    gap: 4px;
+  }
+
+  .panelToggle,
+  .modalHeader,
+  .screenFrameHeader {
+    padding: 6px;
+  }
+
+  .infoRow,
+  .infoRowCompact {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+  }
+
+  .quickGrid,
+  .actionRow,
+  .statGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .topStrip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .topStrip button {
+    grid-column: auto;
+  }
+
+  .releaseTrigger,
+  .primaryButton,
+  .secondaryButton,
+  .ghostButton,
+  .quickButton,
+  .quickButtonActive {
+    padding: 6px 7px;
+    font-size: 0.74rem;
+    font-weight: 800;
+  }
+}

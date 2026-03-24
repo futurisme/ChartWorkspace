@@ -2787,6 +2787,7 @@ export function CpuFoundrySim() {
   const [investorFrameCompanyKey, setInvestorFrameCompanyKey] = useState<CompanyKey>('cosmic');
   const [focusedCompanyKey, setFocusedCompanyKey] = useState<CompanyKey | null>(null);
   const [newsCompanyFilter, setNewsCompanyFilter] = useState<'all' | CompanyKey>('all');
+  const [companyDetailBackTarget, setCompanyDetailBackTarget] = useState<'game' | 'companies' | 'investor' | 'news' | 'forbes'>('companies');
 
   useEffect(() => {
     try {
@@ -3051,16 +3052,20 @@ export function CpuFoundrySim() {
     setIsInvestorFrameOpen(true);
   };
 
-  const openCompanyDetail = (company: CompanyKey) => {
+  const openCompanyDetail = (company: CompanyKey, backTarget: 'game' | 'companies' | 'investor' | 'news' | 'forbes' = 'companies') => {
     switchCompany(company);
     closeTransientLayers();
     setCompanyDetailPanels(DEFAULT_COMPANY_DETAIL_PANELS);
+    setCompanyDetailBackTarget(backTarget);
     setFocusedCompanyKey(company);
   };
 
   const closeCompanyDetail = () => {
     setFocusedCompanyKey(null);
-    setIsCompaniesFrameOpen(true);
+    if (companyDetailBackTarget === 'companies') setIsCompaniesFrameOpen(true);
+    else if (companyDetailBackTarget === 'investor') setIsInvestorFrameOpen(true);
+    else if (companyDetailBackTarget === 'news') setIsNewsFrameOpen(true);
+    else if (companyDetailBackTarget === 'forbes') setIsForbesFrameOpen(true);
   };
 
   const investInCompany = () => {
@@ -3546,7 +3551,7 @@ export function CpuFoundrySim() {
                   <button type="button" className={styles.ghostButton} onClick={() => activeCompany && openInvestorFrame(activeCompany.key)}>
                     Investor list
                   </button>
-                  <button type="button" className={styles.ghostButton} onClick={() => activeCompany && openCompanyDetail(activeCompany.key)}>
+                  <button type="button" className={styles.ghostButton} onClick={() => activeCompany && openCompanyDetail(activeCompany.key, 'game')}>
                     Detail fokus
                   </button>
                   <button type="button" className={styles.ghostButton} onClick={resetProfile}>
@@ -3608,7 +3613,7 @@ export function CpuFoundrySim() {
 
               <div className={styles.companyList}>
                 {companyCards.map(({ company, playerOwnership, sharePrice, companyValue }) => (
-                  <button key={company.key} type="button" className={styles.companyCardButton} onClick={() => openCompanyDetail(company.key)}>
+                  <button key={company.key} type="button" className={styles.companyCardButton} onClick={() => openCompanyDetail(company.key, 'companies')}>
                     <article className={styles.companyCard}>
                       <div className={styles.itemTop}>
                         <div>
