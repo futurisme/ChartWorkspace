@@ -141,6 +141,8 @@ export type NpcInvestor = {
   intelligence: number;
   analysisNote: string;
   active: boolean;
+  lastActionDay?: number;
+  convictionBias?: number;
 };
 
 export type GameState = {
@@ -317,8 +319,21 @@ export const EXECUTIVE_ROLE_META: Record<ExecutiveRole, { title: string; domain:
   },
 };
 export const EXECUTIVE_ROLES = Object.keys(EXECUTIVE_ROLE_META) as ExecutiveRole[];
-export const NPC_FIRST_NAMES = ['Iris', 'Marco', 'Sora', 'Nadia', 'Riven', 'Kael', 'Tala', 'Vera', 'Noel', 'Zane', 'Arin', 'Luca', 'Mira', 'Dian', 'Kara', 'Raka', 'Sven', 'Elin', 'Timo', 'Rhea'];
-export const NPC_LAST_NAMES = ['Vale', 'Zhen', 'Kim', 'Torres', 'Hale', 'Morrow', 'Ishida', 'Quill', 'Sato', 'Reyes', 'Prasetyo', 'Wijaya', 'Sullivan', 'Frost', 'Tanaka'];
+export const NPC_FIRST_NAMES = [
+  'Iris', 'Marco', 'Sora', 'Nadia', 'Riven', 'Kael', 'Tala', 'Vera', 'Noel', 'Zane',
+  'Arin', 'Luca', 'Mira', 'Dian', 'Kara', 'Raka', 'Sven', 'Elin', 'Timo', 'Rhea',
+  'Ayla', 'Juno', 'Rafi', 'Gavin', 'Niko', 'Lana', 'Tari', 'Milo', 'Cleo', 'Reza',
+  'Ariq', 'Faye', 'Bima', 'Nara', 'Ivo', 'Dara', 'Reno', 'Liam', 'Sinta', 'Yara',
+  'Dev', 'Maya', 'Ezra', 'Nina', 'Kian', 'Alia', 'Theo', 'Asha', 'Rian', 'Zara',
+  'Dimas', 'Niko', 'Farah', 'Rendra', 'Anya', 'Bagas', 'Kayla', 'Jasper', 'Lina', 'Rizky',
+] as const;
+export const NPC_LAST_NAMES = [
+  'Vale', 'Zhen', 'Kim', 'Torres', 'Hale', 'Morrow', 'Ishida', 'Quill', 'Sato', 'Reyes',
+  'Prasetyo', 'Wijaya', 'Sullivan', 'Frost', 'Tanaka', 'Armand', 'Putra', 'Saputra', 'Mahendra', 'Hidayat',
+  'Nakamura', 'Kusuma', 'Wardana', 'Yamato', 'Hakim', 'Pangestu', 'Santoso', 'Aoki', 'Nugroho', 'Permana',
+  'Lestari', 'Fadlan', 'Gunawan', 'Atmaja', 'Surya', 'Purnama', 'Halim', 'Setiawan', 'Mendoza', 'Laurent',
+  'Alvarez', 'Basuki', 'Firmansyah', 'Matsuda', 'Nair', 'Hansen', 'Keller', 'Bianchi', 'Petrov', 'Nguyen',
+] as const;
 export const NPC_PERSONAS = [
   'fund manager adaptif',
   'angel investor oportunis',
@@ -1388,16 +1403,40 @@ export function progressBoardVotes(game: GameState) {
   return changed ? { ...game, companies } : game;
 }
 
-export function createGenerativeNpcs(seed: string, count: number, offset = 0): NpcInvestor[] {
+function normalizeNpcName(firstName: string, lastName: string, sequence?: number) {
+  if (sequence === undefined) return `${firstName} ${lastName}`;
+  return `${firstName} ${lastName} ${sequence}`;
+}
+
+function generateUniqueNpcName(random: () => number, usedNames: Set<string>, fallbackSeed: number) {
+  const maxUniquePairs = NPC_FIRST_NAMES.length * NPC_LAST_NAMES.length;
+  const maxAttempts = Math.max(30, Math.min(maxUniquePairs, 180));
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const candidate = normalizeNpcName(randomFrom(random, NPC_FIRST_NAMES), randomFrom(random, NPC_LAST_NAMES));
+    if (!usedNames.has(candidate)) {
+      return candidate;
+    }
+  }
+
+  const firstName = NPC_FIRST_NAMES[fallbackSeed % NPC_FIRST_NAMES.length];
+  const lastName = NPC_LAST_NAMES[Math.floor(fallbackSeed / NPC_FIRST_NAMES.length) % NPC_LAST_NAMES.length];
+  let sequence = Math.floor(fallbackSeed / maxUniquePairs) + 2;
+  let candidate = normalizeNpcName(firstName, lastName, sequence);
+  while (usedNames.has(candidate)) {
+    sequence += 1;
+    candidate = normalizeNpcName(firstName, lastName, sequence);
+  }
+  return candidate;
+}
+
+export function createGenerativeNpcs(seed: string, count: number, offset = 0, existingNames: Iterable<string> = []): NpcInvestor[] {
   const random = createSeededRandom(`${seed}-${offset}`);
-  const usedNames = new Set<string>();
+  const usedNames = new Set<string>(existingNames);
   const strategies: StrategyStyle[] = ['value', 'growth', 'dividend', 'activist', 'balanced'];
 
   return Array.from({ length: count }, (_, index) => {
-    let name = '';
-    while (!name || usedNames.has(name)) {
-      name = `${randomFrom(random, NPC_FIRST_NAMES)} ${randomFrom(random, NPC_LAST_NAMES)}`;
-    }
+    const name = generateUniqueNpcName(random, usedNames, offset + index);
     usedNames.add(name);
 
     const strategy = randomFrom(random, strategies);
@@ -1417,6 +1456,8 @@ export function createGenerativeNpcs(seed: string, count: number, offset = 0): N
       reserveRatio: Math.round(randomBetween(random, 0.14, 0.36) * 100) / 100,
       analysisNote: `Masih membangun tesis awal untuk ${focusCompany.toUpperCase()}.`,
       active: true,
+      lastActionDay: -30,
+      convictionBias: Math.round(randomBetween(random, -0.18, 0.2) * 100) / 100,
     } satisfies NpcInvestor;
   });
 }
@@ -2124,7 +2165,12 @@ export function maybeGenerateMoreNpcs(current: GameState) {
     return current;
   }
 
-  const newNpcs = createGenerativeNpcs(`late-${current.elapsedDays}`, targetCount - current.npcs.length, current.npcs.length);
+  const newNpcs = createGenerativeNpcs(
+    `late-${current.elapsedDays}`,
+    targetCount - current.npcs.length,
+    current.npcs.length,
+    current.npcs.map((npc) => npc.name)
+  );
   let next = { ...current, npcs: [...current.npcs] };
 
   newNpcs.forEach((npc, index) => {
@@ -3016,7 +3062,17 @@ export function runNpcTurn(current: GameState) {
   let next = { ...current, companies: { ...current.companies }, npcs: current.npcs.map((npc) => ({ ...npc })) };
 
   next.npcs.forEach((npc) => {
-    const analyses = (Object.entries(next.companies) as [CompanyKey, CompanyState][])
+    const decisionRandom = createSeededRandom(`${npc.id}-${Math.floor(next.elapsedDays)}-${Math.floor(next.tickCount / NPC_ACTION_EVERY_TICKS)}`);
+    const patienceCooldown = clamp(1 + npc.patience * 3.4 - npc.boldness * 0.6, 0.8, 4.8);
+    const lastActionDay = npc.lastActionDay ?? -30;
+    const daysSinceAction = next.elapsedDays - lastActionDay;
+    if (daysSinceAction < patienceCooldown) {
+      const waitDays = Math.max(0.1, patienceCooldown - daysSinceAction);
+      npc.analysisNote = `${npc.name} menunggu setup berikutnya (${formatNumber(waitDays, 1)} hari lagi) agar eksekusi tetap disiplin dan tidak overtrading.`;
+      return;
+    }
+
+    const analyses = (COMPANY_KEYS.map((key) => [key, next.companies[key]]) as [CompanyKey, CompanyState][])
       .map(([key, company]) => ({
         key,
         company,
@@ -3028,7 +3084,9 @@ export function runNpcTurn(current: GameState) {
     const best = analyses[0];
     const second = analyses[1];
     const currentFocus = analyses.find((entry) => entry.key === npc.focusCompany) ?? best;
-    npc.focusCompany = best.key;
+    const focusSwitchThreshold = clamp(0.14 + (1 - npc.intelligence) * 0.26 + npc.patience * 0.16, 0.12, 0.48);
+    const shouldSwitchFocus = best.key !== currentFocus.key && (best.finalScore - currentFocus.finalScore) > focusSwitchThreshold;
+    npc.focusCompany = shouldSwitchFocus ? best.key : currentFocus.key;
 
     const reserveCash = 20 + npc.cash * npc.reserveRatio;
     const listingDecision = manageNpcShareListing(next, npc, currentFocus, best.finalScore, reserveCash);
@@ -3070,6 +3128,7 @@ export function runNpcTurn(current: GameState) {
         };
         const refreshedCompany = next.companies[currentFocus.key];
         const lostCeo = refreshedCompany.ceoId !== npc.id && currentFocus.company.ceoId === npc.id;
+        npc.lastActionDay = next.elapsedDays;
         npc.analysisNote = lostCeo
           ? `${npc.name} melepas saham ${refreshedCompany.name} terlalu jauh dan otomatis turun dari kursi CEO oleh voting dewan.`
           : shouldExit
@@ -3085,13 +3144,15 @@ export function runNpcTurn(current: GameState) {
     const scoutingThreshold = isFreshEntry
       ? 0.18 + Math.max(0, 0.2 - best.discoverySignal * 0.12) + Math.max(0, 0.1 - best.momentumSignal * 0.06)
       : 0.12;
-    if (affordable < MIN_TRADE_AMOUNT || conviction < scoutingThreshold) {
+    const confidenceNoise = (decisionRandom() - 0.5) * clamp(0.16 - npc.intelligence * 0.08, 0.03, 0.12);
+    const convictionWithNoise = conviction + (npc.convictionBias ?? 0) + confidenceNoise;
+    if (affordable < MIN_TRADE_AMOUNT || convictionWithNoise < scoutingThreshold) {
       npc.analysisNote = `${best.company.name} tetap dipantau. ${npc.name} memilih menahan kas karena spread peluang belum cukup tebal.`;
       return;
     }
 
     const desiredOwnership = clamp(
-      4 + best.discoverySignal * 7 + best.momentumSignal * 4.4 + npc.boldness * 8 + npc.intelligence * 6.5 + Math.max(0, conviction) * 1.6,
+      4 + best.discoverySignal * 7 + best.momentumSignal * 4.4 + npc.boldness * 8 + npc.intelligence * 6.5 + Math.max(0, convictionWithNoise) * 1.6,
       3,
       40
     );
@@ -3100,7 +3161,7 @@ export function runNpcTurn(current: GameState) {
       ? clamp(0.18 + best.discoverySignal * 0.22 + best.momentumSignal * 0.16, 0.14, 0.56)
       : clamp(0.3 + best.discoverySignal * 0.17 + npc.boldness * 0.14 + ownershipGapRatio * 0.22, 0.22, 0.82);
     const budget = clamp(
-      best.sharePrice * (1.4 + npc.boldness * 1.9 + npc.intelligence * 1.1) + conviction * (16 + best.discoverySignal * 10),
+      best.sharePrice * (1.4 + npc.boldness * 1.9 + npc.intelligence * 1.1) + convictionWithNoise * (16 + best.discoverySignal * 10),
       MIN_TRADE_AMOUNT,
       affordable * starterDiscipline * ownershipGapRatio
     );
@@ -3118,10 +3179,13 @@ export function runNpcTurn(current: GameState) {
         `${formatDateFromDays(buyResult.next.elapsedDays)}: ${npc.name} membeli ${formatNumber(buyResult.sharesMoved, 2)} saham ${best.company.name} via ${buyPreview.routeLabel.toLowerCase()} berdasarkan analisis ${STRATEGY_LABELS[npc.strategy].toLowerCase()}.`
       ),
     };
+    npc.lastActionDay = next.elapsedDays;
 
-    const diversified = second && npc.cash > reserveCash + 30 && second.finalScore >= best.finalScore * (0.88 + npc.intelligence * 0.06);
+    const refreshedNpcCash = next.npcs.find((entry) => entry.id === npc.id)?.cash ?? npc.cash;
+    const diversified = second && refreshedNpcCash > reserveCash + 30 && second.finalScore >= best.finalScore * (0.88 + npc.intelligence * 0.06);
     if (diversified) {
-      const sideBudget = clamp(affordable * 0.18, MIN_TRADE_AMOUNT, affordable * 0.24);
+      const affordableAfterPrimary = Math.max(0, refreshedNpcCash - reserveCash);
+      const sideBudget = clamp(affordableAfterPrimary * 0.16, MIN_TRADE_AMOUNT, affordableAfterPrimary * 0.22);
       const sideResult = transactShares(next, npc.id, second.key, 'buy', sideBudget, 'auto');
       if (sideResult.tradedValue > 0) {
         next = {
@@ -3131,6 +3195,7 @@ export function runNpcTurn(current: GameState) {
             `${formatDateFromDays(sideResult.next.elapsedDays)}: ${npc.name} juga menambah posisi kecil di ${second.company.name} untuk diversifikasi tanpa cheating.`
           ),
         };
+        npc.lastActionDay = next.elapsedDays;
         npc.analysisNote = `${npc.name} memprioritaskan ${best.company.name} dan tetap membuka hedging strategis di ${second.company.name}.`;
         return;
       }
