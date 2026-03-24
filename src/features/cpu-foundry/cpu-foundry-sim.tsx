@@ -192,6 +192,8 @@ type TradePreview = {
   counterpartyLabel: string;
 };
 
+type NewsCategory = 'investasi-besar' | 'release-cpu' | 'riset-baru' | 'saham-volatil' | 'arus-investor';
+
 type CompanyAiAction = {
   type: 'upgrade' | 'team' | 'payout' | 'release';
   key: UpgradeKey | TeamKey | 'payout-up' | 'payout-down' | 'release';
@@ -368,6 +370,24 @@ function formatDateFromDays(daysElapsed: number) {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function detectNewsCategory(entry: string): NewsCategory | null {
+  const normalized = entry.toLowerCase();
+  if (normalized.includes('merilis') || normalized.includes('rilis')) return 'release-cpu';
+  if (normalized.includes('membeli') || normalized.includes('investasi') || normalized.includes('listing')) return 'investasi-besar';
+  if (normalized.includes('research') || normalized.includes('r&d') || normalized.includes('upgrade') || normalized.includes('rp')) return 'riset-baru';
+  if (normalized.includes('harga') || normalized.includes('valuasi') || normalized.includes('anjlok') || normalized.includes('naik')) return 'saham-volatil';
+  if (normalized.includes('kabur') || normalized.includes('menjual') || normalized.includes('ramai') || normalized.includes('investor')) return 'arus-investor';
+  return null;
+}
+
+function getNewsCategoryLabel(category: NewsCategory) {
+  if (category === 'investasi-besar') return 'Investasi besar';
+  if (category === 'release-cpu') return 'Release CPU baru';
+  if (category === 'riset-baru') return 'Riset baru';
+  if (category === 'saham-volatil') return 'Saham naik/anjlok';
+  return 'Investor ramai/kabur';
 }
 
 function createUpgrades(seed: { architecture: number; lithography: number; clockSpeed: number; coreDesign: number; cacheStack: number; powerEfficiency: number }) {
@@ -2762,8 +2782,11 @@ export function CpuFoundrySim() {
   const [isInvestmentMenuOpen, setIsInvestmentMenuOpen] = useState(false);
   const [isCompaniesFrameOpen, setIsCompaniesFrameOpen] = useState(false);
   const [isInvestorFrameOpen, setIsInvestorFrameOpen] = useState(false);
+  const [isNewsFrameOpen, setIsNewsFrameOpen] = useState(false);
+  const [isForbesFrameOpen, setIsForbesFrameOpen] = useState(false);
   const [investorFrameCompanyKey, setInvestorFrameCompanyKey] = useState<CompanyKey>('cosmic');
   const [focusedCompanyKey, setFocusedCompanyKey] = useState<CompanyKey | null>(null);
+  const [newsCompanyFilter, setNewsCompanyFilter] = useState<'all' | CompanyKey>('all');
 
   useEffect(() => {
     try {
@@ -2884,11 +2907,45 @@ export function CpuFoundrySim() {
     setIsReleaseMenuOpen(false);
     setIsCompaniesFrameOpen(false);
     setIsInvestorFrameOpen(false);
+    setIsNewsFrameOpen(false);
+    setIsForbesFrameOpen(false);
     setFocusedCompanyKey(null);
   };
 
   const activeCompany = game ? game.companies[game.player.selectedCompany] : null;
   const focusedCompany = game && focusedCompanyKey ? game.companies[focusedCompanyKey] : null;
+  const newsItems = useMemo(() => {
+    if (!game) return [];
+    const parsed = game.activityFeed
+      .map((entry, index) => {
+        const category = detectNewsCategory(entry);
+        if (!category) return null;
+        const companyKey = COMPANY_KEYS.find((key) => entry.includes(game.companies[key].name)) ?? null;
+        return { id: `${game.elapsedDays}-${index}`, entry, category, companyKey };
+      })
+      .filter((item): item is { id: string; entry: string; category: NewsCategory; companyKey: CompanyKey | null } => Boolean(item));
+    const filtered = newsCompanyFilter === 'all' ? parsed : parsed.filter((item) => item.companyKey === newsCompanyFilter);
+    return filtered.slice(0, 5);
+  }, [game, newsCompanyFilter]);
+  const forbesList = useMemo(() => {
+    if (!game) return [];
+    const buildEntry = (investorId: string) => {
+      const cash = getInvestorCash(game, investorId);
+      const nonCash = COMPANY_KEYS.reduce((sum, key) => {
+        const company = game.companies[key];
+        return sum + (company.investors[investorId] ?? 0) * getSharePrice(company);
+      }, 0);
+      return {
+        investorId,
+        name: investorDisplayName(game, investorId),
+        cash,
+        nonCash,
+        total: cash + nonCash,
+      };
+    };
+    return [buildEntry(game.player.id), ...game.npcs.map((npc) => buildEntry(npc.id))]
+      .sort((left, right) => right.total - left.total);
+  }, [game]);
   const activePricePreset = PRICE_PRESETS[releaseDraft.priceIndex];
   const isPlayerCeo = Boolean(game && activeCompany && activeCompany.ceoId === game.player.id);
   const focusedPlayerIsCeo = Boolean(game && focusedCompany && focusedCompany.ceoId === game.player.id);
@@ -2978,6 +3035,8 @@ export function CpuFoundrySim() {
     setIsInvestmentMenuOpen(false);
     setIsCompaniesFrameOpen(false);
     setIsInvestorFrameOpen(false);
+    setIsNewsFrameOpen(false);
+    setIsForbesFrameOpen(false);
     setFocusedCompanyKey(null);
   };
 
@@ -3507,28 +3566,20 @@ export function CpuFoundrySim() {
               <span>{openPanels.intel ? 'Tutup' : 'Buka'}</span>
             </button>
             {openPanels.intel ? (
-              <div className={styles.panelList}>
-                <div className={styles.npcList}>
-                  {game.npcs.map((npc) => (
-                    <article key={npc.id} className={styles.itemCard}>
-                      <div className={styles.itemTop}>
-                        <div>
-                          <p className={styles.itemLabel}>{npc.persona} · {STRATEGY_LABELS[npc.strategy]}</p>
-                          <h3>{npc.name}</h3>
-                        </div>
-                        <span className={styles.costPill}>$ {formatNumber(npc.cash, 1)}M</span>
-                      </div>
-                      <p className={styles.itemDescription}>{game.companies[npc.focusCompany].name} · {formatNumber(npc.horizonDays)} hari · {npc.analysisNote}</p>
-                    </article>
-                  ))}
+              <div className={styles.panelBody}>
+                <div className={styles.actionRow}>
+                  <button type="button" className={styles.primaryButton} onClick={() => setIsNewsFrameOpen(true)}>
+                    Buka News
+                  </button>
+                  <button type="button" className={styles.secondaryButton} onClick={() => setIsForbesFrameOpen(true)}>
+                    Buka Forbes
+                  </button>
                 </div>
-
-                <div className={styles.feedList}>
-                  {game.activityFeed.map((entry) => (
-                    <div key={entry} className={styles.feedItem}>
-                      {entry}
-                    </div>
-                  ))}
+                <div className={styles.memoCard}>
+                  <p className={styles.panelTag}>Intel split frame</p>
+                  <p>
+                    News memuat 5 berita terbaru (dengan filter perusahaan). Forbes memuat ranking kekayaan gabungan 35 AI NPC + 1 pemain.
+                  </p>
                 </div>
               </div>
             ) : null}
@@ -3647,6 +3698,84 @@ export function CpuFoundrySim() {
                     </article>
                   ))}
                 </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {isNewsFrameOpen ? (
+        <div className={styles.screenFrameOverlay} role="presentation" onClick={() => setIsNewsFrameOpen(false)}>
+          <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label="News frame" onClick={(event) => event.stopPropagation()}>
+            <div className={styles.screenFrameHeader}>
+              <div>
+                <p className={styles.panelTag}>News</p>
+                <h2>5 berita terbaru pasar CPU</h2>
+              </div>
+              <button type="button" className={styles.closeButton} onClick={() => setIsNewsFrameOpen(false)} aria-label="Kembali dari news">
+                ←
+              </button>
+            </div>
+            <div className={styles.screenFrameBody}>
+              <div className={styles.quickGrid}>
+                <button type="button" className={newsCompanyFilter === 'all' ? styles.quickButtonActive : styles.quickButton} onClick={() => setNewsCompanyFilter('all')}>
+                  Semua
+                </button>
+                {COMPANY_KEYS.map((companyKey) => (
+                  <button key={companyKey} type="button" className={newsCompanyFilter === companyKey ? styles.quickButtonActive : styles.quickButton} onClick={() => setNewsCompanyFilter(companyKey)}>
+                    {game.companies[companyKey].name}
+                  </button>
+                ))}
+              </div>
+              <div className={styles.panelList}>
+                {newsItems.length > 0 ? newsItems.map((item) => (
+                  <article key={item.id} className={styles.itemCard}>
+                    <div className={styles.itemTop}>
+                      <p className={styles.itemLabel}>{getNewsCategoryLabel(item.category)}</p>
+                      <span className={styles.costPill}>{item.companyKey ? game.companies[item.companyKey].name : 'Global'}</span>
+                    </div>
+                    <p className={styles.itemDescription}>{item.entry}</p>
+                  </article>
+                )) : (
+                  <div className={styles.memoCard}>
+                    <p className={styles.panelTag}>News kosong</p>
+                    <p>Belum ada event yang memenuhi kategori berita untuk filter saat ini.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {isForbesFrameOpen ? (
+        <div className={styles.screenFrameOverlay} role="presentation" onClick={() => setIsForbesFrameOpen(false)}>
+          <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label="Forbes frame" onClick={(event) => event.stopPropagation()}>
+            <div className={styles.screenFrameHeader}>
+              <div>
+                <p className={styles.panelTag}>Forbes</p>
+                <h2>Investor terkaya dunia (35 AI + 1 pemain)</h2>
+              </div>
+              <button type="button" className={styles.closeButton} onClick={() => setIsForbesFrameOpen(false)} aria-label="Kembali dari forbes">
+                ←
+              </button>
+            </div>
+            <div className={styles.screenFrameBody}>
+              <div className={styles.panelList}>
+                {forbesList.map((entry, index) => (
+                  <article key={entry.investorId} className={styles.itemCard}>
+                    <div className={styles.itemTop}>
+                      <div>
+                        <p className={styles.itemLabel}>Forbes #{index + 1}</p>
+                        <h3>{entry.name}</h3>
+                      </div>
+                      <span className={styles.costPill}>$ {formatMoneyCompact(entry.total, 2)}</span>
+                    </div>
+                    <p className={styles.itemDescription}>
+                      Tunai $ {formatMoneyCompact(entry.cash, 2)} · Non tunai $ {formatMoneyCompact(entry.nonCash, 2)}.
+                    </p>
+                  </article>
+                ))}
               </div>
             </div>
           </section>
