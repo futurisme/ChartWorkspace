@@ -214,6 +214,46 @@ export function CpuFoundrySim() {
   }, [isGamePaused]);
 
   useEffect(() => {
+    if (!game || !hasPendingPlayerBoardVote) return;
+    const hasPendingAiVotesForPlayer = COMPANY_KEYS.some((companyKey) => {
+      const company = game.companies[companyKey];
+      const vote = company.activeBoardVote;
+      if (!vote) return false;
+      if (game.elapsedDays > vote.endDay) return false;
+      const playerIsBoardMember = company.boardMembers.some((member) => member.id === game.player.id);
+      if (!playerIsBoardMember) return false;
+      if ((vote.memberVotes ?? {})[game.player.id]) return false;
+      return company.boardMembers.some((member) => member.id !== game.player.id && !(vote.memberVotes ?? {})[member.id]);
+    });
+    if (!hasPendingAiVotesForPlayer) return;
+
+    setGame((current) => {
+      if (!current) return current;
+      let next = current;
+      let guard = 0;
+      const maxLoops = 48;
+      while (guard < maxLoops) {
+        const unresolved = COMPANY_KEYS.some((companyKey) => {
+          const company = next.companies[companyKey];
+          const vote = company.activeBoardVote;
+          if (!vote) return false;
+          if (next.elapsedDays > vote.endDay) return false;
+          const playerIsBoardMember = company.boardMembers.some((member) => member.id === next.player.id);
+          if (!playerIsBoardMember) return false;
+          if ((vote.memberVotes ?? {})[next.player.id]) return false;
+          return company.boardMembers.some((member) => member.id !== next.player.id && !(vote.memberVotes ?? {})[member.id]);
+        });
+        if (!unresolved) break;
+        const progressed = progressBoardVotes(next);
+        if (progressed === next) break;
+        next = progressed;
+        guard += 1;
+      }
+      return next === current ? current : next;
+    });
+  }, [game, hasPendingPlayerBoardVote]);
+
+  useEffect(() => {
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (!raw) return;
