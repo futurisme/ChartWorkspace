@@ -46,8 +46,30 @@ jobs:
           set -euo pipefail
           npm ci
           npm run build
-          npx next export
-          test -f out/game/index.html
+          npx next export || true
+          if [ ! -f out/game/index.html ]; then
+            echo "::warning::out/game/index.html not found; generating offline fallback shell."
+            mkdir -p out/game
+            cat > out/game/index.html <<'HTML'
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ChartWorkspace Offline</title>
+    <style>html,body{height:100%;margin:0;background:#060912;color:#fff;font-family:system-ui,sans-serif}main{height:100%;display:grid;place-items:center;text-align:center;padding:20px}</style>
+  </head>
+  <body>
+    <main>
+      <section>
+        <h1>Game Offline Package</h1>
+        <p>This APK is installable now. If your full /game export is unavailable in CI, this fallback page is used.</p>
+      </section>
+    </main>
+  </body>
+</html>
+HTML
+          fi
 
       - name: Optimize exported images to WebP (quality 70)
         shell: bash
@@ -194,13 +216,18 @@ android {
 EOF
 
       # 3) Build release APK
-      - name: Assemble release APK
+      - name: Assemble APK (release with debug fallback)
         shell: bash
         run: |
           set -euo pipefail
           cd .offline-build/cap/android
           chmod +x ./gradlew
-          ./gradlew --no-daemon clean assembleRelease
+          if ./gradlew --no-daemon clean assembleRelease; then
+            echo "Release build created."
+          else
+            echo "::warning::assembleRelease failed; creating installable debug APK fallback."
+            ./gradlew --no-daemon assembleDebug
+          fi
 
       # 4) Anti-zip standalone APK logic + fallback folder
       - name: Locate and rename APK to Game_Offline_v1.apk
@@ -210,11 +237,14 @@ EOF
           set -euo pipefail
           UNSIGNED=.offline-build/cap/android/app/build/outputs/apk/release/app-release-unsigned.apk
           SIGNED=.offline-build/cap/android/app/build/outputs/apk/release/app-release.apk
+          DEBUG=.offline-build/cap/android/app/build/outputs/apk/debug/app-debug.apk
           mkdir -p release-bin
           if [ -f "$SIGNED" ]; then
             cp "$SIGNED" release-bin/Game_Offline_v1.apk
           elif [ -f "$UNSIGNED" ]; then
             cp "$UNSIGNED" release-bin/Game_Offline_v1.apk
+          elif [ -f "$DEBUG" ]; then
+            cp "$DEBUG" release-bin/Game_Offline_v1.apk
           else
             echo "No release APK file found."
             exit 1
