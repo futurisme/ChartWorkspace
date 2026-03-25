@@ -320,23 +320,36 @@ export function CpuFoundrySim() {
           };
           return acc;
         }, {} as Record<CompanyKey, CompanyState>),
-        plans: parsed.plans ?? COMPANY_KEYS.reduce((acc, key) => {
+        plans: COMPANY_KEYS.reduce((acc, key) => {
           const company = parsedCompanies[key] ?? fallbackCompany;
+          const sourcePlan = parsed.plans?.[key];
           acc[key] = {
             companyKey: key,
-            companyName: company.name,
-            founderInvestorId: company.founderInvestorId,
-            founderName: company.founder,
-            startDay: 0,
-            dueDay: 0,
-            targetCapital: company.cash,
-            pledgedCapital: company.cash,
-            pledges: [],
-            isEstablished: company.isEstablished ?? true,
+            companyName: sourcePlan?.companyName ?? company.name,
+            founderInvestorId: sourcePlan?.founderInvestorId ?? company.founderInvestorId,
+            founderName: sourcePlan?.founderName ?? company.founder,
+            startDay: sourcePlan?.startDay ?? 0,
+            dueDay: sourcePlan?.dueDay ?? 0,
+            targetCapital: sourcePlan?.targetCapital ?? company.cash,
+            pledgedCapital: sourcePlan?.pledgedCapital ?? company.cash,
+            pledges: Array.isArray(sourcePlan?.pledges) ? sourcePlan!.pledges : [],
+            isEstablished: sourcePlan?.isEstablished ?? (company.isEstablished ?? true),
           };
           return acc;
         }, {} as Record<CompanyKey, CompanyEstablishmentPlan>),
-        communityPlans: (parsed.communityPlans ?? []) as CommunityCompanyPlan[],
+        communityPlans: Array.isArray(parsed.communityPlans)
+          ? parsed.communityPlans
+            .filter((plan): plan is CommunityCompanyPlan => Boolean(plan?.id && plan?.companyName))
+            .map((plan) => ({
+              ...plan,
+              investorIds: Array.isArray(plan.investorIds) ? plan.investorIds : [],
+              status: plan.status === 'established' || plan.status === 'expired' ? plan.status : 'funding',
+              pledgedCapital: Number.isFinite(plan.pledgedCapital) ? plan.pledgedCapital : 0,
+              targetCapital: Number.isFinite(plan.targetCapital) ? plan.targetCapital : 0,
+              dueDay: Number.isFinite(plan.dueDay) ? plan.dueDay : 0,
+              startDay: Number.isFinite(plan.startDay) ? plan.startDay : 0,
+            }))
+          : [],
         npcs: parsed.npcs.map((npc) => ({
           ...npc,
           strategy: npc.strategy ?? 'balanced',
