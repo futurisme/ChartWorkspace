@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Script from 'next/script';
 
 export const metadata: Metadata = {
   title: {
@@ -28,5 +29,10 @@ export const metadata: Metadata = {
 };
 
 export default function GameLayout({ children }: { children: React.ReactNode }) {
-  return children;
+  return (
+    <>
+      {children}
+      <Script src="/game-apk-update-popup.js" strategy="afterInteractive" />
+    </>
+  );
 }

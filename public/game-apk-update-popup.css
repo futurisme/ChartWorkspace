@@ -1,0 +1,58 @@
+#apk-update-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.66);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 99999;
+}
+
+#apk-update-overlay.show {
+  display: flex;
+}
+
+#apk-update-modal {
+  width: min(92vw, 420px);
+  background: #0c1426;
+  border: 1px solid #35508f;
+  border-radius: 14px;
+  padding: 18px;
+  color: #e8eeff;
+  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.4);
+}
+
+#apk-update-modal h3 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+
+#apk-update-modal p {
+  margin: 0 0 14px;
+  opacity: 0.92;
+}
+
+#apk-update-actions {
+  display: flex;
+  gap: 10px;
+}
+
+#apk-update-actions a,
+#apk-update-actions button {
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+#apk-download-btn {
+  background: #60a5fa;
+  color: #03132e;
+  text-decoration: none;
+}
+
+#apk-dismiss-btn {
+  background: #1f2f57;
+  color: #dce7ff;
+}
