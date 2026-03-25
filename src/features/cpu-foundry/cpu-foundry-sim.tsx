@@ -93,6 +93,7 @@ const {
   calculateResearchPerDay,
   calculateRevenuePerDay,
   calculateLaunchRevenue,
+  evaluateCpuReleaseRating,
   getCompanyInvestmentTotal,
   getSharePrice,
   getCompanyValuation,
@@ -348,6 +349,7 @@ export function CpuFoundrySim() {
             shareSheetTotal: company.shareSheetTotal ?? company.sharesOutstanding ?? TOTAL_SHARES,
             lastShareSheetChangeDay: company.lastShareSheetChangeDay ?? 0,
             portfolioValue: company.portfolioValue ?? 0,
+            researchAssetValue: company.researchAssetValue ?? company.research ?? 0,
             capitalStrain: company.capitalStrain ?? 0,
             lastReleaseDay: company.lastReleaseDay ?? 0,
             lastReleaseCpuScore: company.lastReleaseCpuScore ?? calculateCpuScore(company.upgrades),
@@ -710,6 +712,9 @@ export function CpuFoundrySim() {
   const focusedCanManageFinance = Boolean(focusedCompany && game && hasCompanyAuthority(focusedCompany, game.player.id, 'finance'));
   const focusedCanReleaseCpu = Boolean(focusedCompany && game && hasCompanyAuthority(focusedCompany, game.player.id, 'release'));
   const activeCpuScore = activeCompany ? calculateCpuScore(activeCompany.upgrades) : 0;
+  const activeReleaseRating = game && activeCompany
+    ? evaluateCpuReleaseRating(game, activeCompany, releaseDraft.priceIndex, activeCpuScore)
+    : null;
   const focusedCpuScore = focusedCompany ? calculateCpuScore(focusedCompany.upgrades) : 0;
   const playerNetWorth = useMemo(() => {
     if (!game) return 0;
@@ -986,6 +991,7 @@ export function CpuFoundrySim() {
       const nextCompany: CompanyState = {
         ...company,
         research: company.research - cost,
+        researchAssetValue: (company.researchAssetValue ?? 0) + cost,
         upgrades: {
           ...company.upgrades,
           [key]: {
@@ -1066,15 +1072,16 @@ export function CpuFoundrySim() {
       return;
     }
 
+    const releaseRating = evaluateCpuReleaseRating(game, activeCompany, releaseDraft.priceIndex, activeCpuScore);
     const launchRevenue = calculateLaunchRevenue(
       activeCpuScore,
       activeCompany.teams,
       activeCompany.marketShare,
       activeCompany.reputation,
       activePricePreset.factor
-    );
-    const reputationGain = Math.max(1.2, activeCpuScore / 240 + activeCompany.teams.marketing.count * 0.7 + activePricePreset.reputationBonus);
-    const marketShareGain = Math.min(4.8, activeCpuScore / 500 + activeCompany.teams.fabrication.count * 0.16 + activePricePreset.marketBonus);
+    ) * releaseRating.salesMultiplier;
+    const reputationGain = Math.max(0.8, (activeCpuScore / 240 + activeCompany.teams.marketing.count * 0.7 + activePricePreset.reputationBonus) * releaseRating.reputationMultiplier);
+    const marketShareGain = Math.min(5.5, (activeCpuScore / 500 + activeCompany.teams.fabrication.count * 0.16 + activePricePreset.marketBonus) * releaseRating.marketShareMultiplier);
 
     const next = resolveGovernance({
       ...game,
@@ -1090,17 +1097,17 @@ export function CpuFoundrySim() {
           lastReleaseDay: game.elapsedDays,
           lastReleaseCpuScore: activeCpuScore,
           lastReleasePriceIndex: releaseDraft.priceIndex,
-          lastRelease: `${series} ${cpuName} rilis ${formatDateFromDays(game.elapsedDays)} (${activePricePreset.label.toLowerCase()}).`,
+          lastRelease: `${series} ${cpuName} rilis ${formatDateFromDays(game.elapsedDays)} (${activePricePreset.label.toLowerCase()}) · ${releaseRating.summary}`,
         },
       },
       activityFeed: addFeedEntry(
         game.activityFeed,
-        `${formatDateFromDays(game.elapsedDays)}: ${activeCompany.name} merilis ${series} ${cpuName} dan membukukan $${formatMoneyCompact(launchRevenue)}.`
+        `${formatDateFromDays(game.elapsedDays)}: ${activeCompany.name} merilis ${series} ${cpuName} (rating ${formatNumber(releaseRating.rating, 1)}) dan membukukan $${formatMoneyCompact(launchRevenue)}.`
       ),
     });
 
     setGame(next);
-    setStatusMessage(`${series} ${cpuName} sukses dirilis.`);
+    setStatusMessage(`${series} ${cpuName} sukses dirilis (rating ${formatNumber(releaseRating.rating, 1)}).`);
     setReleaseDraft({ ...releaseDraft, cpuName: `PX-${String(activeCompany.releaseCount + 1).padStart(2, '0')}` });
     setIsReleaseMenuOpen(false);
   };
@@ -2590,7 +2597,17 @@ export function CpuFoundrySim() {
                 </div>
                 <div>
                   <span>Estimasi laba</span>
-                  <strong>{formatCurrencyCompact(calculateLaunchRevenue(activeCpuScore, activeCompany.teams, activeCompany.marketShare, activeCompany.reputation, activePricePreset.factor), 2)}</strong>
+                  <strong>
+                    {formatCurrencyCompact(
+                      calculateLaunchRevenue(activeCpuScore, activeCompany.teams, activeCompany.marketShare, activeCompany.reputation, activePricePreset.factor)
+                      * (activeReleaseRating?.salesMultiplier ?? 1),
+                      2
+                    )}
+                  </strong>
+                </div>
+                <div>
+                  <span>Rating konsumen</span>
+                  <strong>{formatNumber(activeReleaseRating?.rating ?? 0, 1)} / 100</strong>
                 </div>
               </div>
 

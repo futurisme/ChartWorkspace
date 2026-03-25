@@ -84,6 +84,7 @@ export type CompanyState = {
   ceoName: string;
   cash: number;
   research: number;
+  researchAssetValue?: number;
   marketShare: number;
   reputation: number;
   releaseCount: number;
@@ -266,6 +267,14 @@ export type CompanyAiAction = {
   releaseCpuName?: string;
   releasePriorityBoost?: number;
   forceImmediate?: boolean;
+};
+
+export type CpuReleaseRating = {
+  rating: number;
+  salesMultiplier: number;
+  reputationMultiplier: number;
+  marketShareMultiplier: number;
+  summary: string;
 };
 
 export const STORAGE_KEY = 'cpu-foundry-profile-sim-v10';
@@ -700,6 +709,46 @@ export function calculateLaunchRevenue(
   return score * 0.92 * (1 + teams.fabrication.count * 0.18) * (1 + teams.marketing.count * 0.14) * (1 + marketShare / 10) * (1 + reputation / 32) * priceFactor;
 }
 
+export function evaluateCpuReleaseRating(game: GameState, company: CompanyState, priceIndex: number, cpuScore?: number): CpuReleaseRating {
+  const releaseScore = cpuScore ?? calculateCpuScore(company.upgrades);
+  const pricePreset = PRICE_PRESETS[priceIndex] ?? PRICE_PRESETS[1];
+  const establishedCompetitors = COMPANY_KEYS
+    .filter((key) => key !== company.key)
+    .map((key) => game.companies[key])
+    .filter((entry) => entry.isEstablished);
+  const competitorBench = establishedCompetitors.length
+    ? establishedCompetitors.reduce((sum, entry) => sum + Math.max(entry.bestCpuScore, calculateCpuScore(entry.upgrades)), 0) / establishedCompetitors.length
+    : releaseScore;
+  const strongestCompetitor = establishedCompetitors.reduce((best, entry) => {
+    const score = Math.max(entry.bestCpuScore, calculateCpuScore(entry.upgrades));
+    return !best || score > best.score ? { score, sharePrice: getSharePrice(entry), name: entry.name } : best;
+  }, null as { score: number; sharePrice: number; name: string } | null);
+  const ownSharePrice = Math.max(0.08, getSharePrice(company));
+  const ownValuePerPrice = releaseScore / Math.max(0.2, pricePreset.factor * ownSharePrice);
+  const competitorValuePerPrice = strongestCompetitor
+    ? strongestCompetitor.score / Math.max(0.2, strongestCompetitor.sharePrice)
+    : ownValuePerPrice;
+  const specSignal = clamp((releaseScore - competitorBench) / Math.max(120, competitorBench), -1.2, 1.4);
+  const valueSignal = clamp((ownValuePerPrice - competitorValuePerPrice) / Math.max(0.2, competitorValuePerPrice), -1.4, 1.4);
+  const cheaperBetterPenalty = strongestCompetitor && strongestCompetitor.score > releaseScore && strongestCompetitor.sharePrice < ownSharePrice
+    ? clamp((strongestCompetitor.score - releaseScore) / Math.max(100, strongestCompetitor.score), 0, 0.8)
+    : 0;
+  const marketingAuthorityBoost = getExecutiveCoverage(company, 'cmo') * 6 + getExecutiveCoverage(company, 'coo') * 2.5;
+  const marketingSignal = company.teams.marketing.count * 2.8 + marketingAuthorityBoost + company.reputation * 0.08;
+  const rawRating = 56 + specSignal * 23 + valueSignal * 16 + marketingSignal * 0.42 - cheaperBetterPenalty * 22;
+  const rating = clamp(rawRating, 18, 98);
+  const salesMultiplier = clamp(0.46 + rating / 100, 0.46, 1.62);
+  const reputationMultiplier = clamp(0.55 + rating / 140, 0.55, 1.4);
+  const marketShareMultiplier = clamp(0.5 + rating / 130, 0.5, 1.45);
+  const summary =
+    cheaperBetterPenalty > 0.35
+      ? `Rating ${formatNumber(rating, 1)}: ${strongestCompetitor?.name ?? 'kompetitor'} lebih murah & lebih canggih; butuh promo kuat.`
+      : specSignal > 0.2
+        ? `Rating ${formatNumber(rating, 1)}: spesifikasi kompetitif dan value cukup kuat.`
+        : `Rating ${formatNumber(rating, 1)}: perlu optimasi harga/promo agar demand stabil.`;
+  return { rating, salesMultiplier, reputationMultiplier, marketShareMultiplier, summary };
+}
+
 export function getCompanyInvestmentTotal(company: CompanyState) {
   return Object.values(company.investors).reduce((sum, shares) => sum + shares * getSharePrice(company), 0);
 }
@@ -722,6 +771,7 @@ export function getCompanyResearchAssetValue(company: CompanyState) {
     0,
     company.research * 0.56
     + company.researchPerDay * 7.2
+    + (company.researchAssetValue ?? 0)
     + upgradeAssetValue
   );
 }
@@ -1734,6 +1784,7 @@ export function createCompany(config: {
       ceoName: config.founder,
       cash: config.cash,
       research: config.research,
+      researchAssetValue: config.research,
       marketShare: config.marketShare,
       reputation: config.reputation,
       releaseCount: 1,
@@ -2119,14 +2170,14 @@ export function createInitialGameState(profile: ProfileDraft): GameState {
   }, {} as Record<CompanyKey, { name: string; founder: string }>);
 
   const companies = {
-    cosmic: { ...cosmic.company, isEstablished: false, establishedDay: null, cash: 0, research: 0, marketShare: 0, reputation: 0, releaseCount: 0, revenuePerDay: 0, researchPerDay: 0, payoutRatio: 0.08, dividendPerShare: 0 },
-    rmd: { ...rmd.company, isEstablished: false, establishedDay: null, cash: 0, research: 0, marketShare: 0, reputation: 0, releaseCount: 0, revenuePerDay: 0, researchPerDay: 0, payoutRatio: 0.08, dividendPerShare: 0 },
-    heroscop: { ...heroscop.company, isEstablished: false, establishedDay: null, cash: 0, research: 0, marketShare: 0, reputation: 0, releaseCount: 0, revenuePerDay: 0, researchPerDay: 0, payoutRatio: 0.08, dividendPerShare: 0 },
-    venture4: { ...cosmic.company, key: 'venture4', name: ventureSeeds.venture4.name, founder: ventureSeeds.venture4.founder, founderInvestorId: 'founder_venture4', ceoId: 'founder_venture4', ceoName: ventureSeeds.venture4.founder, focus: 'Belum aktif', lastRelease: 'Menunggu plan pendirian.', isEstablished: false, establishedDay: null, cash: 0, research: 0, marketShare: 0, reputation: 0, releaseCount: 0, revenuePerDay: 0, researchPerDay: 0, payoutRatio: 0.08, dividendPerShare: 0, investors: { founder_venture4: 0 }, shareListings: [] },
-    venture5: { ...cosmic.company, key: 'venture5', name: ventureSeeds.venture5.name, founder: ventureSeeds.venture5.founder, founderInvestorId: 'founder_venture5', ceoId: 'founder_venture5', ceoName: ventureSeeds.venture5.founder, focus: 'Belum aktif', lastRelease: 'Menunggu plan pendirian.', isEstablished: false, establishedDay: null, cash: 0, research: 0, marketShare: 0, reputation: 0, releaseCount: 0, revenuePerDay: 0, researchPerDay: 0, payoutRatio: 0.08, dividendPerShare: 0, investors: { founder_venture5: 0 }, shareListings: [] },
-    venture6: { ...cosmic.company, key: 'venture6', name: ventureSeeds.venture6.name, founder: ventureSeeds.venture6.founder, founderInvestorId: 'founder_venture6', ceoId: 'founder_venture6', ceoName: ventureSeeds.venture6.founder, focus: 'Belum aktif', lastRelease: 'Menunggu plan pendirian.', isEstablished: false, establishedDay: null, cash: 0, research: 0, marketShare: 0, reputation: 0, releaseCount: 0, revenuePerDay: 0, researchPerDay: 0, payoutRatio: 0.08, dividendPerShare: 0, investors: { founder_venture6: 0 }, shareListings: [] },
-    venture7: { ...cosmic.company, key: 'venture7', name: ventureSeeds.venture7.name, founder: ventureSeeds.venture7.founder, founderInvestorId: 'founder_venture7', ceoId: 'founder_venture7', ceoName: ventureSeeds.venture7.founder, focus: 'Belum aktif', lastRelease: 'Menunggu plan pendirian.', isEstablished: false, establishedDay: null, cash: 0, research: 0, marketShare: 0, reputation: 0, releaseCount: 0, revenuePerDay: 0, researchPerDay: 0, payoutRatio: 0.08, dividendPerShare: 0, investors: { founder_venture7: 0 }, shareListings: [] },
-    venture8: { ...cosmic.company, key: 'venture8', name: ventureSeeds.venture8.name, founder: ventureSeeds.venture8.founder, founderInvestorId: 'founder_venture8', ceoId: 'founder_venture8', ceoName: ventureSeeds.venture8.founder, focus: 'Belum aktif', lastRelease: 'Menunggu plan pendirian.', isEstablished: false, establishedDay: null, cash: 0, research: 0, marketShare: 0, reputation: 0, releaseCount: 0, revenuePerDay: 0, researchPerDay: 0, payoutRatio: 0.08, dividendPerShare: 0, investors: { founder_venture8: 0 }, shareListings: [] },
+    cosmic: { ...cosmic.company, isEstablished: false, establishedDay: null, cash: 0, research: 0, researchAssetValue: 0, marketShare: 0, reputation: 0, releaseCount: 0, revenuePerDay: 0, researchPerDay: 0, payoutRatio: 0.08, dividendPerShare: 0 },
+    rmd: { ...rmd.company, isEstablished: false, establishedDay: null, cash: 0, research: 0, researchAssetValue: 0, marketShare: 0, reputation: 0, releaseCount: 0, revenuePerDay: 0, researchPerDay: 0, payoutRatio: 0.08, dividendPerShare: 0 },
+    heroscop: { ...heroscop.company, isEstablished: false, establishedDay: null, cash: 0, research: 0, researchAssetValue: 0, marketShare: 0, reputation: 0, releaseCount: 0, revenuePerDay: 0, researchPerDay: 0, payoutRatio: 0.08, dividendPerShare: 0 },
+    venture4: { ...cosmic.company, key: 'venture4', name: ventureSeeds.venture4.name, founder: ventureSeeds.venture4.founder, founderInvestorId: 'founder_venture4', ceoId: 'founder_venture4', ceoName: ventureSeeds.venture4.founder, focus: 'Belum aktif', lastRelease: 'Menunggu plan pendirian.', isEstablished: false, establishedDay: null, cash: 0, research: 0, researchAssetValue: 0, marketShare: 0, reputation: 0, releaseCount: 0, revenuePerDay: 0, researchPerDay: 0, payoutRatio: 0.08, dividendPerShare: 0, investors: { founder_venture4: 0 }, shareListings: [] },
+    venture5: { ...cosmic.company, key: 'venture5', name: ventureSeeds.venture5.name, founder: ventureSeeds.venture5.founder, founderInvestorId: 'founder_venture5', ceoId: 'founder_venture5', ceoName: ventureSeeds.venture5.founder, focus: 'Belum aktif', lastRelease: 'Menunggu plan pendirian.', isEstablished: false, establishedDay: null, cash: 0, research: 0, researchAssetValue: 0, marketShare: 0, reputation: 0, releaseCount: 0, revenuePerDay: 0, researchPerDay: 0, payoutRatio: 0.08, dividendPerShare: 0, investors: { founder_venture5: 0 }, shareListings: [] },
+    venture6: { ...cosmic.company, key: 'venture6', name: ventureSeeds.venture6.name, founder: ventureSeeds.venture6.founder, founderInvestorId: 'founder_venture6', ceoId: 'founder_venture6', ceoName: ventureSeeds.venture6.founder, focus: 'Belum aktif', lastRelease: 'Menunggu plan pendirian.', isEstablished: false, establishedDay: null, cash: 0, research: 0, researchAssetValue: 0, marketShare: 0, reputation: 0, releaseCount: 0, revenuePerDay: 0, researchPerDay: 0, payoutRatio: 0.08, dividendPerShare: 0, investors: { founder_venture6: 0 }, shareListings: [] },
+    venture7: { ...cosmic.company, key: 'venture7', name: ventureSeeds.venture7.name, founder: ventureSeeds.venture7.founder, founderInvestorId: 'founder_venture7', ceoId: 'founder_venture7', ceoName: ventureSeeds.venture7.founder, focus: 'Belum aktif', lastRelease: 'Menunggu plan pendirian.', isEstablished: false, establishedDay: null, cash: 0, research: 0, researchAssetValue: 0, marketShare: 0, reputation: 0, releaseCount: 0, revenuePerDay: 0, researchPerDay: 0, payoutRatio: 0.08, dividendPerShare: 0, investors: { founder_venture7: 0 }, shareListings: [] },
+    venture8: { ...cosmic.company, key: 'venture8', name: ventureSeeds.venture8.name, founder: ventureSeeds.venture8.founder, founderInvestorId: 'founder_venture8', ceoId: 'founder_venture8', ceoName: ventureSeeds.venture8.founder, focus: 'Belum aktif', lastRelease: 'Menunggu plan pendirian.', isEstablished: false, establishedDay: null, cash: 0, research: 0, researchAssetValue: 0, marketShare: 0, reputation: 0, releaseCount: 0, revenuePerDay: 0, researchPerDay: 0, payoutRatio: 0.08, dividendPerShare: 0, investors: { founder_venture8: 0 }, shareListings: [] },
   } satisfies Record<CompanyKey, CompanyState>;
 
   const plans = {
@@ -2446,6 +2497,7 @@ export function progressCompanyPlans(game: GameState) {
       establishedDay: next.elapsedDays,
       cash: Math.max(18, plan.pledgedCapital * 0.78),
       research: Math.max(14, plan.pledgedCapital * 0.42),
+      researchAssetValue: Math.max(14, plan.pledgedCapital * 0.42),
       marketShare: Math.max(2.5, plan.pledgedCapital / 22),
       reputation: Math.max(8, 6 + plan.pledgedCapital / 12),
       releaseCount: 1,
@@ -2582,6 +2634,7 @@ export function progressCommunityPlans(game: GameState) {
         ceoName: plan.founderName,
         cash: Math.max(16, plan.pledgedCapital * 0.74),
         research: Math.max(10, plan.pledgedCapital * 0.34),
+        researchAssetValue: Math.max(10, plan.pledgedCapital * 0.34),
         marketShare: clamp(plan.pledgedCapital / 30, 2.4, 11),
         reputation: clamp(8 + plan.pledgedCapital / 18, 8, 34),
         releaseCount: 1,
@@ -3446,9 +3499,10 @@ export function scoreNpcReleaseAction(game: GameState, npc: NpcInvestor, company
       ? 2
       : daysSinceRelease < 12 && cpuDelta < 8
         ? 1.2
-        : 0;
+      : 0;
   const pricePreset = PRICE_PRESETS[priceIndex];
-  const launchRevenue = calculateLaunchRevenue(currentCpuScore, company.teams, company.marketShare, company.reputation, pricePreset.factor);
+  const releaseRating = evaluateCpuReleaseRating(game, company, priceIndex, currentCpuScore);
+  const launchRevenue = calculateLaunchRevenue(currentCpuScore, company.teams, company.marketShare, company.reputation, pricePreset.factor) * releaseRating.salesMultiplier;
   const launchRevenueSignal = Math.log10(1 + Math.max(0, launchRevenue));
   const releaseCadencePressure = clamp((daysSinceRelease - releaseWindow) / Math.max(8, releaseWindow), 0, 2.4);
   const upgradeMomentumPressure = clamp((releaseCadenceTarget - daysSinceRelease) / Math.max(6, releaseCadenceTarget), 0, 1.2) * (cpuDelta > 6 ? 1 : 0);
@@ -3467,6 +3521,7 @@ export function scoreNpcReleaseAction(game: GameState, npc: NpcInvestor, company
     + management.researchOverflow * 0.32
     + npc.intelligence * 0.44
     + launchRevenueSignal * 0.9
+    + releaseRating.rating * 0.035
     + crisisBoost
     - repeatedSpecPenalty
   );
@@ -3504,7 +3559,8 @@ export function applyNpcCompanyAction(game: GameState, companyKey: CompanyKey, a
     const priceIndex = action.priceIndex ?? 1;
     const pricePreset = PRICE_PRESETS[priceIndex];
     const cpuScore = calculateCpuScore(company.upgrades);
-    const launchRevenue = calculateLaunchRevenue(cpuScore, company.teams, company.marketShare, company.reputation, pricePreset.factor);
+    const releaseRating = evaluateCpuReleaseRating(game, company, priceIndex, cpuScore);
+    const launchRevenue = calculateLaunchRevenue(cpuScore, company.teams, company.marketShare, company.reputation, pricePreset.factor) * releaseRating.salesMultiplier;
     const wasCashCritical = company.cash <= 0.5;
     const isEmergencyRelease = action.forceImmediate && company.cash < 10;
     const nextCash = company.cash + launchRevenue;
@@ -3517,8 +3573,8 @@ export function applyNpcCompanyAction(game: GameState, companyKey: CompanyKey, a
     const lastEmergencyReleaseDay = isEmergencyRelease
       ? game.elapsedDays
       : (nextCash > 10 ? null : company.lastEmergencyReleaseDay);
-    const reputationGain = Math.max(1.2, cpuScore / 240 + company.teams.marketing.count * 0.7 + pricePreset.reputationBonus);
-    const marketShareGain = Math.min(4.8, cpuScore / 500 + company.teams.fabrication.count * 0.16 + pricePreset.marketBonus);
+    const reputationGain = Math.max(0.8, (cpuScore / 240 + company.teams.marketing.count * 0.7 + pricePreset.reputationBonus) * releaseRating.reputationMultiplier);
+    const marketShareGain = Math.min(5.5, (cpuScore / 500 + company.teams.fabrication.count * 0.16 + pricePreset.marketBonus) * releaseRating.marketShareMultiplier);
     const series = action.releaseSeries ?? `${company.name} G-Series`;
     const cpuName = action.releaseCpuName ?? `CPU G${company.releaseCount + 1}`;
     return {
@@ -3538,12 +3594,12 @@ export function applyNpcCompanyAction(game: GameState, companyKey: CompanyKey, a
           emergencyReleaseAnchorDay: emergencyAnchorDay,
           emergencyReleaseCount: emergencyReleaseCount,
           lastEmergencyReleaseDay: lastEmergencyReleaseDay,
-          lastRelease: `${series} ${cpuName} rilis ${formatDateFromDays(game.elapsedDays)} (${pricePreset.label.toLowerCase()}).`,
+          lastRelease: `${series} ${cpuName} rilis ${formatDateFromDays(game.elapsedDays)} (${pricePreset.label.toLowerCase()}) · ${releaseRating.summary}`,
         },
       },
       activityFeed: addFeedEntry(
         game.activityFeed,
-        `${formatDateFromDays(game.elapsedDays)}: ${wasCashCritical ? '🚨 RILIS DARURAT' : 'Update produk'} — ${company.name} merilis ${series} ${cpuName} dan membukukan $${formatMoneyCompact(launchRevenue)}.`
+        `${formatDateFromDays(game.elapsedDays)}: ${wasCashCritical ? '🚨 RILIS DARURAT' : 'Update produk'} — ${company.name} merilis ${series} ${cpuName} (rating ${formatNumber(releaseRating.rating, 1)}) dan membukukan $${formatMoneyCompact(launchRevenue)}.`
       ),
     };
   }
@@ -3558,6 +3614,7 @@ export function applyNpcCompanyAction(game: GameState, companyKey: CompanyKey, a
         [companyKey]: {
           ...preview,
           research: company.research - action.cost,
+          researchAssetValue: (company.researchAssetValue ?? 0) + action.cost,
           bestCpuScore: Math.max(company.bestCpuScore, calculateCpuScore(preview.upgrades)),
           executivePulse: `${company.ceoName} memprioritaskan ${company.upgrades[key].label} untuk ${action.rationale}.`,
         },
