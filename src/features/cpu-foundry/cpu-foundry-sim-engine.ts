@@ -102,6 +102,8 @@ export type CompanyState = {
   teams: Record<TeamKey, TeamState>;
   investors: Record<string, number>;
   sharesOutstanding: number;
+  shareSheetTotal: number;
+  lastShareSheetChangeDay: number;
   marketPoolShares: number;
   dividendPerShare: number;
   payoutRatio: number;
@@ -188,6 +190,7 @@ export type CompanyEstablishmentPlan = {
   targetCapital: number;
   pledgedCapital: number;
   pledges: PlanInvestorPledge[];
+  shareSheetTotal?: number;
   isEstablished: boolean;
 };
 
@@ -277,7 +280,9 @@ export const NPC_GROWTH_BATCH = 3;
 export const EXECUTIVE_MIN_TENURE_DAYS = 30;
 export const BOARD_VOTE_WINDOW_DAYS = 30;
 export const BOARD_VOTE_LIMIT_PER_WINDOW = 2;
-export const TOTAL_SHARES = 10000;
+export const SHARE_SHEET_OPTIONS = [100, 500, 1000] as const;
+export const SHARE_SHEET_COOLDOWN_DAYS = 180;
+export const TOTAL_SHARES = 1000;
 export const INITIAL_FOUNDER_OWNERSHIP_RATIO = 0.52;
 export const COMPANY_TRADE_FEE_RATE = 0.018;
 export const HOLDER_TRADE_FEE_RATE = 0.052;
@@ -664,6 +669,32 @@ export function getOwnershipPercent(company: CompanyState, investorId: string) {
   const shares = company.investors[investorId] ?? 0;
   if (!company.sharesOutstanding) return 0;
   return shares / company.sharesOutstanding * 100;
+}
+
+export function pickShareSheetTotal(seedCapital: number): number {
+  if (seedCapital >= 120) return 1000;
+  if (seedCapital >= 52) return 500;
+  return 100;
+}
+
+export function canChangeShareSheetTotal(company: CompanyState, nextTotal: number, currentDay: number) {
+  if (!SHARE_SHEET_OPTIONS.includes(nextTotal as (typeof SHARE_SHEET_OPTIONS)[number])) {
+    return { ok: false, reason: 'Opsi share sheets hanya 100 / 500 / 1000.' };
+  }
+  if (nextTotal === company.sharesOutstanding) {
+    return { ok: false, reason: 'Jumlah share sheets sama dengan konfigurasi saat ini.' };
+  }
+  const elapsed = currentDay - (company.lastShareSheetChangeDay ?? 0);
+  if (elapsed < SHARE_SHEET_COOLDOWN_DAYS) {
+    return { ok: false, reason: `Perubahan share sheets masih cooldown ${formatNumber(SHARE_SHEET_COOLDOWN_DAYS - elapsed)} hari.` };
+  }
+  if (nextTotal < company.sharesOutstanding) {
+    const reduction = company.sharesOutstanding - nextTotal;
+    if (company.marketPoolShares + 0.0001 < reduction) {
+      return { ok: false, reason: 'Turun share sheets butuh buyback/treasury cukup agar saham beredar yang tersisa tidak melebihi target.' };
+    }
+  }
+  return { ok: true, reason: '' };
 }
 
 export function getCorporateInvestorId(companyKey: CompanyKey) {
@@ -1531,11 +1562,13 @@ export function createCompany(config: {
   upgrades: Record<UpgradeKey, UpgradeState>;
   teams: Record<TeamKey, TeamState>;
   lastRelease: string;
+  shareSheetTotal?: number;
 }) {
   const founderInvestorId = `founder_${config.key}`;
+  const shareSheetTotal = config.shareSheetTotal ?? TOTAL_SHARES;
   const boardMood = 0.6;
-  const founderShares = Math.round(TOTAL_SHARES * INITIAL_FOUNDER_OWNERSHIP_RATIO);
-  const marketPoolShares = Math.max(0, TOTAL_SHARES - founderShares);
+  const founderShares = Math.round(shareSheetTotal * INITIAL_FOUNDER_OWNERSHIP_RATIO * 100) / 100;
+  const marketPoolShares = Math.max(0, shareSheetTotal - founderShares);
   const revenuePerDay = calculateRevenuePerDay(config.teams, config.upgrades, config.marketShare, config.reputation, boardMood);
   const researchPerDay = calculateResearchPerDay(config.teams, config.upgrades);
   return {
@@ -1567,7 +1600,9 @@ export function createCompany(config: {
       investors: {
         [founderInvestorId]: founderShares,
       },
-      sharesOutstanding: TOTAL_SHARES,
+      sharesOutstanding: shareSheetTotal,
+      shareSheetTotal,
+      lastShareSheetChangeDay: 0,
       marketPoolShares,
       dividendPerShare: 0.01,
       payoutRatio: 0.1,
@@ -1893,6 +1928,7 @@ export function createInitialGameState(profile: ProfileDraft): GameState {
       dueDay: PLAN_DURATION_DAYS,
       targetCapital: 140,
       pledgedCapital: 44,
+      shareSheetTotal: pickShareSheetTotal(140),
       pledges: [{ investorId: companies.cosmic.founderInvestorId, amount: 44, pledgedDay: 0 }],
       isEstablished: false,
     },
@@ -1905,6 +1941,7 @@ export function createInitialGameState(profile: ProfileDraft): GameState {
       dueDay: PLAN_DURATION_DAYS,
       targetCapital: 132,
       pledgedCapital: 38,
+      shareSheetTotal: pickShareSheetTotal(132),
       pledges: [{ investorId: companies.rmd.founderInvestorId, amount: 38, pledgedDay: 0 }],
       isEstablished: false,
     },
@@ -1917,6 +1954,7 @@ export function createInitialGameState(profile: ProfileDraft): GameState {
       dueDay: PLAN_DURATION_DAYS,
       targetCapital: 128,
       pledgedCapital: 36,
+      shareSheetTotal: pickShareSheetTotal(128),
       pledges: [{ investorId: companies.heroscop.founderInvestorId, amount: 36, pledgedDay: 0 }],
       isEstablished: false,
     },
@@ -2055,6 +2093,8 @@ export function progressCompanyPlans(game: GameState) {
     const plan = next.plans[key];
     if (!plan || plan.isEstablished || next.elapsedDays < plan.dueDay) return;
     const company = next.companies[key];
+    const targetShareSheets = plan.shareSheetTotal ?? pickShareSheetTotal(plan.targetCapital);
+    const sheetRatio = targetShareSheets / Math.max(1, company.sharesOutstanding);
     const establishedCompany: CompanyState = {
       ...company,
       isEstablished: true,
@@ -2068,6 +2108,10 @@ export function progressCompanyPlans(game: GameState) {
       researchPerDay: Math.max(1.4, plan.pledgedCapital / 28),
       payoutRatio: 0.1,
       dividendPerShare: 0.01,
+      sharesOutstanding: targetShareSheets,
+      shareSheetTotal: targetShareSheets,
+      lastShareSheetChangeDay: 0,
+      marketPoolShares: company.marketPoolShares * sheetRatio,
     };
     const planInvestors = new Map<string, number>();
     plan.pledges.forEach((pledge) => {
@@ -2175,8 +2219,9 @@ export function progressCommunityPlans(game: GameState) {
     const availableSlot = DYNAMIC_COMPANY_KEYS.find((key) => !next.companies[key].isEstablished);
     if (availableSlot) {
       const company = next.companies[availableSlot];
-      const founderShares = Math.round(Math.max(0, TOTAL_SHARES * 0.4));
-      const marketPoolShares = Math.max(0, TOTAL_SHARES - founderShares);
+      const targetShareSheets = pickShareSheetTotal(plan.targetCapital);
+      const founderShares = Math.round(Math.max(0, targetShareSheets * 0.4) * 100) / 100;
+      const marketPoolShares = Math.max(0, targetShareSheets - founderShares);
       const seededTeams = createTeams({ researchers: 2, marketing: 1, fabrication: 1 });
       const seededUpgrades = createUpgrades({ architecture: 2, lithography: 170, clockSpeed: 1.5, coreDesign: 2, cacheStack: 512, powerEfficiency: 96 });
       next.companies[availableSlot] = {
@@ -2200,7 +2245,9 @@ export function progressCommunityPlans(game: GameState) {
         upgrades: seededUpgrades,
         teams: seededTeams,
         investors: { [plan.founderId]: founderShares },
-        sharesOutstanding: TOTAL_SHARES,
+        sharesOutstanding: targetShareSheets,
+        shareSheetTotal: targetShareSheets,
+        lastShareSheetChangeDay: next.elapsedDays,
         marketPoolShares,
         dividendPerShare: 0.01,
         payoutRatio: 0.09,
@@ -2220,6 +2267,51 @@ export function progressCommunityPlans(game: GameState) {
     next.activityFeed = addFeedEntry(next.activityFeed, `${formatDateFromDays(next.elapsedDays)}: Plan ${plan.companyName} gagal mencapai modal minimum dan ditutup.`);
   });
   return next;
+}
+
+export function changeCompanyShareSheetTotal(game: GameState, companyKey: CompanyKey, actorId: string, nextTotal: number) {
+  const company = game.companies[companyKey];
+  if (company.ceoId !== actorId) {
+    return { next: game, changed: false, reason: 'Hanya CEO aktif yang bisa mengubah sistem share sheets.' };
+  }
+  const permission = canChangeShareSheetTotal(company, nextTotal, game.elapsedDays);
+  if (!permission.ok) {
+    return { next: game, changed: false, reason: permission.reason };
+  }
+
+  const ratio = nextTotal / Math.max(1, company.sharesOutstanding);
+  const scaledInvestors = Object.fromEntries(
+    Object.entries(company.investors).map(([investorId, shares]) => [investorId, Math.max(0, shares * ratio)])
+  );
+  const scaledShareListings = company.shareListings
+    .map((listing) => ({ ...listing, sharesAvailable: Math.max(0, listing.sharesAvailable * ratio) }))
+    .filter((listing) => listing.sharesAvailable > 0.01);
+  const scaledMarketPool = Math.max(0, company.marketPoolShares * ratio);
+  const scaledDividendPerShare = company.dividendPerShare * (company.sharesOutstanding / nextTotal);
+
+  const updatedCompany: CompanyState = {
+    ...company,
+    investors: scaledInvestors,
+    shareListings: scaledShareListings,
+    marketPoolShares: scaledMarketPool,
+    sharesOutstanding: nextTotal,
+    shareSheetTotal: nextTotal,
+    lastShareSheetChangeDay: game.elapsedDays,
+    dividendPerShare: scaledDividendPerShare,
+  };
+
+  const nextGame = resolveGovernance({
+    ...game,
+    companies: {
+      ...game.companies,
+      [companyKey]: updatedCompany,
+    },
+    activityFeed: addFeedEntry(
+      game.activityFeed,
+      `${formatDateFromDays(game.elapsedDays)}: ${updatedCompany.name} menetapkan share sheets menjadi ${formatNumber(nextTotal)} oleh CEO ${investorDisplayName(game, actorId)}.`
+    ),
+  });
+  return { next: nextGame, changed: true, reason: '' };
 }
 
 export function transactShares(current: GameState, investorId: string, companyKey: CompanyKey, mode: InvestorActionMode, requestedAmount: number, route: TradeRoute = 'auto') {

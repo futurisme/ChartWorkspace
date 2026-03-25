@@ -52,6 +52,8 @@ const {
   EXECUTIVE_MIN_TENURE_DAYS,
   BOARD_VOTE_WINDOW_DAYS,
   BOARD_VOTE_LIMIT_PER_WINDOW,
+  SHARE_SHEET_OPTIONS,
+  SHARE_SHEET_COOLDOWN_DAYS,
   TOTAL_SHARES,
   INITIAL_FOUNDER_OWNERSHIP_RATIO,
   COMPANY_TRADE_FEE_RATE,
@@ -181,6 +183,7 @@ const {
   investInCompanyPlan,
   createCommunityCompanyPlan,
   investInCommunityPlan,
+  changeCompanyShareSheetTotal,
   MAX_ACTIVE_COMPANIES
 } = Engine;
 
@@ -302,6 +305,8 @@ export function CpuFoundrySim() {
           };
           acc[key] = {
             ...company,
+            shareSheetTotal: company.shareSheetTotal ?? company.sharesOutstanding ?? TOTAL_SHARES,
+            lastShareSheetChangeDay: company.lastShareSheetChangeDay ?? 0,
             capitalStrain: company.capitalStrain ?? 0,
             lastReleaseDay: company.lastReleaseDay ?? 0,
             lastReleaseCpuScore: company.lastReleaseCpuScore ?? calculateCpuScore(company.upgrades),
@@ -338,6 +343,7 @@ export function CpuFoundrySim() {
             dueDay: sourcePlan?.dueDay ?? 0,
             targetCapital: sourcePlan?.targetCapital ?? company.cash,
             pledgedCapital: sourcePlan?.pledgedCapital ?? company.cash,
+            shareSheetTotal: sourcePlan?.shareSheetTotal ?? (company.shareSheetTotal ?? company.sharesOutstanding),
             pledges: Array.isArray(sourcePlan?.pledges) ? sourcePlan!.pledges : [],
             isEstablished: sourcePlan?.isEstablished ?? (company.isEstablished ?? true),
           };
@@ -836,6 +842,17 @@ export function CpuFoundrySim() {
       ),
     });
     setStatusMessage(`Listing holder ${company.name} ditutup.`);
+  };
+
+  const updateShareSheetOption = (companyKey: CompanyKey, nextTotal: number) => {
+    if (!game) return;
+    const result = changeCompanyShareSheetTotal(game, companyKey, game.player.id, nextTotal);
+    if (!result.changed) {
+      setStatusMessage(result.reason || 'Perubahan share sheets ditolak.');
+      return;
+    }
+    setGame(result.next);
+    setStatusMessage(`${result.next.companies[companyKey].name}: Share sheets diubah ke ${formatNumber(nextTotal)}.`);
   };
 
   const improveUpgrade = (key: UpgradeKey, companyKey?: CompanyKey) => {
@@ -2044,6 +2061,35 @@ export function CpuFoundrySim() {
                 </button>
                 {companyDetailPanels.ownership ? (
                   <div className={styles.panelList}>
+                    <article className={styles.itemCard}>
+                      <div className={styles.itemTop}>
+                        <div>
+                          <p className={styles.itemLabel}>Share sheets system</p>
+                          <h3>{formatNumber(focusedCompany.sharesOutstanding, 2)} sheets</h3>
+                        </div>
+                        <span className={styles.costPill}>
+                          Circulating {formatNumber(Math.max(0, focusedCompany.sharesOutstanding - focusedCompany.marketPoolShares), 2)}
+                        </span>
+                      </div>
+                      <p className={styles.itemDescription}>
+                        Opsi: 100 / 500 / 1000. Hanya CEO aktif yang boleh mengganti. Cooldown perubahan {formatNumber(SHARE_SHEET_COOLDOWN_DAYS)} hari.
+                        Turun jumlah sheets hanya valid jika treasury (market pool) cukup untuk menutup selisih.
+                      </p>
+                      <div className={styles.quickGrid}>
+                        {SHARE_SHEET_OPTIONS.map((option) => (
+                          <button
+                            key={option}
+                            type="button"
+                            className={focusedCompany.sharesOutstanding === option ? styles.quickButtonActive : styles.quickButton}
+                            disabled={!focusedPlayerIsCeo || focusedCompany.sharesOutstanding === option}
+                            onClick={() => updateShareSheetOption(focusedCompany.key, option)}
+                          >
+                            {formatNumber(option)} sheets
+                          </button>
+                        ))}
+                      </div>
+                    </article>
+
                     {(focusedCompany.investors[game.player.id] ?? 0) > 0.01 ? (
                       <article className={styles.itemCard}>
                         <div className={styles.itemTop}>
