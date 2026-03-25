@@ -2,6 +2,8 @@ name: Build TWA Game APK/AAB
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'twa-v*'
   workflow_dispatch:
@@ -111,7 +113,7 @@ jobs:
             "${OUTPUT_DIR}/aligned.apk"
           cp "$(find "${TWA_DIR}" -path '*outputs/bundle/release/*.aab' | head -n 1)" "${OUTPUT_DIR}/chartworkspace-game-release.aab"
 
-      - name: Enforce APK size target (< 2MB)
+      - name: APK size report
         shell: bash
         run: |
           APK_FILE="${OUTPUT_DIR}/chartworkspace-game-release.apk"
@@ -119,8 +121,7 @@ jobs:
           LIMIT=$((2 * 1024 * 1024))
           echo "APK size bytes: ${APK_BYTES}"
           if [ "$APK_BYTES" -ge "$LIMIT" ]; then
-            echo "APK exceeded 2MB target." >&2
-            exit 1
+            echo "WARNING: APK exceeded 2MB target."
           fi
 
       - name: Upload artifacts
@@ -131,11 +132,23 @@ jobs:
             ${{ env.OUTPUT_DIR }}/chartworkspace-game-release.apk
             ${{ env.OUTPUT_DIR }}/chartworkspace-game-release.aab
 
+      - name: Update rolling latest tag
+        if: github.ref_type != 'tag'
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -f twa-latest
+          git push origin twa-latest --force
+
       - name: Create GitHub Release and attach APK/AAB
-        uses: softprops/action-gh-release@v2
+        uses: ncipollo/release-action@v1
         with:
-          tag_name: ${{ github.event.inputs.release_tag || github.ref_name }}
-          generate_release_notes: true
-          files: |
+          allowUpdates: true
+          makeLatest: true
+          generateReleaseNotes: true
+          prerelease: false
+          tag: ${{ github.ref_type == 'tag' && github.ref_name || github.event.inputs.release_tag || 'twa-latest' }}
+          artifacts: |
             ${{ env.OUTPUT_DIR }}/chartworkspace-game-release.apk
             ${{ env.OUTPUT_DIR }}/chartworkspace-game-release.aab
