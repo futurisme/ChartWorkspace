@@ -307,6 +307,7 @@ export function CpuFoundrySim() {
             ...company,
             shareSheetTotal: company.shareSheetTotal ?? company.sharesOutstanding ?? TOTAL_SHARES,
             lastShareSheetChangeDay: company.lastShareSheetChangeDay ?? 0,
+            portfolioValue: company.portfolioValue ?? 0,
             capitalStrain: company.capitalStrain ?? 0,
             lastReleaseDay: company.lastReleaseDay ?? 0,
             lastReleaseCpuScore: company.lastReleaseCpuScore ?? calculateCpuScore(company.upgrades),

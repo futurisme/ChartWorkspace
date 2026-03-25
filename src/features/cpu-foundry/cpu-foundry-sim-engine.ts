@@ -115,6 +115,7 @@ export type CompanyState = {
   executivePulse: string;
   nextManagementReviewDay: number;
   capitalStrain: number;
+  portfolioValue: number;
   shareListings: ShareListing[];
   activeBoardVote: BoardVoteState | null;
   boardVoteWindowStartDay: number;
@@ -707,6 +708,7 @@ export function getCompanyValuation(company: CompanyState) {
       + company.reputation * 4.1
       + cpuScore * 0.082
       + company.research * 0.08
+      + company.portfolioValue * 0.72
       + company.boardMood * 6
       - company.capitalStrain
     ) * 10) / 10
@@ -1680,6 +1682,7 @@ export function createCompany(config: {
       executivePulse: 'Belum ada jabatan eksekutif tambahan.',
       nextManagementReviewDay: 3,
       capitalStrain: 0,
+      portfolioValue: 0,
       shareListings: [],
       activeBoardVote: null,
       boardVoteWindowStartDay: 0,
@@ -1778,6 +1781,7 @@ export function getCandidateLeadershipScore(company: CompanyState, candidateId: 
 }
 
 export function resolveGovernance(game: GameState) {
+  const ceoOccupancy = new Map<string, number>();
   const companies = Object.fromEntries(
     (Object.entries(game.companies) as [CompanyKey, CompanyState][]).map(([key, company]) => {
       if (!company.isEstablished) {
@@ -1835,7 +1839,13 @@ export function resolveGovernance(game: GameState) {
         boardVotes.set(chosenCandidate, (boardVotes.get(chosenCandidate) ?? 0) + member.voteWeight);
       });
 
-      const [ceoId] = Array.from(boardVotes.entries()).sort((left, right) => right[1] - left[1])[0] ?? [company.founderInvestorId, 0];
+      const rankedCeoCandidates = Array.from(boardVotes.entries()).sort((left, right) => right[1] - left[1]);
+      let ceoId = rankedCeoCandidates[0]?.[0] ?? company.founderInvestorId;
+      if ((ceoOccupancy.get(ceoId) ?? 0) >= 2) {
+        const fallback = rankedCeoCandidates.find(([candidateId]) => (ceoOccupancy.get(candidateId) ?? 0) < 2)?.[0];
+        ceoId = fallback ?? company.founderInvestorId;
+      }
+      ceoOccupancy.set(ceoId, (ceoOccupancy.get(ceoId) ?? 0) + 1);
       const sanitizedExecutives = sanitizeExecutiveAssignments(game, company, ceoId);
       const ceoNpc = ceoId === game.player.id ? null : getExecutiveAiActor(game, company, ceoId);
       const executivePlan = ceoId !== game.player.id
@@ -2721,11 +2731,36 @@ export function maybeGenerateMoreNpcs(current: GameState) {
 
 export function runNpcCommunityPlanning(current: GameState) {
   let next = current;
+  const openFundingPlans = next.communityPlans.filter((plan) => plan.status === 'funding').length;
+  const lastInitiationDay = next.communityPlans.reduce((max, plan) => Math.max(max, plan.startDay), -Infinity);
+  const canForceInitiate = !Number.isFinite(lastInitiationDay) || (next.elapsedDays - lastInitiationDay >= SHARE_SHEET_COOLDOWN_DAYS);
+  const marketNeedsCompetition = (Object.values(next.companies) as CompanyState[])
+    .filter((company) => company.isEstablished)
+    .some((company) => company.marketShare > 34 || company.boardMood < 0.46 || company.reputation < 26);
+
+  const rankedFounderCandidates = [...next.npcs]
+    .sort((left, right) => (
+      (right.intelligence * 0.62 + right.boldness * 0.38 + right.cash / 240)
+      - (left.intelligence * 0.62 + left.boldness * 0.38 + left.cash / 240)
+    ));
+
+  if (canForceInitiate && marketNeedsCompetition && getActiveCompanyCount(next) < MAX_ACTIVE_COMPANIES && openFundingPlans < 2) {
+    const founder = rankedFounderCandidates[0];
+    if (founder) {
+      const seed = createSeededRandom(`${founder.id}-${Math.floor(next.elapsedDays)}-forced-community`);
+      const contribution = clamp(founder.cash * (0.11 + founder.boldness * 0.12), 0, 28);
+      if (contribution >= 8) {
+        const candidateName = generateUniqueCompanyName(next, seed);
+        next = createCommunityCompanyPlan(next, founder.id, candidateName, contribution);
+      }
+    }
+  }
+
   next.npcs.forEach((npc) => {
-    const founderChance = npc.boldness * 0.22 + npc.intelligence * 0.18;
+    const founderChance = npc.boldness * 0.08 + npc.intelligence * 0.07 + (marketNeedsCompetition ? 0.03 : 0);
     const seed = createSeededRandom(`${npc.id}-${Math.floor(next.elapsedDays)}-community`);
-    if (seed() < founderChance && getActiveCompanyCount(next) < MAX_ACTIVE_COMPANIES) {
-      const contribution = clamp(npc.cash * (0.08 + npc.boldness * 0.12), 0, 24);
+    if (seed() < founderChance && getActiveCompanyCount(next) < MAX_ACTIVE_COMPANIES && openFundingPlans < 2) {
+      const contribution = clamp(npc.cash * (0.06 + npc.boldness * 0.1), 0, 18);
       if (contribution >= 8) {
         const candidateName = generateUniqueCompanyName(next, seed);
         next = createCommunityCompanyPlan(next, npc.id, candidateName, contribution);
@@ -2751,6 +2786,14 @@ export function simulateTick(current: GameState) {
   let nextPlayerCash = governedCurrent.player.cash;
   const npcCashMap = new Map(governedCurrent.npcs.map((npc) => [npc.id, npc.cash]));
   const corporateCashDelta = new Map<CompanyKey, number>();
+  const getPortfolioValue = (companyKey: CompanyKey) => {
+    const investorId = getCorporateInvestorId(companyKey);
+    return (Object.values(governedCurrent.companies) as CompanyState[]).reduce((sum, targetCompany) => {
+      const shares = targetCompany.investors[investorId] ?? 0;
+      if (shares <= 0.0001) return sum;
+      return sum + shares * getSharePrice(targetCompany);
+    }, 0);
+  };
 
   const companies = Object.fromEntries(
     (Object.entries(governedCurrent.companies) as [CompanyKey, CompanyState][]).map(([key, governedCompany]) => {
@@ -2798,6 +2841,7 @@ export function simulateTick(current: GameState) {
           capitalStrain: Math.max(0, governedCompany.capitalStrain - Math.max(0, retentionProfit - managementDragPerDay) * tickDays * 0.65),
           marketShare: clamp(governedCompany.marketShare + passiveMarketDelta * tickDays - stressLevel * 0.75 * tickDays, 3, 75),
           reputation: clamp(governedCompany.reputation + passiveReputationDelta * tickDays - stressLevel * 0.92 * tickDays, 10, 100),
+          portfolioValue: getPortfolioValue(key),
         },
       ];
     })
