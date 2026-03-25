@@ -1,18 +1,18 @@
 {
   "packageId": "com.chartworkspace.game",
-  "host": "yourdomain.com",
+  "host": "mindmapper.qzz.io",
   "name": "ChartWorkspace Game",
   "launcherName": "CW Game",
   "display": "standalone",
   "themeColor": "#0a0f1f",
   "navigationColor": "#0a0f1f",
   "backgroundColor": "#0a0f1f",
-  "startUrl": "https://yourdomain.com/game",
+  "startUrl": "https://mindmapper.qzz.io/game",
   "scope": "/game",
-  "webManifestUrl": "https://yourdomain.com/manifest.webmanifest",
-  "iconUrl": "https://yourdomain.com/favicon.ico",
-  "maskableIconUrl": "https://yourdomain.com/favicon.ico",
-  "monochromeIconUrl": "https://yourdomain.com/favicon.ico",
+  "webManifestUrl": "https://mindmapper.qzz.io/manifest.webmanifest",
+  "iconUrl": "https://mindmapper.qzz.io/favicon.ico",
+  "maskableIconUrl": "https://mindmapper.qzz.io/favicon.ico",
+  "monochromeIconUrl": "https://mindmapper.qzz.io/favicon.ico",
   "fallbackType": "customtabs",
   "enableNotifications": false,
   "appVersionName": "1.0.0",
@@ -22,14 +22,11 @@
     {
       "action": "VIEW",
       "autoVerify": true,
-      "categories": [
-        "BROWSABLE",
-        "DEFAULT"
-      ],
+      "categories": ["BROWSABLE", "DEFAULT"],
       "data": [
         {
           "scheme": "https",
-          "host": "yourdomain.com",
+          "host": "mindmapper.qzz.io",
           "pathPrefix": "/game"
         }
       ]

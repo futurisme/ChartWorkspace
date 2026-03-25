@@ -2,8 +2,6 @@ name: Build TWA Game APK/AAB
 
 on:
   push:
-    branches:
-      - main
     tags:
       - 'twa-v*'
   workflow_dispatch:
@@ -12,6 +10,10 @@ on:
         description: 'Release tag (example: twa-v1.0.0)'
         required: true
         default: 'twa-v0.0.1'
+      twa_host:
+        description: 'Public HTTPS host serving /game and /manifest.webmanifest'
+        required: false
+        default: 'mindmapper.qzz.io'
 
 permissions:
   contents: write
@@ -20,12 +22,13 @@ jobs:
   twa-release:
     runs-on: ubuntu-latest
     env:
-      JAVA_VERSION: '21'
+      JAVA_VERSION: '17'
       NODE_VERSION: '22'
       TWA_DIR: twa-android
       OUTPUT_DIR: dist/twa
       KEYSTORE_PATH: android.keystore
-      GAME_URL: https://yourdomain.com/game
+      DEFAULT_TWA_HOST: mindmapper.qzz.io
+      GAME_PATH: /game
 
     steps:
       - name: Checkout
@@ -37,7 +40,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      - name: Setup JDK 21
+      - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -52,6 +55,7 @@ jobs:
       - name: Optimize /game media assets (WebP + Ogg/Opus)
         shell: bash
         run: |
+          set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y webp ffmpeg
           if [ -d "public/game" ]; then
@@ -69,26 +73,113 @@ jobs:
           NODE_ENV: production
         run: npm run build
 
+      - name: Resolve TWA host and URLs
+        id: twa_urls
+        shell: bash
+        run: |
+          set -euo pipefail
+          INPUT_HOST='${{ github.event.inputs.twa_host }}'
+          SECRET_HOST='${{ secrets.TWA_HOST }}'
+          HOST="${INPUT_HOST:-${SECRET_HOST:-${DEFAULT_TWA_HOST}}}"
+          HOST="${HOST#https://}"
+          HOST="${HOST#http://}"
+          HOST="${HOST%%/}"
+          if [ -z "$HOST" ]; then
+            echo "TWA host is empty. Set workflow input 'twa_host' or secret TWA_HOST." >&2
+            exit 1
+          fi
+          START_URL="https://${HOST}${GAME_PATH}"
+          MANIFEST_URL="https://${HOST}/manifest.webmanifest"
+          ICON_URL="https://${HOST}/favicon.ico"
+          echo "host=$HOST" >> "$GITHUB_OUTPUT"
+          echo "start_url=$START_URL" >> "$GITHUB_OUTPUT"
+          echo "manifest_url=$MANIFEST_URL" >> "$GITHUB_OUTPUT"
+          echo "icon_url=$ICON_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure remote manifest is reachable before Bubblewrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL='${{ steps.twa_urls.outputs.manifest_url }}'
+          for i in $(seq 1 20); do
+            if curl --fail --silent --show-error --location "$URL" > /tmp/manifest.webmanifest; then
+              echo "Manifest reachable: $URL"
+              break
+            fi
+            if [ "$i" -eq 20 ]; then
+              echo "Manifest URL is not reachable: $URL" >&2
+              echo "Deploy web app first or pass a working --twa_host." >&2
+              exit 1
+            fi
+            sleep 15
+          done
+          if ! jq -e '.name and .start_url' /tmp/manifest.webmanifest >/dev/null 2>&1; then
+            echo "Remote manifest is invalid (missing name/start_url): $URL" >&2
+            exit 1
+          fi
+
       - name: Install Bubblewrap CLI
         run: npm install -g @bubblewrap/cli
+
+      - name: Configure Bubblewrap toolchain paths (non-interactive CI)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.bubblewrap"
+          cat > "$HOME/.bubblewrap/config.json" <<EOF
+          {
+            "jdkPath": "${JAVA_HOME}",
+            "androidSdkPath": "${ANDROID_HOME}"
+          }
+          EOF
 
       - name: Prepare signing keystore from secrets
         shell: bash
         run: |
+          set -euo pipefail
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > "${KEYSTORE_PATH}"
+
+      - name: Generate CI bubblewrap config
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const base = JSON.parse(fs.readFileSync('twa-manifest.json', 'utf8'));
+          base.host = process.env.TWA_HOST;
+          base.startUrl = process.env.START_URL;
+          base.webManifestUrl = process.env.MANIFEST_URL;
+          base.iconUrl = process.env.ICON_URL;
+          base.maskableIconUrl = process.env.ICON_URL;
+          base.monochromeIconUrl = process.env.ICON_URL;
+          base.scope = process.env.GAME_PATH;
+          if (base.intentFilters?.[0]?.data?.[0]) {
+            base.intentFilters[0].data[0].host = process.env.TWA_HOST;
+            base.intentFilters[0].data[0].pathPrefix = process.env.GAME_PATH;
+          }
+          fs.writeFileSync('twa-manifest.ci.json', JSON.stringify(base, null, 2));
+          NODE
+        env:
+          TWA_HOST: ${{ steps.twa_urls.outputs.host }}
+          START_URL: ${{ steps.twa_urls.outputs.start_url }}
+          MANIFEST_URL: ${{ steps.twa_urls.outputs.manifest_url }}
+          ICON_URL: ${{ steps.twa_urls.outputs.icon_url }}
+          GAME_PATH: ${{ env.GAME_PATH }}
 
       - name: Generate / update TWA project scoped to /game
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p "${TWA_DIR}"
-          bubblewrap init \
-            --config="$(pwd)/twa-manifest.json" \
+          yes '' | bubblewrap init \
+            --config="$(pwd)/twa-manifest.ci.json" \
             --directory="$(pwd)/${TWA_DIR}" \
             --skipPwaValidation
 
       - name: Build TWA app bundle and APK
         shell: bash
         run: |
+          set -euo pipefail
           cd "${TWA_DIR}"
           ./gradlew --no-daemon clean assembleRelease bundleRelease
 
@@ -98,10 +189,22 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         run: |
+          set -euo pipefail
           mkdir -p "${OUTPUT_DIR}"
           ZIPALIGN_BIN=$(find "$ANDROID_HOME/build-tools" -name zipalign | sort -V | tail -n 1)
           APKSIGNER_BIN=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)
           UNSIGNED_APK=$(find "${TWA_DIR}" -path '*outputs/apk/release/*-unsigned.apk' | head -n 1)
+          AAB_FILE=$(find "${TWA_DIR}" -path '*outputs/bundle/release/*.aab' | head -n 1)
+          if [ -z "$UNSIGNED_APK" ] || [ ! -f "$UNSIGNED_APK" ]; then
+            echo "Unsigned APK not found in ${TWA_DIR}." >&2
+            find "${TWA_DIR}" -type f | sed -n '1,300p'
+            exit 1
+          fi
+          if [ -z "$AAB_FILE" ] || [ ! -f "$AAB_FILE" ]; then
+            echo "AAB not found in ${TWA_DIR}." >&2
+            find "${TWA_DIR}" -type f | sed -n '1,300p'
+            exit 1
+          fi
           SIGNED_APK="${OUTPUT_DIR}/chartworkspace-game-release.apk"
           "$ZIPALIGN_BIN" -v -p 4 "$UNSIGNED_APK" "${OUTPUT_DIR}/aligned.apk"
           "$APKSIGNER_BIN" sign \
@@ -111,11 +214,13 @@ jobs:
             --key-pass pass:"${KEYSTORE_PASSWORD}" \
             --out "$SIGNED_APK" \
             "${OUTPUT_DIR}/aligned.apk"
-          cp "$(find "${TWA_DIR}" -path '*outputs/bundle/release/*.aab' | head -n 1)" "${OUTPUT_DIR}/chartworkspace-game-release.aab"
+          cp "$AAB_FILE" "${OUTPUT_DIR}/chartworkspace-game-release.aab"
+          "$APKSIGNER_BIN" verify --print-certs "$SIGNED_APK"
 
       - name: APK size report
         shell: bash
         run: |
+          set -euo pipefail
           APK_FILE="${OUTPUT_DIR}/chartworkspace-game-release.apk"
           APK_BYTES=$(stat -c%s "$APK_FILE")
           LIMIT=$((2 * 1024 * 1024))
@@ -124,24 +229,15 @@ jobs:
             echo "WARNING: APK exceeded 2MB target."
           fi
 
-      - name: Upload artifacts
+      - name: Upload workflow artifacts (zip container)
         uses: actions/upload-artifact@v4
         with:
-          name: twa-game-build
+          name: twa-game-build-files
           path: |
             ${{ env.OUTPUT_DIR }}/chartworkspace-game-release.apk
             ${{ env.OUTPUT_DIR }}/chartworkspace-game-release.aab
 
-      - name: Update rolling latest tag
-        if: github.ref_type != 'tag'
-        shell: bash
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -f twa-latest
-          git push origin twa-latest --force
-
-      - name: Create GitHub Release and attach APK/AAB
+      - name: Create GitHub Release and attach raw APK/AAB
         uses: ncipollo/release-action@v1
         with:
           allowUpdates: true
