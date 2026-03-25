@@ -290,6 +290,12 @@ curl -s -o /dev/null -w 'root ttfb=%{time_starttransfer} total=%{time_total}\n' 
 - See `docs/performance-dashboard.md` for dashboard panel setup.
 
 
+### Struktur Direktori & Pemetaan Halaman (baru)
+- Pemetaan route -> modul -> aset: `docs/architecture/route-module-map.md`.
+- Detail halaman `/workspace`: `docs/pages/workspace.md`.
+- Detail halaman `/game`: `docs/pages/game.md`.
+- Detail halaman `/game-ideas`: `docs/pages/game-ideas.md`.
+
 ### 12) Troubleshooting Railway / Postgres / Realtime
 - Log PostgreSQL `could not receive data from client: Connection reset by peer` **umumnya bukan root-cause** realtime gagal; itu biasanya koneksi client terputus (restart/deploy/browser close).
 - Root cause realtime lintas device hampir selalu di signaling endpoint (env `NEXT_PUBLIC_WEBRTC_URL`) atau bind service signaling (`HOST=0.0.0.0`).

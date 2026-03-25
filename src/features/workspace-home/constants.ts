@@ -1,0 +1,2 @@
+export const WORKSPACE_SEARCH_DEBOUNCE_MS = 220;
+export const WORKSPACE_SEARCH_LIMIT = 24;

@@ -2,14 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-
-type MapSearchItem = {
-  id: string;
-  title: string;
-  updatedAt: string;
-};
-
-const SEARCH_DEBOUNCE_MS = 220;
+import { useWorkspaceSearch } from '@/features/workspace-home/use-workspace-search';
 
 export default function WorkspaceHome() {
   const router = useRouter();
@@ -20,12 +13,7 @@ export default function WorkspaceHome() {
   const [lastMapTitle, setLastMapTitle] = useState<string | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<MapSearchItem[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [searchError, setSearchError] = useState('');
-  const [searchReady, setSearchReady] = useState(false);
-
-  const trimmedQuery = searchQuery.trim();
+  const { searchResults, isSearching, searchError, searchReady } = useWorkspaceSearch(searchQuery);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -33,58 +21,7 @@ export default function WorkspaceHome() {
     setLastMapId(localStorage.getItem('lastMapId'));
     setLastMapTitle(localStorage.getItem('lastMapTitle'));
 
-    let idleTimer = 0;
-    if (typeof window.requestIdleCallback === 'function') {
-      const idleId = window.requestIdleCallback(() => setSearchReady(true), { timeout: 500 });
-      return () => window.cancelIdleCallback(idleId);
-    }
-
-    idleTimer = window.setTimeout(() => setSearchReady(true), 350);
-    return () => window.clearTimeout(idleTimer);
   }, []);
-
-  useEffect(() => {
-    if (!searchReady) {
-      return;
-    }
-
-    const abortController = new AbortController();
-    const timeout = window.setTimeout(async () => {
-      try {
-        setIsSearching(true);
-        setSearchError('');
-
-        const params = new URLSearchParams();
-        if (trimmedQuery) {
-          params.set('q', trimmedQuery);
-        }
-        params.set('limit', '24');
-
-        const response = await fetch(`/api/maps?${params.toString()}`, {
-          signal: abortController.signal,
-        });
-
-        if (!response.ok) {
-          const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-          throw new Error(payload?.error || 'Failed to load maps');
-        }
-
-        const payload = (await response.json()) as { maps?: MapSearchItem[] };
-        const incoming = payload.maps ?? [];
-        setSearchResults(incoming.slice(0, 24));
-      } catch (err) {
-        if ((err as Error).name === 'AbortError') return;
-        setSearchError(err instanceof Error ? err.message : 'Failed to load maps');
-      } finally {
-        setIsSearching(false);
-      }
-    }, SEARCH_DEBOUNCE_MS);
-
-    return () => {
-      abortController.abort();
-      window.clearTimeout(timeout);
-    };
-  }, [searchReady, trimmedQuery]);
 
   const quickStats = useMemo(() => {
     const hasRecent = Boolean(lastMapId);
