@@ -498,8 +498,12 @@ export function CpuFoundrySim() {
   const focusedCompany = game && focusedCompanyKey ? game.companies[focusedCompanyKey] : null;
   const focusedPlan = game && focusedPlanKey ? game.plans[focusedPlanKey] : null;
   const establishedCompanies = game ? COMPANY_KEYS.filter((key) => game.companies[key].isEstablished).map((key) => game.companies[key]) : [];
-  const openPlans = game ? COMPANY_KEYS.filter((key) => !game.plans[key].isEstablished).map((key) => game.plans[key]) : [];
-  const communityPlans = game ? game.communityPlans : [];
+  const openPlans = game
+    ? COMPANY_KEYS
+      .filter((key) => !game.plans[key].isEstablished && game.elapsedDays <= game.plans[key].dueDay)
+      .map((key) => game.plans[key])
+    : [];
+  const communityPlans = game ? game.communityPlans.filter((plan) => plan.status === 'funding') : [];
   const formatCurrencyCompact = (valueInMillions: number, decimals = 2) => `$ ${formatMoneyCompact(valueInMillions, decimals)}`;
   const newsItems = useMemo(() => {
     if (!game) return [];

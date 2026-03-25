@@ -1276,10 +1276,10 @@ export function sanitizeExecutiveAssignments(game: GameState, company: CompanySt
 export function planNpcExecutiveAssignments(game: GameState, company: CompanyState, ceoId: string, boardMembers: BoardMember[]) {
   const ceoNpc = getExecutiveAiActor(game, company, ceoId);
   const voteWindow = getBoardVoteWindowState(company, game.elapsedDays);
-  const votesRemaining = canStartBoardVote(company, game.elapsedDays) ? Math.max(0, BOARD_VOTE_LIMIT_PER_WINDOW - voteWindow.count) : 0;
+  let votesRemaining = canStartBoardVote(company, game.elapsedDays) ? Math.max(0, BOARD_VOTE_LIMIT_PER_WINDOW - voteWindow.count) : 0;
 
   const intelligence = ceoNpc.intelligence;
-  const threshold = 0.34 + (1 - intelligence) * 0.12;
+  const threshold = 0.26 + (1 - intelligence) * 0.08;
   const pool = getExecutiveCandidatePool(game, company, ceoId);
   const used = new Set<string>();
   const executives = sanitizeExecutiveAssignments(game, company, ceoId);
@@ -1289,17 +1289,18 @@ export function planNpcExecutiveAssignments(game: GameState, company: CompanySta
     }
   });
   const chosenRoles: ExecutiveRole[] = [];
+  let governanceUpdates = 0;
   let latestBoardVote: BoardVoteState | null = null;
   const rankedNeeds = EXECUTIVE_ROLES
     .map((role) => ({ role, need: calculateExecutiveNeed(role, company) }))
     .sort((left, right) => right.need - left.need);
   const mustFillRoles = rankedNeeds
-    .filter((entry) => entry.need > 0.56 && !executives[entry.role])
-    .slice(0, 2)
+    .filter((entry) => entry.need > 0.52 && !executives[entry.role])
+    .slice(0, 3)
     .map((entry) => entry.role);
 
   EXECUTIVE_ROLES.forEach((role) => {
-    if (votesRemaining <= 0 || latestBoardVote) return;
+    if (votesRemaining <= 0) return;
     const need = calculateExecutiveNeed(role, company);
     if (need < threshold && !mustFillRoles.includes(role)) return;
     const currentOccupantId = company.executives?.[role]?.occupantId;
@@ -1316,7 +1317,7 @@ export function planNpcExecutiveAssignments(game: GameState, company: CompanySta
       .sort((left, right) => right.score - left.score)[0];
 
     const strategicTightening = votesRemaining <= 1 ? 0.12 + (1 - ceoNpc.intelligence) * 0.08 : 0;
-    if (!candidate || candidate.score < (mustFillRoles.includes(role) ? 1.05 + strategicTightening : 1.2 + strategicTightening)) return;
+    if (!candidate || candidate.score < (mustFillRoles.includes(role) ? 0.94 + strategicTightening : 1.08 + strategicTightening)) return;
     const decisionType: 'appoint' | 'replace' = currentExecutive ? 'replace' : 'appoint';
     const decision = boardApproveExecutiveDecision(game, company, boardMembers, role, { type: decisionType, candidateId: candidate.candidateId });
     const proposerId = getBoardProposalActorId(game, company, { preferredRole: role, domain: EXECUTIVE_ROLE_META[role].domain });
@@ -1325,18 +1326,22 @@ export function planNpcExecutiveAssignments(game: GameState, company: CompanySta
       initialVotes[proposerId] = 'yes';
     }
     const tally = tallyBoardVoteWeights(boardMembers, initialVotes);
-    latestBoardVote = {
-      id: `${company.key}-${role}-${game.elapsedDays}`,
-      kind: decisionType === 'appoint' ? 'pengangkatan' : 'penggantian',
-      proposerId,
-      subject: `${EXECUTIVE_ROLE_META[role].title} → ${investorDisplayName(game, candidate.candidateId)}`,
-      reason: `${investorDisplayName(game, proposerId)} mengusulkan penyesuaian ${EXECUTIVE_ROLE_META[role].title} untuk kebutuhan ${EXECUTIVE_ROLE_META[role].domain}.`,
-      memberVotes: initialVotes,
-      yesWeight: tally.yesWeight,
-      noWeight: tally.noWeight,
-      startDay: game.elapsedDays,
-      endDay: game.elapsedDays + 3,
-    };
+    if (!latestBoardVote) {
+      latestBoardVote = {
+        id: `${company.key}-${role}-${game.elapsedDays}`,
+        kind: decisionType === 'appoint' ? 'pengangkatan' : 'penggantian',
+        proposerId,
+        subject: `${EXECUTIVE_ROLE_META[role].title} → ${investorDisplayName(game, candidate.candidateId)}`,
+        reason: `${investorDisplayName(game, proposerId)} mengusulkan penyesuaian ${EXECUTIVE_ROLE_META[role].title} untuk kebutuhan ${EXECUTIVE_ROLE_META[role].domain}.`,
+        memberVotes: initialVotes,
+        yesWeight: tally.yesWeight,
+        noWeight: tally.noWeight,
+        startDay: game.elapsedDays,
+        endDay: game.elapsedDays + 3,
+      };
+    }
+    governanceUpdates += 1;
+    votesRemaining = Math.max(0, votesRemaining - 1);
     if (!decision.approved) {
       return;
     }
@@ -1357,7 +1362,9 @@ export function planNpcExecutiveAssignments(game: GameState, company: CompanySta
   const executivePulse = chosenRoles.length === 0
     ? votesRemaining <= 0
       ? `${ceoNpc.name} menahan perubahan eksekutif karena kuota voting dewan bulan ini sudah penuh.`
-      : `${ceoNpc.name} menilai ${company.name} belum membutuhkan eksekutif tambahan saat ini.`
+      : governanceUpdates > 0
+        ? `${ceoNpc.name} sudah mengajukan perubahan struktur eksekutif dan menunggu keputusan dewan.`
+        : `${ceoNpc.name} menilai ${company.name} belum membutuhkan eksekutif tambahan saat ini.`
     : `${ceoNpc.name} merancang struktur ${chosenRoles.map((role) => EXECUTIVE_ROLE_META[role].title).join(', ')} untuk menjaga ${company.name} tetap lincah.`;
 
   return {
@@ -2404,7 +2411,10 @@ export function progressCommunityPlans(game: GameState) {
   expiredNow.forEach((plan) => {
     next.activityFeed = addFeedEntry(next.activityFeed, `${formatDateFromDays(next.elapsedDays)}: Plan ${plan.companyName} gagal mencapai modal minimum dan ditutup.`);
   });
-  return next;
+  return {
+    ...next,
+    communityPlans: next.communityPlans.filter((plan) => plan.status === 'funding'),
+  };
 }
 
 export function changeCompanyShareSheetTotal(game: GameState, companyKey: CompanyKey, actorId: string, nextTotal: number) {
@@ -3521,22 +3531,33 @@ export function runNpcChiefExecutiveTurn(current: GameState) {
       ? Math.max(0, BOARD_VOTE_LIMIT_PER_WINDOW - getBoardVoteWindowState(sourceCompany, workingGame.elapsedDays).count)
       : 0;
     const investableCash = Math.max(0, sourceCompany.cash - 18);
-    if (investableCash > 8 && sourceCompany.boardMembers.length > 0 && boardVotesRemaining > 0) {
+    const shouldProposeCrossInvestment =
+      sourceCompany.activeBoardVote === null
+      && investableCash > 6
+      && sourceCompany.boardMembers.length > 0
+      && boardVotesRemaining > 0;
+    if (shouldProposeCrossInvestment) {
       const investmentTargets = COMPANY_KEYS
         .filter((targetKey) => targetKey !== companyKey)
         .map((targetKey) => {
           const targetCompany = workingGame.companies[targetKey];
+          if (!targetCompany.isEstablished) return null;
           const attractiveness = targetCompany.marketShare * 0.72
             + targetCompany.reputation * 0.46
             + calculateCpuScore(targetCompany.upgrades) * 0.018
-            + clamp((targetCompany.cash - sourceCompany.cash * 0.28) / Math.max(1, sourceCompany.cash), -0.22, 0.18);
+            + clamp((targetCompany.cash - sourceCompany.cash * 0.28) / Math.max(1, sourceCompany.cash), -0.22, 0.18)
+            + clamp((sourceCompany.boardMood - 0.42) * 8, -0.3, 0.4)
+            + ceoNpc.boldness * 0.22;
           return { targetKey, targetCompany, attractiveness };
         })
+        .filter((entry): entry is { targetKey: CompanyKey; targetCompany: CompanyState; attractiveness: number } => Boolean(entry))
         .sort((left, right) => right.attractiveness - left.attractiveness);
       const bestTarget = investmentTargets[0];
       if (bestTarget) {
-        const riskAwareAllocation = boardVotesRemaining === 1 ? 0.1 + ceoNpc.intelligence * 0.03 : 0.14 + ceoNpc.intelligence * 0.04;
-        const proposedAmount = clamp(sourceCompany.cash * riskAwareAllocation, 8, investableCash * 0.78);
+        const riskAwareAllocation = boardVotesRemaining === 1
+          ? 0.11 + ceoNpc.intelligence * 0.04 + ceoNpc.boldness * 0.02
+          : 0.16 + ceoNpc.intelligence * 0.05 + ceoNpc.boldness * 0.03;
+        const proposedAmount = clamp(sourceCompany.cash * riskAwareAllocation, 6, investableCash * 0.82);
         const investmentDecision = boardApproveCompanyInvestment(sourceCompany, bestTarget.targetCompany, proposedAmount);
         const proposerId = getBoardProposalActorId(workingGame, sourceCompany, { preferredRole: 'cfo', domain: 'finance' });
         const initialVotes: Record<string, 'yes' | 'no'> = {};
