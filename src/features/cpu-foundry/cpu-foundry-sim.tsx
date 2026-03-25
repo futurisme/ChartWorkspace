@@ -188,6 +188,43 @@ const {
 } = Engine;
 
 const STORAGE_PERSIST_INTERVAL_MS = 5000;
+const STATISTICS_COLORS = ['#0ea5e9', '#38bdf8', '#6366f1', '#8b5cf6', '#ec4899', '#f97316', '#f59e0b', '#84cc16', '#14b8a6', '#06b6d4', '#22c55e', '#a855f7'];
+
+type StatisticsTab = 'wealth' | 'investments' | 'ownership';
+type PieSlice = { label: string; value: number; color: string };
+
+function ReusablePieDiagram({ title, slices }: { title: string; slices: PieSlice[] }) {
+  const total = slices.reduce((sum, slice) => sum + slice.value, 0);
+  const normalized = total > 0 ? slices : [{ label: 'Belum ada data', value: 1, color: '#cbd5e1' }];
+  const normalizedTotal = normalized.reduce((sum, slice) => sum + slice.value, 0) || 1;
+  const chartGradient = (() => {
+    let start = 0;
+    return normalized.map((slice) => {
+      const span = (slice.value / normalizedTotal) * 360;
+      const segment = `${slice.color} ${start}deg ${start + span}deg`;
+      start += span;
+      return segment;
+    }).join(', ');
+  })();
+
+  return (
+    <div className={styles.statisticsChartWrap}>
+      <div className={styles.statisticsChartRing} style={{ background: `conic-gradient(${chartGradient})` }} aria-label={title} />
+      <div className={styles.statisticsLegend}>
+        {normalized.map((slice, index) => {
+          const percent = normalizedTotal > 0 ? (slice.value / normalizedTotal) * 100 : 0;
+          return (
+            <div key={`${slice.label}-${index}`} className={styles.statisticsLegendRow}>
+              <span className={styles.statisticsLegendSwatch} style={{ backgroundColor: slice.color }} />
+              <span className={styles.statisticsLegendLabel}>{slice.label}</span>
+              <strong className={styles.statisticsLegendValue}>{formatNumber(percent, 1)}%</strong>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 export function CpuFoundrySim() {
   const [game, setGame] = useState<GameState | null>(null);
@@ -211,6 +248,8 @@ export function CpuFoundrySim() {
   const [focusedPlanKey, setFocusedPlanKey] = useState<CompanyKey | null>(null);
   const [newsCompanyFilter, setNewsCompanyFilter] = useState<'all' | CompanyKey>('all');
   const [forbesCategory, setForbesCategory] = useState<'individual' | 'business'>('individual');
+  const [statisticsTab, setStatisticsTab] = useState<StatisticsTab>('wealth');
+  const [isStatisticsFrameOpen, setIsStatisticsFrameOpen] = useState(false);
   const [companyDetailBackTarget, setCompanyDetailBackTarget] = useState<'game' | 'companies' | 'investor' | 'news' | 'forbes'>('companies');
   const pausedRef = useRef(false);
   const latestGameRef = useRef<GameState | null>(null);
@@ -490,6 +529,7 @@ export function CpuFoundrySim() {
     setIsNewsFrameOpen(false);
     setIsForbesFrameOpen(false);
     setIsCreateCompanyOpen(false);
+    setIsStatisticsFrameOpen(false);
     setFocusedCompanyKey(null);
     setFocusedPlanKey(null);
   };
@@ -497,6 +537,64 @@ export function CpuFoundrySim() {
   const activeCompany = game ? game.companies[game.player.selectedCompany] : null;
   const focusedCompany = game && focusedCompanyKey ? game.companies[focusedCompanyKey] : null;
   const focusedPlan = game && focusedPlanKey ? game.plans[focusedPlanKey] : null;
+  const companyStatisticsSlices = useMemo(() => {
+    if (!game || !focusedCompany) {
+      return {
+        wealth: [] as PieSlice[],
+        investments: [] as PieSlice[],
+        ownership: [] as PieSlice[],
+      };
+    }
+
+    const researchWealth = Math.max(0, focusedCompany.research * 0.9 + focusedCompany.researchPerDay * 8);
+    const investmentWealth = Math.max(0, focusedCompany.portfolioValue);
+    const latestSalesWealth = Math.max(0, calculateLaunchRevenue(
+      Math.max(1, focusedCompany.lastReleaseCpuScore),
+      focusedCompany.teams,
+      focusedCompany.marketShare,
+      focusedCompany.reputation,
+      PRICE_PRESETS[focusedCompany.lastReleasePriceIndex]?.factor ?? 1
+    ));
+    const wealth: PieSlice[] = [
+      { label: 'Nilai Riset', value: researchWealth, color: STATISTICS_COLORS[0] },
+      { label: 'Investasi Perusahaan', value: investmentWealth, color: STATISTICS_COLORS[2] },
+      { label: 'Nilai Penjualan Terakhir', value: latestSalesWealth, color: STATISTICS_COLORS[4] },
+    ];
+
+    const corporateInvestorId = getCorporateInvestorId(focusedCompany.key);
+    const investments = COMPANY_KEYS
+      .filter((key) => key !== focusedCompany.key)
+      .map((key) => {
+        const target = game.companies[key];
+        const shares = target.investors[corporateInvestorId] ?? 0;
+        return { label: target.name, value: shares * getSharePrice(target) };
+      })
+      .filter((entry) => entry.value > 0.01)
+      .map((entry, index) => ({ ...entry, color: STATISTICS_COLORS[index % STATISTICS_COLORS.length] }));
+
+    const ceoShares = focusedCompany.investors[focusedCompany.ceoId] ?? 0;
+    const corporateShares = Object.entries(focusedCompany.investors)
+      .filter(([investorId]) => Boolean(getCompanyKeyFromCorporateInvestorId(investorId)))
+      .reduce((sum, [, shares]) => sum + shares, 0);
+    const externalShares = Object.entries(focusedCompany.investors)
+      .filter(([investorId]) => investorId !== focusedCompany.ceoId && !getCompanyKeyFromCorporateInvestorId(investorId))
+      .reduce((sum, [, shares]) => sum + shares, 0);
+    const openShares = Math.max(0, focusedCompany.marketPoolShares);
+    const ownership: PieSlice[] = [
+      { label: `Saham CEO (${focusedCompany.ceoName})`, value: ceoShares, color: STATISTICS_COLORS[1] },
+      { label: 'Investor Asing / Eksternal', value: externalShares, color: STATISTICS_COLORS[6] },
+      { label: 'Perusahaan Lain', value: corporateShares, color: STATISTICS_COLORS[9] },
+      { label: 'Saham Terbuka (Treasury)', value: openShares, color: STATISTICS_COLORS[11] },
+    ];
+
+    return { wealth, investments, ownership };
+  }, [game, focusedCompany]);
+  const statisticsTabConfig: Array<{ key: StatisticsTab; label: string; title: string; slices: PieSlice[] }> = useMemo(() => ([
+    { key: 'wealth', label: 'Diagram 1', title: 'Diagram Sumber Kekayaan Perusahaan', slices: companyStatisticsSlices.wealth },
+    { key: 'investments', label: 'Diagram 2', title: 'Diagram Investasi Perusahaan', slices: companyStatisticsSlices.investments },
+    { key: 'ownership', label: 'Diagram 3', title: 'Diagram Kepemilikan Saham', slices: companyStatisticsSlices.ownership },
+  ]), [companyStatisticsSlices]);
+  const activeStatisticsConfig = statisticsTabConfig.find((entry) => entry.key === statisticsTab) ?? statisticsTabConfig[0];
   const establishedCompanies = game ? COMPANY_KEYS.filter((key) => game.companies[key].isEstablished).map((key) => game.companies[key]) : [];
   const openPlans = game
     ? COMPANY_KEYS
@@ -696,6 +794,7 @@ export function CpuFoundrySim() {
     setIsNewsFrameOpen(false);
     setIsForbesFrameOpen(false);
     setIsCreateCompanyOpen(false);
+    setIsStatisticsFrameOpen(false);
     setFocusedCompanyKey(null);
     setFocusedPlanKey(null);
   };
@@ -716,10 +815,12 @@ export function CpuFoundrySim() {
     closeTransientLayers();
     setCompanyDetailPanels(DEFAULT_COMPANY_DETAIL_PANELS);
     setCompanyDetailBackTarget(backTarget);
+    setStatisticsTab('wealth');
     setFocusedCompanyKey(company);
   };
 
   const closeCompanyDetail = () => {
+    setIsStatisticsFrameOpen(false);
     setFocusedCompanyKey(null);
     if (companyDetailBackTarget === 'companies') setIsCompaniesFrameOpen(true);
     else if (companyDetailBackTarget === 'investor') setIsInvestorFrameOpen(true);
@@ -1664,6 +1765,41 @@ export function CpuFoundrySim() {
         </div>
       ) : null}
 
+      {isStatisticsFrameOpen && focusedCompany ? (
+        <div className={styles.screenFrameOverlay} role="presentation" onClick={() => setIsStatisticsFrameOpen(false)}>
+          <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label={`Statistik ${focusedCompany.name}`} onClick={(event) => event.stopPropagation()}>
+            <div className={styles.screenFrameHeader}>
+              <div>
+                <p className={styles.panelTag}>Company statistics</p>
+                <h2>{focusedCompany.name}</h2>
+              </div>
+              <button type="button" className={styles.closeButton} onClick={() => setIsStatisticsFrameOpen(false)} aria-label="Tutup statistik">
+                ✕
+              </button>
+            </div>
+            <div className={styles.screenFrameBody}>
+              <div className={styles.statisticsSwitchRow}>
+                {statisticsTabConfig.map((option) => (
+                  <button
+                    key={option.key}
+                    type="button"
+                    className={statisticsTab === option.key ? styles.rankingFilterButtonActive : styles.rankingFilterButton}
+                    onClick={() => setStatisticsTab(option.key)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <article className={styles.statisticsCard}>
+                <p className={styles.panelTag}>{activeStatisticsConfig?.label}</p>
+                <h3 className={styles.statisticsTitle}>{activeStatisticsConfig?.title}</h3>
+                <ReusablePieDiagram title={activeStatisticsConfig?.title ?? 'Diagram statistik'} slices={activeStatisticsConfig?.slices ?? []} />
+              </article>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
       {activePlayerBoardVote ? (
         <div className={styles.modalOverlay} role="presentation" onClick={() => {}}>
           <section className={styles.modalCard} role="dialog" aria-modal="true" aria-label="Voting dewan direksi" onClick={(event) => event.stopPropagation()}>
@@ -1881,8 +2017,8 @@ export function CpuFoundrySim() {
                   <span>{companyDetailPanels.overview ? 'Tutup' : 'Buka'}</span>
                 </button>
                 {companyDetailPanels.overview ? (
-                  <div className={styles.panelBody}>
-                    <div className={styles.infoRow}>
+                  <div className={`${styles.panelBody} ${styles.overviewCompactBody}`}>
+                    <div className={`${styles.infoRow} ${styles.overviewCompactGrid}`}>
                       <div>
                         <span>Kas</span>
                         <strong>$ {formatMoneyCompact(focusedCompany.cash, 2)}</strong>
@@ -1927,6 +2063,11 @@ export function CpuFoundrySim() {
                         <span>Capital strain</span>
                         <strong>$ {formatMoneyCompact(focusedCompany.capitalStrain, 2)}</strong>
                       </div>
+                    </div>
+                    <div className={styles.actionRow}>
+                      <button type="button" className={styles.slimActionButton} onClick={() => setIsStatisticsFrameOpen(true)}>
+                        Open Statistics
+                      </button>
                     </div>
                     <div className={styles.memoCard}>
                       <p className={styles.panelTag}>Memo terbaru</p>
