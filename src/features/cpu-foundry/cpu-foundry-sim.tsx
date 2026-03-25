@@ -34,7 +34,8 @@ import type {
   NewsCategory,
   CompanyAiAction
   ,
-  CompanyEstablishmentPlan
+  CompanyEstablishmentPlan,
+  CommunityCompanyPlan
 } from './cpu-foundry-sim-engine';
 
 const {
@@ -177,7 +178,10 @@ const {
   manageNpcShareListing,
   runNpcTurn
   ,
-  investInCompanyPlan
+  investInCompanyPlan,
+  createCommunityCompanyPlan,
+  investInCommunityPlan,
+  MAX_ACTIVE_COMPANIES
 } = Engine;
 
 export function CpuFoundrySim() {
@@ -195,6 +199,8 @@ export function CpuFoundrySim() {
   const [isInvestorFrameOpen, setIsInvestorFrameOpen] = useState(false);
   const [isNewsFrameOpen, setIsNewsFrameOpen] = useState(false);
   const [isForbesFrameOpen, setIsForbesFrameOpen] = useState(false);
+  const [isCreateCompanyOpen, setIsCreateCompanyOpen] = useState(false);
+  const [createCompanyDraft, setCreateCompanyDraft] = useState({ name: '', percent: 12 });
   const [investorFrameCompanyKey, setInvestorFrameCompanyKey] = useState<CompanyKey>('cosmic');
   const [focusedCompanyKey, setFocusedCompanyKey] = useState<CompanyKey | null>(null);
   const [focusedPlanKey, setFocusedPlanKey] = useState<CompanyKey | null>(null);
@@ -307,6 +313,7 @@ export function CpuFoundrySim() {
           };
           return acc;
         }, {} as Record<CompanyKey, CompanyEstablishmentPlan>),
+        communityPlans: (parsed.communityPlans ?? []) as CommunityCompanyPlan[],
         npcs: parsed.npcs.map((npc) => ({
           ...npc,
           strategy: npc.strategy ?? 'balanced',
@@ -406,6 +413,7 @@ export function CpuFoundrySim() {
     setIsInvestorFrameOpen(false);
     setIsNewsFrameOpen(false);
     setIsForbesFrameOpen(false);
+    setIsCreateCompanyOpen(false);
     setFocusedCompanyKey(null);
     setFocusedPlanKey(null);
   };
@@ -415,6 +423,7 @@ export function CpuFoundrySim() {
   const focusedPlan = game && focusedPlanKey ? game.plans[focusedPlanKey] : null;
   const establishedCompanies = game ? COMPANY_KEYS.filter((key) => game.companies[key].isEstablished).map((key) => game.companies[key]) : [];
   const openPlans = game ? COMPANY_KEYS.filter((key) => !game.plans[key].isEstablished).map((key) => game.plans[key]) : [];
+  const communityPlans = game ? game.communityPlans : [];
   const formatCurrencyCompact = (valueInMillions: number, decimals = 2) => `$ ${formatMoneyCompact(valueInMillions, decimals)}`;
   const newsItems = useMemo(() => {
     if (!game) return [];
@@ -575,7 +584,9 @@ export function CpuFoundrySim() {
     setIsInvestorFrameOpen(false);
     setIsNewsFrameOpen(false);
     setIsForbesFrameOpen(false);
+    setIsCreateCompanyOpen(false);
     setFocusedCompanyKey(null);
+    setFocusedPlanKey(null);
   };
 
   const openCompaniesFrame = () => {
@@ -620,6 +631,20 @@ export function CpuFoundrySim() {
     }
     setGame(next);
     setStatusMessage(`Kamu berkomitmen ${formatCurrencyCompact(contribution, 2)} ke plan pendirian ${next.plans[companyKey].companyName}.`);
+  };
+
+  const createCompanyPlanByPlayer = () => {
+    if (!game) return;
+    const contribution = clamp(game.player.cash * (createCompanyDraft.percent / 100), 0, game.player.cash);
+    const next = createCommunityCompanyPlan(game, game.player.id, createCompanyDraft.name, contribution);
+    if (next === game) {
+      setStatusMessage(`Plan gagal dibuat. Pastikan nama unik, modal cukup, dan total perusahaan aktif belum mencapai ${MAX_ACTIVE_COMPANIES}.`);
+      return;
+    }
+    setGame(next);
+    setIsCreateCompanyOpen(false);
+    setCreateCompanyDraft({ name: '', percent: 12 });
+    setStatusMessage(`Plan ${createCompanyDraft.name.trim()} berhasil dibuat. Dana awal ${formatCurrencyCompact(contribution, 2)} disalurkan.`);
   };
 
   const investInCompany = () => {
@@ -1141,6 +1166,9 @@ export function CpuFoundrySim() {
                   <button type="button" className={styles.primaryButton} onClick={openCompaniesFrame}>
                     Companies
                   </button>
+                  <button type="button" className={styles.secondaryButton} onClick={() => { closeTransientLayers(); setIsCreateCompanyOpen(true); }}>
+                    Create a company
+                  </button>
                   <button type="button" className={styles.secondaryButton} onClick={() => { closeTransientLayers(); setIsInvestmentMenuOpen(true); }}>
                     Beli / jual saham
                   </button>
@@ -1187,6 +1215,41 @@ export function CpuFoundrySim() {
           </section>
         </section>
       </main>
+
+      {isCreateCompanyOpen && game ? (
+        <div className={styles.modalOverlay} role="presentation" onClick={() => setIsCreateCompanyOpen(false)}>
+          <section className={styles.modalCard} role="dialog" aria-modal="true" aria-label="Create company plan" onClick={(event) => event.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <div>
+                <p className={styles.panelTag}>Create a company</p>
+                <h2>Buka plan pendirian perusahaan</h2>
+              </div>
+              <button type="button" className={styles.closeButton} onClick={() => setIsCreateCompanyOpen(false)} aria-label="Tutup create company">
+                ✕
+              </button>
+            </div>
+            <div className={styles.modalBody}>
+              <label className={styles.field}>
+                <span>Company name</span>
+                <input value={createCompanyDraft.name} onChange={(event) => setCreateCompanyDraft((current) => ({ ...current, name: event.target.value }))} placeholder="Contoh: Aurora Logic" />
+              </label>
+              <label className={styles.field}>
+                <span>Personal funds disalurkan (%)</span>
+                <input type="range" min={5} max={45} step={1} value={createCompanyDraft.percent} onChange={(event) => setCreateCompanyDraft((current) => ({ ...current, percent: Number(event.target.value) }))} />
+              </label>
+              <div className={styles.memoCard}>
+                <p className={styles.panelTag}>Preview</p>
+                <p>
+                  Dana awal pendiri: {formatCurrencyCompact(game.player.cash * (createCompanyDraft.percent / 100), 2)} · Batas perusahaan aktif: {MAX_ACTIVE_COMPANIES}.
+                </p>
+              </div>
+              <button type="button" className={styles.primaryButton} onClick={createCompanyPlanByPlayer}>
+                Buat plan sekarang
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
 
       {isCompaniesFrameOpen ? (
         <div className={styles.screenFrameOverlay} role="presentation" onClick={() => setIsCompaniesFrameOpen(false)}>
@@ -1243,6 +1306,38 @@ export function CpuFoundrySim() {
                       <p className={styles.itemDescription}>Tekan kartu untuk membuka full frame detail plan pendirian perusahaan.</p>
                     </article>
                   </button>
+                ))}
+                {communityPlans.map((plan) => (
+                  <article key={plan.id} className={styles.companyCard}>
+                    <div className={styles.itemTop}>
+                      <div>
+                        <p className={styles.itemLabel}>Open Market Plan</p>
+                        <h3>{plan.companyName}</h3>
+                      </div>
+                      <span className={styles.costPill}>{plan.status}</span>
+                    </div>
+                    <div className={styles.infoRowCompact}>
+                      <div>
+                        <span>Capital</span>
+                        <strong>{formatCurrencyCompact(plan.pledgedCapital, 2)}</strong>
+                      </div>
+                      <div>
+                        <span>Investors</span>
+                        <strong>{formatNumber(plan.investorIds.length)}</strong>
+                      </div>
+                      <div>
+                        <span>Kompetitor target</span>
+                        <strong>{plan.competesWith}</strong>
+                      </div>
+                    </div>
+                    {plan.status === 'funding' ? (
+                      <div className={styles.actionRow}>
+                        <button type="button" className={styles.secondaryButton} onClick={() => game && setGame(investInCommunityPlan(game, game.player.id, plan.id, clamp(game.player.cash * 0.04, MIN_TRADE_AMOUNT, game.player.cash)))}>
+                          Invest 4% cash
+                        </button>
+                      </div>
+                    ) : null}
+                  </article>
                 ))}
                 {companyCards.map(({ company, playerOwnership, sharePrice, companyValue }) => (
                   <button key={company.key} type="button" className={styles.companyCardButton} onClick={() => openCompanyDetail(company.key, 'companies')}>

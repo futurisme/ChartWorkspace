@@ -153,8 +153,23 @@ export type GameState = {
   player: PlayerProfile;
   companies: Record<CompanyKey, CompanyState>;
   plans: Record<CompanyKey, CompanyEstablishmentPlan>;
+  communityPlans: CommunityCompanyPlan[];
   npcs: NpcInvestor[];
   activityFeed: string[];
+};
+
+export type CommunityCompanyPlan = {
+  id: string;
+  companyName: string;
+  founderId: string;
+  founderName: string;
+  startDay: number;
+  dueDay: number;
+  targetCapital: number;
+  pledgedCapital: number;
+  investorIds: string[];
+  status: 'funding' | 'established' | 'expired';
+  competesWith: string;
 };
 
 export type PlanInvestorPledge = {
@@ -268,6 +283,7 @@ export const COMPANY_TRADE_FEE_RATE = 0.018;
 export const HOLDER_TRADE_FEE_RATE = 0.052;
 export const MIN_TRADE_AMOUNT = 0.1;
 export const PLAN_DURATION_DAYS = 30;
+export const MAX_ACTIVE_COMPANIES = 8;
 export const COMPANY_KEYS: CompanyKey[] = ['cosmic', 'rmd', 'heroscop'];
 export const TRANSACTION_SLIDER_STOPS: SliderStop[] = [
   { label: '0%', value: 0 },
@@ -1902,6 +1918,7 @@ export function createInitialGameState(profile: ProfileDraft): GameState {
     },
     companies,
     plans,
+    communityPlans: [],
     npcs,
     activityFeed: [
       `01/01/00: Profil ${profile.name.trim() || 'Player'} dibuat dengan modal awal $${formatMoneyCompact(PLAYER_STARTING_CASH)}.`,
@@ -2046,6 +2063,91 @@ export function progressCompanyPlans(game: GameState) {
       },
       activityFeed: addFeedEntry(next.activityFeed, `${formatDateFromDays(next.elapsedDays)}: ${plan.companyName} resmi berdiri dengan modal awal ${formatMoneyCompact(plan.pledgedCapital, 2)}.`),
     };
+  });
+  return next;
+}
+
+function getActiveCompanyCount(game: GameState) {
+  const baseEstablished = COMPANY_KEYS.filter((key) => game.companies[key].isEstablished).length;
+  const communityEstablished = game.communityPlans.filter((plan) => plan.status === 'established').length;
+  return baseEstablished + communityEstablished;
+}
+
+export function createCommunityCompanyPlan(game: GameState, founderId: string, companyNameRaw: string, founderContribution: number) {
+  const companyName = companyNameRaw.trim().replace(/\s+/g, ' ');
+  if (!companyName || companyName.length < 3) return game;
+  if (game.communityPlans.some((plan) => plan.companyName.toLowerCase() === companyName.toLowerCase() && plan.status !== 'expired')) return game;
+  if (getActiveCompanyCount(game) >= MAX_ACTIVE_COMPANIES) return game;
+  const activeFundingPlans = game.communityPlans.filter((plan) => plan.status === 'funding').length;
+  if (activeFundingPlans >= Math.max(1, MAX_ACTIVE_COMPANIES - getActiveCompanyCount(game))) return game;
+  const founderCash = getInvestorCash(game, founderId);
+  const contribution = clamp(founderContribution, 0, founderCash);
+  if (contribution < 6) return game;
+  const competeTarget = (Object.values(game.companies) as CompanyState[])
+    .filter((company) => company.isEstablished)
+    .sort((left, right) => right.marketShare - left.marketShare)[0]?.name ?? 'pasar umum';
+  const targetCapital = Math.max(24, contribution * 2.6);
+  const plan: CommunityCompanyPlan = {
+    id: `community-${Math.floor(game.elapsedDays)}-${companyName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+    companyName,
+    founderId,
+    founderName: investorDisplayName(game, founderId),
+    startDay: game.elapsedDays,
+    dueDay: game.elapsedDays + PLAN_DURATION_DAYS,
+    targetCapital,
+    pledgedCapital: contribution,
+    investorIds: [founderId],
+    status: 'funding',
+    competesWith: competeTarget,
+  };
+  const next = applyCashToInvestor({ ...game, communityPlans: [plan, ...game.communityPlans] }, founderId, -contribution);
+  return {
+    ...next,
+    activityFeed: addFeedEntry(next.activityFeed, `${formatDateFromDays(next.elapsedDays)}: ${plan.founderName} membuka plan pendirian ${plan.companyName} untuk menantang ${plan.competesWith}.`),
+  };
+}
+
+export function investInCommunityPlan(game: GameState, investorId: string, planId: string, amount: number) {
+  const planIndex = game.communityPlans.findIndex((plan) => plan.id === planId && plan.status === 'funding');
+  if (planIndex < 0) return game;
+  const investorCash = getInvestorCash(game, investorId);
+  const contribution = clamp(amount, 0, investorCash);
+  if (contribution < MIN_TRADE_AMOUNT) return game;
+  const plan = game.communityPlans[planIndex];
+  const updatedPlan: CommunityCompanyPlan = {
+    ...plan,
+    pledgedCapital: plan.pledgedCapital + contribution,
+    investorIds: plan.investorIds.includes(investorId) ? plan.investorIds : [...plan.investorIds, investorId],
+  };
+  const nextPlans = [...game.communityPlans];
+  nextPlans[planIndex] = updatedPlan;
+  const next = applyCashToInvestor({ ...game, communityPlans: nextPlans }, investorId, -contribution);
+  return {
+    ...next,
+    activityFeed: addFeedEntry(next.activityFeed, `${formatDateFromDays(next.elapsedDays)}: ${investorDisplayName(next, investorId)} menambah ${formatMoneyCompact(contribution, 2)} ke plan ${plan.companyName}.`),
+  };
+}
+
+export function progressCommunityPlans(game: GameState) {
+  if (game.communityPlans.length === 0) return game;
+  let changed = false;
+  const nextPlans = game.communityPlans.map((plan) => {
+    if (plan.status !== 'funding' || game.elapsedDays < plan.dueDay) return plan;
+    changed = true;
+    if (plan.pledgedCapital >= plan.targetCapital * 0.6 && getActiveCompanyCount(game) < MAX_ACTIVE_COMPANIES) {
+      return { ...plan, status: 'established' as const };
+    }
+    return { ...plan, status: 'expired' as const };
+  });
+  if (!changed) return game;
+  const establishedNow = nextPlans.filter((plan, idx) => plan.status === 'established' && game.communityPlans[idx].status === 'funding');
+  const expiredNow = nextPlans.filter((plan, idx) => plan.status === 'expired' && game.communityPlans[idx].status === 'funding');
+  let next = { ...game, communityPlans: nextPlans };
+  establishedNow.forEach((plan) => {
+    next.activityFeed = addFeedEntry(next.activityFeed, `${formatDateFromDays(next.elapsedDays)}: ${plan.companyName} resmi berdiri dan mulai menantang ${plan.competesWith}.`);
+  });
+  expiredNow.forEach((plan) => {
+    next.activityFeed = addFeedEntry(next.activityFeed, `${formatDateFromDays(next.elapsedDays)}: Plan ${plan.companyName} gagal mencapai modal minimum dan ditutup.`);
   });
   return next;
 }
@@ -2337,6 +2439,29 @@ export function maybeGenerateMoreNpcs(current: GameState) {
   };
 }
 
+export function runNpcCommunityPlanning(current: GameState) {
+  let next = current;
+  next.npcs.forEach((npc) => {
+    const founderChance = npc.boldness * 0.22 + npc.intelligence * 0.18;
+    const seed = createSeededRandom(`${npc.id}-${Math.floor(next.elapsedDays)}-community`);
+    if (seed() < founderChance && getActiveCompanyCount(next) < MAX_ACTIVE_COMPANIES) {
+      const contribution = clamp(npc.cash * (0.08 + npc.boldness * 0.12), 0, 24);
+      if (contribution >= 8) {
+        const candidateName = `${randomFrom(seed, NPC_FIRST_NAMES)} ${randomFrom(seed, NPC_LAST_NAMES)} Labs`;
+        next = createCommunityCompanyPlan(next, npc.id, candidateName, contribution);
+      }
+    }
+    const openFunding = next.communityPlans.filter((plan) => plan.status === 'funding' && plan.founderId !== npc.id);
+    if (openFunding.length === 0) return;
+    const selected = openFunding[Math.floor(seed() * openFunding.length)];
+    const contribution = clamp(npc.cash * (0.02 + npc.intelligence * 0.04), 0, 7.5);
+    if (contribution >= MIN_TRADE_AMOUNT) {
+      next = investInCommunityPlan(next, npc.id, selected.id, contribution);
+    }
+  });
+  return next;
+}
+
 export function simulateTick(current: GameState) {
   const tickDays = TICK_MS / 1000;
   const nextElapsedDays = current.elapsedDays + tickDays;
@@ -2436,6 +2561,8 @@ export function simulateTick(current: GameState) {
 
   if (reachedNewDay) {
     nextState = progressCompanyPlans(nextState);
+    nextState = progressCommunityPlans(nextState);
+    nextState = runNpcCommunityPlanning(nextState);
     nextState = progressBoardVotes(nextState);
     nextState = maybeGenerateMoreNpcs(nextState);
   }
