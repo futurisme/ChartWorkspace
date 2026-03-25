@@ -268,7 +268,7 @@ export type CompanyAiAction = {
   forceImmediate?: boolean;
 };
 
-export const STORAGE_KEY = 'cpu-foundry-profile-sim-v9';
+export const STORAGE_KEY = 'cpu-foundry-profile-sim-v10';
 export const TICK_MS = 200;
 export const START_DATE_UTC = Date.UTC(2000, 0, 1);
 export const NPC_ACTION_EVERY_TICKS = 10;
@@ -1635,6 +1635,35 @@ export function createGenerativeNpcs(seed: string, count: number, offset = 0, ex
   });
 }
 
+export function createFounderNpc(
+  id: string,
+  name: string,
+  focusCompany: CompanyKey,
+  random: () => number,
+  existingIds: Set<string>
+): NpcInvestor {
+  const strategyPool: StrategyStyle[] = ['balanced', 'growth', 'value', 'activist', 'dividend'];
+  const selectedStrategy = randomFrom(random, strategyPool);
+  existingIds.add(id);
+  return {
+    id,
+    name,
+    persona: randomFrom(random, NPC_PERSONAS),
+    strategy: selectedStrategy,
+    cash: Math.round(randomBetween(random, 44, 128) * 100) / 100,
+    focusCompany,
+    boldness: Math.round(randomBetween(random, 0.58, 0.98) * 100) / 100,
+    patience: Math.round(randomBetween(random, 0.42, 0.9) * 100) / 100,
+    intelligence: Math.round(randomBetween(random, 0.78, 0.995) * 100) / 100,
+    horizonDays: randomInt(random, 180, 860),
+    reserveRatio: Math.round(randomBetween(random, 0.1, 0.28) * 100) / 100,
+    analysisNote: `${name} menyiapkan strategi pendirian dan akumulasi lintas emiten tanpa cheating.`,
+    active: true,
+    lastActionDay: -30,
+    convictionBias: Math.round(randomBetween(random, -0.06, 0.24) * 100) / 100,
+  };
+}
+
 export function createCompany(config: {
   key: CompanyKey;
   name: string;
@@ -1960,7 +1989,8 @@ export function resolveGovernance(game: GameState) {
 
 export function createInitialGameState(profile: ProfileDraft): GameState {
   const playerId = `player-${profile.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'neo'}`;
-  const random = createSeededRandom(`${profile.name.trim()}-genesis`);
+  const worldSeed = `${profile.name.trim()}-genesis-${Date.now()}-${Math.random()}`;
+  const random = createSeededRandom(worldSeed);
   const usedFounderNames = new Set<string>();
   const usedFounderFirstNames = new Set<string>();
   const usedFounderLastNames = new Set<string>();
@@ -2107,8 +2137,18 @@ export function createInitialGameState(profile: ProfileDraft): GameState {
     venture8: { companyKey: 'venture8', companyName: companies.venture8.name, founderInvestorId: 'founder_venture8', founderName: companies.venture8.founder, startDay: 0, dueDay: 0, targetCapital: 0, pledgedCapital: 0, pledges: [], isEstablished: true },
   } satisfies Record<CompanyKey, CompanyEstablishmentPlan>;
 
-  const npcSeed = `${profile.name.trim()}-${Date.now()}-${Math.random()}`;
-  const npcs = createGenerativeNpcs(npcSeed, INITIAL_NPC_COUNT);
+  const npcSeed = `${worldSeed}-market`;
+  const generatedNpcs = createGenerativeNpcs(npcSeed, INITIAL_NPC_COUNT);
+  const founderRandom = createSeededRandom(`${worldSeed}-founders`);
+  const existingNpcIds = new Set<string>(generatedNpcs.map((npc) => npc.id));
+  const founderNpcs = CORE_COMPANY_KEYS.map((key) => createFounderNpc(
+    companies[key].founderInvestorId,
+    companies[key].founder,
+    key,
+    founderRandom,
+    existingNpcIds
+  ));
+  const npcs = [...founderNpcs, ...generatedNpcs];
 
   npcs.forEach((npc) => {
     npc.analysisNote = `${npc.name} mulai agresif menilai valuasi, arus kas, kualitas manajemen, dan momentum riset untuk membangun posisi besar lintas perusahaan.`;
@@ -2130,7 +2170,7 @@ export function createInitialGameState(profile: ProfileDraft): GameState {
     npcs,
     activityFeed: [
       `01/01/00: Profil ${profile.name.trim() || 'Player'} dibuat dengan modal awal $${formatMoneyCompact(PLAYER_STARTING_CASH)}.`,
-      `01/01/00: 20 AI NPC aktif dibangkitkan dengan strategi value, growth, dividend, activist, dan balanced.`,
+      `01/01/00: ${npcs.length} AI NPC aktif dibangkitkan (termasuk para founder) dengan strategi value, growth, dividend, activist, dan balanced.`,
       `01/01/00: Belum ada perusahaan aktif. Semua entitas masih fase Company Establishment Plan selama 30 hari.`,
       `01/01/00: Dewan direksi akan aktif penuh setelah perusahaan benar-benar berdiri.`,
     ],
