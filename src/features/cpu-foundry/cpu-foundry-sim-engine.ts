@@ -117,6 +117,8 @@ export type CompanyState = {
   activeBoardVote: BoardVoteState | null;
   boardVoteWindowStartDay: number;
   boardVoteCountInWindow: number;
+  isEstablished: boolean;
+  establishedDay: number | null;
 };
 
 export type PlayerProfile = {
@@ -150,8 +152,28 @@ export type GameState = {
   tickCount: number;
   player: PlayerProfile;
   companies: Record<CompanyKey, CompanyState>;
+  plans: Record<CompanyKey, CompanyEstablishmentPlan>;
   npcs: NpcInvestor[];
   activityFeed: string[];
+};
+
+export type PlanInvestorPledge = {
+  investorId: string;
+  amount: number;
+  pledgedDay: number;
+};
+
+export type CompanyEstablishmentPlan = {
+  companyKey: CompanyKey;
+  companyName: string;
+  founderInvestorId: string;
+  founderName: string;
+  startDay: number;
+  dueDay: number;
+  targetCapital: number;
+  pledgedCapital: number;
+  pledges: PlanInvestorPledge[];
+  isEstablished: boolean;
 };
 
 export type ProfileDraft = {
@@ -245,6 +267,7 @@ export const INITIAL_FOUNDER_OWNERSHIP_RATIO = 0.52;
 export const COMPANY_TRADE_FEE_RATE = 0.018;
 export const HOLDER_TRADE_FEE_RATE = 0.052;
 export const MIN_TRADE_AMOUNT = 0.1;
+export const PLAN_DURATION_DAYS = 30;
 export const COMPANY_KEYS: CompanyKey[] = ['cosmic', 'rmd', 'heroscop'];
 export const TRANSACTION_SLIDER_STOPS: SliderStop[] = [
   { label: '0%', value: 0 },
@@ -1526,6 +1549,8 @@ export function createCompany(config: {
       activeBoardVote: null,
       boardVoteWindowStartDay: 0,
       boardVoteCountInWindow: 0,
+      isEstablished: true,
+      establishedDay: 0,
     } satisfies CompanyState,
   };
 }
@@ -1620,6 +1645,9 @@ export function getCandidateLeadershipScore(company: CompanyState, candidateId: 
 export function resolveGovernance(game: GameState) {
   const companies = Object.fromEntries(
     (Object.entries(game.companies) as [CompanyKey, CompanyState][]).map(([key, company]) => {
+      if (!company.isEstablished) {
+        return [key, company];
+      }
       const ranked = Object.entries(company.investors)
         .filter(([, shares]) => shares > 0.01)
         .sort(([, left], [, right]) => right - left);
@@ -1811,10 +1839,49 @@ export function createInitialGameState(profile: ProfileDraft): GameState {
   });
 
   const companies = {
-    cosmic: cosmic.company,
-    rmd: rmd.company,
-    heroscop: heroscop.company,
+    cosmic: { ...cosmic.company, isEstablished: false, establishedDay: null, cash: 0, research: 0, marketShare: 0, reputation: 0, releaseCount: 0, revenuePerDay: 0, researchPerDay: 0, payoutRatio: 0.08, dividendPerShare: 0 },
+    rmd: { ...rmd.company, isEstablished: false, establishedDay: null, cash: 0, research: 0, marketShare: 0, reputation: 0, releaseCount: 0, revenuePerDay: 0, researchPerDay: 0, payoutRatio: 0.08, dividendPerShare: 0 },
+    heroscop: { ...heroscop.company, isEstablished: false, establishedDay: null, cash: 0, research: 0, marketShare: 0, reputation: 0, releaseCount: 0, revenuePerDay: 0, researchPerDay: 0, payoutRatio: 0.08, dividendPerShare: 0 },
   } satisfies Record<CompanyKey, CompanyState>;
+
+  const plans = {
+    cosmic: {
+      companyKey: 'cosmic',
+      companyName: companies.cosmic.name,
+      founderInvestorId: companies.cosmic.founderInvestorId,
+      founderName: companies.cosmic.founder,
+      startDay: 0,
+      dueDay: PLAN_DURATION_DAYS,
+      targetCapital: 140,
+      pledgedCapital: 44,
+      pledges: [{ investorId: companies.cosmic.founderInvestorId, amount: 44, pledgedDay: 0 }],
+      isEstablished: false,
+    },
+    rmd: {
+      companyKey: 'rmd',
+      companyName: companies.rmd.name,
+      founderInvestorId: companies.rmd.founderInvestorId,
+      founderName: companies.rmd.founder,
+      startDay: 0,
+      dueDay: PLAN_DURATION_DAYS,
+      targetCapital: 132,
+      pledgedCapital: 38,
+      pledges: [{ investorId: companies.rmd.founderInvestorId, amount: 38, pledgedDay: 0 }],
+      isEstablished: false,
+    },
+    heroscop: {
+      companyKey: 'heroscop',
+      companyName: companies.heroscop.name,
+      founderInvestorId: companies.heroscop.founderInvestorId,
+      founderName: companies.heroscop.founder,
+      startDay: 0,
+      dueDay: PLAN_DURATION_DAYS,
+      targetCapital: 128,
+      pledgedCapital: 36,
+      pledges: [{ investorId: companies.heroscop.founderInvestorId, amount: 36, pledgedDay: 0 }],
+      isEstablished: false,
+    },
+  } satisfies Record<CompanyKey, CompanyEstablishmentPlan>;
 
   const npcSeed = `${profile.name.trim()}-${Date.now()}-${Math.random()}`;
   const npcs = createGenerativeNpcs(npcSeed, INITIAL_NPC_COUNT);
@@ -1834,12 +1901,13 @@ export function createInitialGameState(profile: ProfileDraft): GameState {
       selectedCompany: profile.selectedCompany,
     },
     companies,
+    plans,
     npcs,
     activityFeed: [
       `01/01/00: Profil ${profile.name.trim() || 'Player'} dibuat dengan modal awal $${formatMoneyCompact(PLAYER_STARTING_CASH)}.`,
       `01/01/00: 20 AI NPC aktif dibangkitkan dengan strategi value, growth, dividend, activist, dan balanced.`,
-      `01/01/00: Dewan direksi 7 kursi aktif di tiap perusahaan untuk memilih CEO secara dinamis.`,
-      `01/01/00: Semua perusahaan mulai dari valuasi rendah, kas terbatas, dan free float tipis sehingga setiap suntikan modal terasa nyata.`,
+      `01/01/00: Belum ada perusahaan aktif. Semua entitas masih fase Company Establishment Plan selama 30 hari.`,
+      `01/01/00: Dewan direksi akan aktif penuh setelah perusahaan benar-benar berdiri.`,
     ],
   });
 }
@@ -1906,6 +1974,80 @@ export function applyCashToInvestor(game: GameState, investorId: string, amount:
     ...game,
     npcs: game.npcs.map((npc) => (npc.id === investorId ? { ...npc, cash: npc.cash + amount } : npc)),
   };
+}
+
+export function investInCompanyPlan(game: GameState, investorId: string, companyKey: CompanyKey, amount: number) {
+  const plan = game.plans[companyKey];
+  if (!plan || plan.isEstablished || amount <= 0) return game;
+  const investorCash = getInvestorCash(game, investorId);
+  const contribution = clamp(amount, 0, investorCash);
+  if (contribution < MIN_TRADE_AMOUNT) return game;
+
+  const next = applyCashToInvestor(
+    {
+      ...game,
+      plans: {
+        ...game.plans,
+        [companyKey]: {
+          ...plan,
+          pledgedCapital: plan.pledgedCapital + contribution,
+          pledges: [...plan.pledges, { investorId, amount: contribution, pledgedDay: game.elapsedDays }],
+        },
+      },
+    },
+    investorId,
+    -contribution
+  );
+  return {
+    ...next,
+    activityFeed: addFeedEntry(next.activityFeed, `${formatDateFromDays(next.elapsedDays)}: ${investorDisplayName(next, investorId)} berkomitmen ${formatMoneyCompact(contribution, 2)} ke plan pendirian ${plan.companyName}.`),
+  };
+}
+
+export function progressCompanyPlans(game: GameState) {
+  let next = game;
+  COMPANY_KEYS.forEach((key) => {
+    const plan = next.plans[key];
+    if (!plan || plan.isEstablished || next.elapsedDays < plan.dueDay) return;
+    const company = next.companies[key];
+    const establishedCompany: CompanyState = {
+      ...company,
+      isEstablished: true,
+      establishedDay: next.elapsedDays,
+      cash: Math.max(18, plan.pledgedCapital * 0.78),
+      research: Math.max(14, plan.pledgedCapital * 0.42),
+      marketShare: Math.max(2.5, plan.pledgedCapital / 22),
+      reputation: Math.max(8, 6 + plan.pledgedCapital / 12),
+      releaseCount: 1,
+      revenuePerDay: Math.max(2.2, plan.pledgedCapital / 18),
+      researchPerDay: Math.max(1.4, plan.pledgedCapital / 28),
+      payoutRatio: 0.1,
+      dividendPerShare: 0.01,
+    };
+    const planInvestors = new Map<string, number>();
+    plan.pledges.forEach((pledge) => {
+      planInvestors.set(pledge.investorId, (planInvestors.get(pledge.investorId) ?? 0) + pledge.amount);
+    });
+    const totalPledge = Math.max(1, plan.pledgedCapital);
+    const investors = { ...establishedCompany.investors };
+    planInvestors.forEach((pledged, investorId) => {
+      const shares = Math.max(0, Math.round((pledged / totalPledge) * establishedCompany.marketPoolShares * 100) / 100);
+      if (shares > 0) investors[investorId] = (investors[investorId] ?? 0) + shares;
+    });
+    next = {
+      ...next,
+      companies: {
+        ...next.companies,
+        [key]: { ...establishedCompany, investors },
+      },
+      plans: {
+        ...next.plans,
+        [key]: { ...plan, isEstablished: true },
+      },
+      activityFeed: addFeedEntry(next.activityFeed, `${formatDateFromDays(next.elapsedDays)}: ${plan.companyName} resmi berdiri dengan modal awal ${formatMoneyCompact(plan.pledgedCapital, 2)}.`),
+    };
+  });
+  return next;
 }
 
 export function transactShares(current: GameState, investorId: string, companyKey: CompanyKey, mode: InvestorActionMode, requestedAmount: number, route: TradeRoute = 'auto') {
@@ -2177,8 +2319,12 @@ export function maybeGenerateMoreNpcs(current: GameState) {
     next.npcs.push(npc);
     const targetCompany = COMPANY_KEYS[index % COMPANY_KEYS.length];
     const budget = 28 + index * 3;
-    const result = transactShares(next, npc.id, targetCompany, 'buy', budget);
-    next = result.next;
+    if (next.companies[targetCompany].isEstablished) {
+      const result = transactShares(next, npc.id, targetCompany, 'buy', budget);
+      next = result.next;
+    } else {
+      next = investInCompanyPlan(next, npc.id, targetCompany, Math.min(budget * 0.25, 10));
+    }
     const addedNpc = next.npcs.find((entry) => entry.id === npc.id);
     if (addedNpc) {
       addedNpc.analysisNote = `NPC generasi lanjutan masuk ke pasar ${next.companies[targetCompany].name} setelah tanggal ${formatDateFromDays(next.elapsedDays)}.`;
@@ -2203,6 +2349,9 @@ export function simulateTick(current: GameState) {
 
   const companies = Object.fromEntries(
     (Object.entries(governedCurrent.companies) as [CompanyKey, CompanyState][]).map(([key, governedCompany]) => {
+      if (!governedCompany.isEstablished) {
+        return [key, governedCompany];
+      }
       const retentionProfit = governedCompany.revenuePerDay * 0.42 * (1 - governedCompany.payoutRatio);
       const dividendPoolPerDay = governedCompany.dividendPerShare * governedCompany.sharesOutstanding;
       const passiveMarketDelta = governedCompany.teams.marketing.count * 0.016 + governedCompany.teams.fabrication.count * 0.011 + governedCompany.boardMood * 0.006;
@@ -2286,6 +2435,7 @@ export function simulateTick(current: GameState) {
   }
 
   if (reachedNewDay) {
+    nextState = progressCompanyPlans(nextState);
     nextState = progressBoardVotes(nextState);
     nextState = maybeGenerateMoreNpcs(nextState);
   }
@@ -2851,6 +3001,7 @@ export function runNpcChiefExecutiveTurn(current: GameState) {
 
   COMPANY_KEYS.forEach((companyKey) => {
     const company = next.companies[companyKey];
+    if (!company.isEstablished) return;
     const ceoNpcRecord = getNpcById(next, company.ceoId);
     const ceoNpc = getExecutiveAiActor(next, company, company.ceoId);
     const releasePressure = getNpcReleasePressure(next, ceoNpc, company);
@@ -3060,6 +3211,20 @@ export function manageNpcShareListing(current: GameState, npc: NpcInvestor, targ
 
 export function runNpcTurn(current: GameState) {
   let next = { ...current, companies: { ...current.companies }, npcs: current.npcs.map((npc) => ({ ...npc })) };
+  const establishedCompanyKeys = COMPANY_KEYS.filter((key) => next.companies[key].isEstablished);
+  if (establishedCompanyKeys.length === 0) {
+    next.npcs.forEach((npc, index) => {
+      const planTargets = COMPANY_KEYS.filter((key) => !next.plans[key].isEstablished);
+      if (planTargets.length === 0) return;
+      const targetKey = planTargets[index % planTargets.length];
+      const plan = next.plans[targetKey];
+      const budget = clamp(npc.cash * (0.05 + npc.intelligence * 0.06), 0, 8.5);
+      if (budget < MIN_TRADE_AMOUNT) return;
+      next = investInCompanyPlan(next, npc.id, targetKey, budget);
+      npc.analysisNote = `${npc.name} mendukung plan pendirian ${plan.companyName} agar perusahaan lahir dengan kas awal yang sehat.`;
+    });
+    return next;
+  }
 
   next.npcs.forEach((npc) => {
     const decisionRandom = createSeededRandom(`${npc.id}-${Math.floor(next.elapsedDays)}-${Math.floor(next.tickCount / NPC_ACTION_EVERY_TICKS)}`);
@@ -3072,7 +3237,7 @@ export function runNpcTurn(current: GameState) {
       return;
     }
 
-    const analyses = (COMPANY_KEYS.map((key) => [key, next.companies[key]]) as [CompanyKey, CompanyState][])
+    const analyses = (establishedCompanyKeys.map((key) => [key, next.companies[key]]) as [CompanyKey, CompanyState][])
       .map(([key, company]) => ({
         key,
         company,

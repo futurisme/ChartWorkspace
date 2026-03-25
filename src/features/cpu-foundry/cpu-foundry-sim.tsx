@@ -33,6 +33,8 @@ import type {
   TradePreview,
   NewsCategory,
   CompanyAiAction
+  ,
+  CompanyEstablishmentPlan
 } from './cpu-foundry-sim-engine';
 
 const {
@@ -174,6 +176,8 @@ const {
   chooseNpcListingMultiplier,
   manageNpcShareListing,
   runNpcTurn
+  ,
+  investInCompanyPlan
 } = Engine;
 
 export function CpuFoundrySim() {
@@ -193,6 +197,7 @@ export function CpuFoundrySim() {
   const [isForbesFrameOpen, setIsForbesFrameOpen] = useState(false);
   const [investorFrameCompanyKey, setInvestorFrameCompanyKey] = useState<CompanyKey>('cosmic');
   const [focusedCompanyKey, setFocusedCompanyKey] = useState<CompanyKey | null>(null);
+  const [focusedPlanKey, setFocusedPlanKey] = useState<CompanyKey | null>(null);
   const [newsCompanyFilter, setNewsCompanyFilter] = useState<'all' | CompanyKey>('all');
   const [companyDetailBackTarget, setCompanyDetailBackTarget] = useState<'game' | 'companies' | 'investor' | 'news' | 'forbes'>('companies');
   const pausedRef = useRef(false);
@@ -287,6 +292,23 @@ export function CpuFoundrySim() {
             },
           ])
         ) as Record<CompanyKey, CompanyState>,
+        plans: parsed.plans ?? (Object.fromEntries(
+          COMPANY_KEYS.map((key) => [
+            key,
+            {
+              companyKey: key,
+              companyName: parsed.companies[key].name,
+              founderInvestorId: parsed.companies[key].founderInvestorId,
+              founderName: parsed.companies[key].founder,
+              startDay: 0,
+              dueDay: 0,
+              targetCapital: parsed.companies[key].cash,
+              pledgedCapital: parsed.companies[key].cash,
+              pledges: [],
+              isEstablished: true,
+            } satisfies CompanyEstablishmentPlan,
+          ])
+        ) as Record<CompanyKey, CompanyEstablishmentPlan>),
         npcs: parsed.npcs.map((npc) => ({
           ...npc,
           strategy: npc.strategy ?? 'balanced',
@@ -387,10 +409,14 @@ export function CpuFoundrySim() {
     setIsNewsFrameOpen(false);
     setIsForbesFrameOpen(false);
     setFocusedCompanyKey(null);
+    setFocusedPlanKey(null);
   };
 
   const activeCompany = game ? game.companies[game.player.selectedCompany] : null;
   const focusedCompany = game && focusedCompanyKey ? game.companies[focusedCompanyKey] : null;
+  const focusedPlan = game && focusedPlanKey ? game.plans[focusedPlanKey] : null;
+  const establishedCompanies = game ? COMPANY_KEYS.filter((key) => game.companies[key].isEstablished).map((key) => game.companies[key]) : [];
+  const openPlans = game ? COMPANY_KEYS.filter((key) => !game.plans[key].isEstablished).map((key) => game.plans[key]) : [];
   const formatCurrencyCompact = (valueInMillions: number, decimals = 2) => `$ ${formatMoneyCompact(valueInMillions, decimals)}`;
   const newsItems = useMemo(() => {
     if (!game) return [];
@@ -407,7 +433,7 @@ export function CpuFoundrySim() {
   }, [game, newsCompanyFilter]);
   const forbesList = useMemo(() => {
     if (!game) return [];
-    const buildEntry = (investorId: string) => {
+    const buildEntry = (investorId: string, forcedName?: string) => {
       const cash = getInvestorCash(game, investorId);
       const nonCash = COMPANY_KEYS.reduce((sum, key) => {
         const company = game.companies[key];
@@ -415,13 +441,17 @@ export function CpuFoundrySim() {
       }, 0);
       return {
         investorId,
-        name: investorDisplayName(game, investorId),
+        name: forcedName ?? investorDisplayName(game, investorId),
         cash,
         nonCash,
         total: cash + nonCash,
       };
     };
-    return [buildEntry(game.player.id), ...game.npcs.map((npc) => buildEntry(npc.id))]
+    const founderEntries = COMPANY_KEYS.map((key) => {
+      const company = game.companies[key];
+      return buildEntry(company.founderInvestorId, company.founder);
+    });
+    return [buildEntry(game.player.id), ...game.npcs.map((npc) => buildEntry(npc.id)), ...founderEntries]
       .sort((left, right) => right.total - left.total);
   }, [game]);
   const activePlayerBoardVote = useMemo(() => {
@@ -475,6 +505,7 @@ export function CpuFoundrySim() {
   const investmentPreview = useMemo(() => {
     if (!game) return null;
     const company = game.companies[investmentDraft.company];
+    if (!company.isEstablished) return null;
     const currentShares = company.investors[game.player.id] ?? 0;
     const maxTradeValue = getMaxTradeValue(game, company, game.player.id, game.player.cash, currentShares, investmentDraft.mode, investmentDraft.route);
     return getTradePreview(
@@ -491,7 +522,7 @@ export function CpuFoundrySim() {
   const companyCards = useMemo(
     () => {
       if (!game) return [];
-      return (Object.values(game.companies) as CompanyState[]).map((company) => ({
+      return (Object.values(game.companies) as CompanyState[]).filter((company) => company.isEstablished).map((company) => ({
         company,
         playerOwnership: getOwnershipPercent(company, game.player.id),
         sharePrice: getSharePrice(company),
@@ -503,6 +534,7 @@ export function CpuFoundrySim() {
   const investorRankings = useMemo(
     () => {
       if (!game) return [];
+      if (!game.companies[investorFrameCompanyKey].isEstablished) return [];
       return Object.entries(game.companies[investorFrameCompanyKey].investors)
         .map(([investorId, shares]) => ({
           investorId,
@@ -573,6 +605,23 @@ export function CpuFoundrySim() {
     else if (companyDetailBackTarget === 'investor') setIsInvestorFrameOpen(true);
     else if (companyDetailBackTarget === 'news') setIsNewsFrameOpen(true);
     else if (companyDetailBackTarget === 'forbes') setIsForbesFrameOpen(true);
+  };
+
+  const openPlanDetail = (companyKey: CompanyKey) => {
+    closeTransientLayers();
+    setFocusedPlanKey(companyKey);
+  };
+
+  const investInPlan = (companyKey: CompanyKey, ratio: number) => {
+    if (!game) return;
+    const contribution = clamp(game.player.cash * ratio, MIN_TRADE_AMOUNT, game.player.cash);
+    const next = investInCompanyPlan(game, game.player.id, companyKey, contribution);
+    if (next === game) {
+      setStatusMessage('Dana tidak cukup atau plan sudah selesai.');
+      return;
+    }
+    setGame(next);
+    setStatusMessage(`Kamu berkomitmen ${formatCurrencyCompact(contribution, 2)} ke plan pendirian ${next.plans[companyKey].companyName}.`);
   };
 
   const investInCompany = () => {
@@ -1126,13 +1175,13 @@ export function CpuFoundrySim() {
                     Buka News
                   </button>
                   <button type="button" className={styles.secondaryButton} onClick={() => setIsForbesFrameOpen(true)}>
-                    Buka Forbes
+                    Buka Richest People List
                   </button>
                 </div>
                 <div className={styles.memoCard}>
                   <p className={styles.panelTag}>Intel split frame</p>
                   <p>
-                    News memuat 5 berita terbaru (dengan filter perusahaan). Forbes memuat ranking kekayaan gabungan 35 AI NPC + 1 pemain.
+                    News memuat 5 berita terbaru (dengan filter perusahaan). Richest People List memuat ranking kekayaan gabungan semua orang (investor maupun non-investor).
                   </p>
                 </div>
               </div>
@@ -1147,7 +1196,7 @@ export function CpuFoundrySim() {
             <div className={styles.screenFrameHeader}>
               <div>
                 <p className={styles.panelTag}>Companies</p>
-                <h2>Pantau 3 perusahaan CPU</h2>
+                <h2>Plans & perusahaan CPU</h2>
               </div>
               <button type="button" className={styles.closeButton} onClick={() => setIsCompaniesFrameOpen(false)} aria-label="Tutup daftar perusahaan">
                 ✕
@@ -1157,10 +1206,46 @@ export function CpuFoundrySim() {
             <div className={styles.screenFrameBody}>
               <div className={styles.memoCard}>
                 <p className={styles.panelTag}>Instruksi</p>
-                <p>Tap perusahaan untuk cek valuasi, harga saham, dan ownership live.</p>
+                <p>
+                  {establishedCompanies.length > 0
+                    ? 'Tap perusahaan untuk cek valuasi, harga saham, dan ownership live.'
+                    : 'Belum ada perusahaan aktif. Buka Company Establishment Plan untuk membantu pendanaan awal hingga perusahaan resmi berdiri.'}
+                </p>
               </div>
 
               <div className={styles.companyList}>
+                {openPlans.map((plan) => (
+                  <button key={`plan-${plan.companyKey}`} type="button" className={styles.companyCardButton} onClick={() => openPlanDetail(plan.companyKey)}>
+                    <article className={styles.companyCard}>
+                      <div className={styles.itemTop}>
+                        <div>
+                          <p className={styles.itemLabel}>Company Establishment Plan</p>
+                          <h3>{plan.companyName}</h3>
+                        </div>
+                        <span className={styles.costPill}>1 bulan pendanaan</span>
+                      </div>
+                      <div className={styles.infoRowCompact}>
+                        <div>
+                          <span>Capital</span>
+                          <strong>{formatCurrencyCompact(plan.pledgedCapital, 2)}</strong>
+                        </div>
+                        <div>
+                          <span>Target</span>
+                          <strong>{formatCurrencyCompact(plan.targetCapital, 2)}</strong>
+                        </div>
+                        <div>
+                          <span>Jumlah investor</span>
+                          <strong>{formatNumber(new Set(plan.pledges.map((pledge) => pledge.investorId)).size)}</strong>
+                        </div>
+                        <div>
+                          <span>Sisa hari</span>
+                          <strong>{formatNumber(Math.max(0, plan.dueDay - game.elapsedDays), 0)}</strong>
+                        </div>
+                      </div>
+                      <p className={styles.itemDescription}>Tekan kartu untuk membuka full frame detail plan pendirian perusahaan.</p>
+                    </article>
+                  </button>
+                ))}
                 {companyCards.map(({ company, playerOwnership, sharePrice, companyValue }) => (
                   <button key={company.key} type="button" className={styles.companyCardButton} onClick={() => openCompanyDetail(company.key, 'companies')}>
                     <article className={styles.companyCard}>
@@ -1304,11 +1389,11 @@ export function CpuFoundrySim() {
 
       {isForbesFrameOpen ? (
         <div className={styles.screenFrameOverlay} role="presentation" onClick={() => setIsForbesFrameOpen(false)}>
-          <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label="Forbes frame" onClick={(event) => event.stopPropagation()}>
+          <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label="Richest people frame" onClick={(event) => event.stopPropagation()}>
             <div className={styles.screenFrameHeader}>
               <div>
-                <p className={styles.panelTag}>Forbes</p>
-                <h2>Investor terkaya dunia (35 AI + 1 pemain)</h2>
+                <p className={styles.panelTag}>Richest People List</p>
+                <h2>Orang terkaya dunia (AI + pemain + founder)</h2>
               </div>
               <button type="button" className={styles.closeButton} onClick={() => setIsForbesFrameOpen(false)} aria-label="Kembali dari forbes">
                 ←
@@ -1320,7 +1405,7 @@ export function CpuFoundrySim() {
                   <article key={entry.investorId} className={styles.itemCard}>
                     <div className={styles.itemTop}>
                       <div>
-                        <p className={styles.itemLabel}>Forbes #{index + 1}</p>
+                        <p className={styles.itemLabel}>Richest #{index + 1}</p>
                         <h3>{entry.name}</h3>
                       </div>
                       <span className={styles.costPill}>$ {formatMoneyCompact(entry.total, 2)}</span>
@@ -1417,6 +1502,61 @@ export function CpuFoundrySim() {
                   disabled={game.elapsedDays > activePlayerBoardVote.vote.endDay || !activePlayerBoardVoteMeta?.playerCanVote}
                 >
                   Tolak
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {focusedPlan && game ? (
+        <div className={styles.screenFrameOverlay} role="presentation" onClick={() => setFocusedPlanKey(null)}>
+          <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label={`Detail plan pendirian ${focusedPlan.companyName}`} onClick={(event) => event.stopPropagation()}>
+            <div className={styles.screenFrameHeader}>
+              <div>
+                <p className={styles.panelTag}>Company Establishment Plan</p>
+                <h2>{focusedPlan.companyName} full frame</h2>
+              </div>
+              <button type="button" className={styles.closeButton} onClick={() => setFocusedPlanKey(null)} aria-label="Tutup detail plan">
+                ✕
+              </button>
+            </div>
+            <div className={styles.screenFrameBody}>
+              <div className={styles.infoRow}>
+                <div>
+                  <span>Company Name</span>
+                  <strong>{focusedPlan.companyName}</strong>
+                </div>
+                <div>
+                  <span>Capital</span>
+                  <strong>{formatCurrencyCompact(focusedPlan.pledgedCapital, 2)}</strong>
+                </div>
+                <div>
+                  <span>Target Capital</span>
+                  <strong>{formatCurrencyCompact(focusedPlan.targetCapital, 2)}</strong>
+                </div>
+                <div>
+                  <span>Number of Investors</span>
+                  <strong>{formatNumber(new Set(focusedPlan.pledges.map((pledge) => pledge.investorId)).size)}</strong>
+                </div>
+                <div>
+                  <span>Sisa hari listing plan</span>
+                  <strong>{formatNumber(Math.max(0, focusedPlan.dueDay - game.elapsedDays), 0)} hari</strong>
+                </div>
+              </div>
+              <div className={styles.memoCard}>
+                <p className={styles.panelTag}>Tujuan plan</p>
+                <p>
+                  Plan ini dirancang untuk meyakinkan investor agar perusahaan lahir dengan modal kuat, bukan mulai dari kondisi miskin.
+                  Setelah masa listing 1 bulan selesai, plan akan otomatis membentuk perusahaan.
+                </p>
+              </div>
+              <div className={styles.actionRow}>
+                <button type="button" className={styles.secondaryButton} onClick={() => investInPlan(focusedPlan.companyKey, 0.08)} disabled={focusedPlan.isEstablished}>
+                  Invest 8% cash
+                </button>
+                <button type="button" className={styles.primaryButton} onClick={() => investInPlan(focusedPlan.companyKey, 0.2)} disabled={focusedPlan.isEstablished}>
+                  Invest 20% cash
                 </button>
               </div>
             </div>
