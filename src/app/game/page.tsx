@@ -1,5 +1,5 @@
-import { UnifiedGameField } from '@/features/game-field/unified-game-field';
+import { CpuFoundrySim } from '@/features/cpu-foundry/cpu-foundry-sim';
 
 export default function GamePage() {
-  return <UnifiedGameField />;
+  return <CpuFoundrySim />;
 }

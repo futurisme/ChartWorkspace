@@ -1243,9 +1243,9 @@ export function CpuFoundrySim() {
     return (
       <main className={styles.shell}>
         <section className={styles.loginCard}>
-          <p className={styles.eyebrow}>/game · profile login</p>
-          <h1>Investor CPU Life</h1>
-          <p className={styles.subtitle}>Buat profil lalu masuk ke pasar saham CPU yang selalu berjalan realtime.</p>
+          <p className={styles.eyebrow}>/game · unified cpu company gameplay</p>
+          <h1>CPU Company Simulator · Game Field</h1>
+          <p className={styles.subtitle}>Buat profil lalu mainkan satu gameplay terpadu: investor, manajemen perusahaan, dan rilis CPU realtime.</p>
 
           <label className={styles.field}>
             <span>Nama profil</span>
@@ -1295,7 +1295,7 @@ export function CpuFoundrySim() {
         <section className={styles.heroCard}>
           <div className={styles.heroHeader}>
             <div>
-              <p className={styles.eyebrow}>/game · semi life investor sim</p>
+              <p className={styles.eyebrow}>/game · unified cpu company gameplay</p>
               <h1>{game.player.name}</h1>
               <p className={styles.subtitle}>{game.player.background}</p>
             </div>
