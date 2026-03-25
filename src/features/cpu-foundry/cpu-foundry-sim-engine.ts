@@ -131,6 +131,7 @@ export type PlayerProfile = {
   background: string;
   cash: number;
   selectedCompany: CompanyKey;
+  companyType: 'cpu' | 'game';
 };
 
 export type NpcInvestor = {
@@ -200,6 +201,7 @@ export type ProfileDraft = {
   name: string;
   background: string;
   selectedCompany: CompanyKey;
+  companyType: 'cpu' | 'game';
 };
 
 export type ReleaseDraft = {
@@ -277,7 +279,7 @@ export type CpuReleaseRating = {
   summary: string;
 };
 
-export const STORAGE_KEY = 'cpu-foundry-profile-sim-v10';
+export const STORAGE_KEY = 'career-simulator-profile-sim-v11';
 export const TICK_MS = 200;
 export const START_DATE_UTC = Date.UTC(2000, 0, 1);
 export const NPC_ACTION_EVERY_TICKS = 10;
@@ -332,6 +334,7 @@ export const DEFAULT_PROFILE_DRAFT: ProfileDraft = {
   name: '',
   background: 'Founder-operator dengan insting produk yang agresif.',
   selectedCompany: 'cosmic',
+  companyType: 'cpu',
 };
 export const DEFAULT_RELEASE_DRAFT: ReleaseDraft = {
   series: 'Nova Series',
@@ -2253,6 +2256,7 @@ export function createInitialGameState(profile: ProfileDraft): GameState {
       background: profile.background,
       cash: PLAYER_STARTING_CASH,
       selectedCompany: profile.selectedCompany,
+      companyType: profile.companyType,
     },
     companies,
     plans,

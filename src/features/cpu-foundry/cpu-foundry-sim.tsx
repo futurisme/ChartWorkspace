@@ -236,7 +236,7 @@ export function CpuFoundrySim() {
   const [releaseDraft, setReleaseDraft] = useState<ReleaseDraft>(DEFAULT_RELEASE_DRAFT);
   const [investmentDraft, setInvestmentDraft] = useState<InvestmentDraft>({ company: 'cosmic', mode: 'buy', route: 'auto', sliderPercent: 50 });
   const [shareListingDraft, setShareListingDraft] = useState<ShareListingDraft>(DEFAULT_SHARE_LISTING_DRAFT);
-  const [statusMessage, setStatusMessage] = useState('Buat profil dulu untuk masuk ke simulasi hidup investor CPU.');
+  const [statusMessage, setStatusMessage] = useState('Buat profil dulu untuk masuk ke Career Simulator.');
   const [isReleaseMenuOpen, setIsReleaseMenuOpen] = useState(false);
   const [isInvestmentMenuOpen, setIsInvestmentMenuOpen] = useState(false);
   const [isCompaniesFrameOpen, setIsCompaniesFrameOpen] = useState(false);
@@ -268,6 +268,10 @@ export function CpuFoundrySim() {
       return !(vote.memberVotes ?? {})[game.player.id];
     });
   }, [game]);
+  const activeCompanyType = game?.player.companyType ?? profileDraft.companyType;
+  const productLabel = activeCompanyType === 'game' ? 'Game' : 'CPU';
+  const productLabelLower = productLabel.toLowerCase();
+  const simulatorTitle = 'Career Simulator';
   const isGamePaused = isInvestmentMenuOpen || hasPendingPlayerBoardVote;
 
   useEffect(() => {
@@ -324,6 +328,10 @@ export function CpuFoundrySim() {
       if (!fallbackCompany) return;
       const normalized = resolveGovernance({
         ...parsed,
+        player: {
+          ...parsed.player,
+          companyType: parsed.player.companyType === 'game' ? 'game' : 'cpu',
+        },
         companies: COMPANY_KEYS.reduce((acc, key) => {
           const company = parsedCompanies[key] ?? {
             ...fallbackCompany,
@@ -506,10 +514,10 @@ export function CpuFoundrySim() {
 
     const nextGame = createInitialGameState({ ...profileDraft, name: trimmedName });
     setGame(nextGame);
-    setStatusMessage(`${trimmedName} berhasil login. Kamu mulai sebagai investor independen.`);
+    setStatusMessage(`${trimmedName} berhasil login. Kamu mulai sebagai investor independen di jalur ${nextGame.player.companyType === 'game' ? 'Game Company' : 'CPU Company'}.`);
     setReleaseDraft({
       series: `${nextGame.companies[nextGame.player.selectedCompany].name} Prime`,
-      cpuName: 'PX-01',
+      cpuName: nextGame.player.companyType === 'game' ? 'Launch-01' : 'PX-01',
       priceIndex: 1,
     });
     setInvestmentDraft({ company: profileDraft.selectedCompany, mode: 'buy', route: 'auto', sliderPercent: 50 });
@@ -1061,14 +1069,14 @@ export function CpuFoundrySim() {
 
   const launchCpu = () => {
     if (!game || !activeCompany || !hasCompanyAuthority(activeCompany, game.player.id, 'release')) {
-      setStatusMessage('Kamu harus menjadi CEO, CTO, atau CMO untuk merilis CPU perusahaan ini.');
+      setStatusMessage(`Kamu harus menjadi CEO, CTO, atau CMO untuk merilis ${productLabel} perusahaan ini.`);
       return;
     }
 
     const series = releaseDraft.series.trim();
     const cpuName = releaseDraft.cpuName.trim();
     if (!series || !cpuName) {
-      setStatusMessage('Isi nama seri dan nama CPU dulu.');
+      setStatusMessage(`Isi nama seri dan nama ${productLabel} dulu.`);
       return;
     }
 
@@ -1243,9 +1251,9 @@ export function CpuFoundrySim() {
     return (
       <main className={styles.shell}>
         <section className={styles.loginCard}>
-          <p className={styles.eyebrow}>/game · unified cpu company gameplay</p>
-          <h1>CPU Company Simulator · Game Field</h1>
-          <p className={styles.subtitle}>Buat profil lalu mainkan satu gameplay terpadu: investor, manajemen perusahaan, dan rilis CPU realtime.</p>
+          <p className={styles.eyebrow}>/game · unified career gameplay</p>
+          <h1>{simulatorTitle}</h1>
+          <p className={styles.subtitle}>Satu simulasi terpadu untuk investor, manajemen perusahaan, dan perilisan produk tanpa mode terpisah.</p>
 
           <label className={styles.field}>
             <span>Nama profil</span>
@@ -1256,6 +1264,18 @@ export function CpuFoundrySim() {
             <span>Latar belakang</span>
             <input value={profileDraft.background} onChange={(event) => setProfileDraft((current) => ({ ...current, background: event.target.value }))} placeholder="Investor dengan visi teknologi" />
           </label>
+
+          <div className={styles.field}>
+            <span>Tipe perusahaan (mekanik sama)</span>
+            <div className={styles.quickGrid}>
+              <button type="button" className={profileDraft.companyType === 'cpu' ? styles.quickButtonActive : styles.quickButton} onClick={() => setProfileDraft((current) => ({ ...current, companyType: 'cpu' }))}>
+                CPU Company
+              </button>
+              <button type="button" className={profileDraft.companyType === 'game' ? styles.quickButtonActive : styles.quickButton} onClick={() => setProfileDraft((current) => ({ ...current, companyType: 'game' }))}>
+                Game Company
+              </button>
+            </div>
+          </div>
 
           <div className={styles.quickGrid}>
             {COMPANY_KEYS.map((company) => (
@@ -1295,7 +1315,7 @@ export function CpuFoundrySim() {
         <section className={styles.heroCard}>
           <div className={styles.heroHeader}>
             <div>
-              <p className={styles.eyebrow}>/game · unified cpu company gameplay</p>
+              <p className={styles.eyebrow}>/game · {simulatorTitle.toLowerCase()}</p>
               <h1>{game.player.name}</h1>
               <p className={styles.subtitle}>{game.player.background}</p>
             </div>
@@ -1488,7 +1508,7 @@ export function CpuFoundrySim() {
             <div className={styles.screenFrameHeader}>
               <div>
                 <p className={styles.panelTag}>Companies</p>
-                <h2>Plans & perusahaan CPU</h2>
+                <h2>Plans & perusahaan {productLabel}</h2>
               </div>
               <button type="button" className={styles.closeButton} onClick={() => setIsCompaniesFrameOpen(false)} aria-label="Tutup daftar perusahaan">
                 ✕
@@ -1673,7 +1693,7 @@ export function CpuFoundrySim() {
             <div className={styles.screenFrameHeader}>
               <div>
                 <p className={styles.panelTag}>News</p>
-                <h2>5 berita terbaru pasar CPU</h2>
+                <h2>5 berita terbaru pasar {productLabel}</h2>
               </div>
               <button type="button" className={styles.closeButton} onClick={() => setIsNewsFrameOpen(false)} aria-label="Kembali dari news">
                 ←
@@ -1980,7 +2000,7 @@ export function CpuFoundrySim() {
                     <strong>$ {formatMoneyCompact(getCompanyValuation(focusedCompany), 2)}</strong>
                   </div>
                   <div>
-                    <span>CPU score</span>
+                    <span>{productLabel} score</span>
                     <strong>{formatNumber(focusedCpuScore, 0)}</strong>
                   </div>
                   <div>
@@ -2008,7 +2028,7 @@ export function CpuFoundrySim() {
                     Beli / jual saham
                   </button>
                   <button type="button" className={styles.primaryButton} onClick={() => { switchCompany(focusedCompany.key); closeTransientLayers(); setIsReleaseMenuOpen(true); }} disabled={!focusedCanReleaseCpu}>
-                    {focusedCanReleaseCpu ? 'Release CPU' : 'Butuh CEO/CTO/CMO'}
+                    {focusedCanReleaseCpu ? `Release ${productLabel}` : 'Butuh CEO/CTO/CMO'}
                   </button>
                   <button type="button" className={styles.ghostButton} onClick={() => openInvestorFrame(focusedCompany.key)}>
                     Investor list
@@ -2330,7 +2350,7 @@ export function CpuFoundrySim() {
                 <button type="button" className={styles.panelToggle} onClick={() => toggleCompanyDetailPanel('operations')}>
                   <div>
                     <p className={styles.panelTag}>Operations</p>
-                    <h2>Upgrade CPU & tim</h2>
+                    <h2>Upgrade {productLabel} & tim</h2>
                   </div>
                   <span>{companyDetailPanels.operations ? 'Tutup' : 'Buka'}</span>
                 </button>
@@ -2553,13 +2573,13 @@ export function CpuFoundrySim() {
 
       {isReleaseMenuOpen && activeCompany ? (
         <div className={styles.modalOverlay} role="presentation" onClick={() => setIsReleaseMenuOpen(false)}>
-          <section className={styles.modalCard} role="dialog" aria-modal="true" aria-label="Release CPU" onClick={(event) => event.stopPropagation()}>
+          <section className={styles.modalCard} role="dialog" aria-modal="true" aria-label={`Release ${productLabel}`} onClick={(event) => event.stopPropagation()}>
             <div className={styles.modalHeader}>
               <div>
-                <p className={styles.panelTag}>Release CPU</p>
+                <p className={styles.panelTag}>Release {productLabel}</p>
                 <h2>{activeCompany.name} launch studio</h2>
               </div>
-              <button type="button" className={styles.closeButton} onClick={() => setIsReleaseMenuOpen(false)} aria-label="Tutup menu release CPU">
+              <button type="button" className={styles.closeButton} onClick={() => setIsReleaseMenuOpen(false)} aria-label={`Tutup menu release ${productLabelLower}`}>
                 ✕
               </button>
             </div>
@@ -2570,7 +2590,7 @@ export function CpuFoundrySim() {
                 <input value={releaseDraft.series} onChange={(event) => setReleaseDraft((current) => ({ ...current, series: event.target.value }))} placeholder="Contoh: Cosmic Prime" />
               </label>
               <label className={styles.field}>
-                <span>Nama CPU</span>
+                <span>Nama {productLabel}</span>
                 <input value={releaseDraft.cpuName} onChange={(event) => setReleaseDraft((current) => ({ ...current, cpuName: event.target.value }))} placeholder="Contoh: PX-02" />
               </label>
 
@@ -2582,7 +2602,7 @@ export function CpuFoundrySim() {
                   </div>
                   <small>{activePricePreset.subtitle}</small>
                 </div>
-                <input className={styles.slider} type="range" min="0" max={PRICE_PRESETS.length - 1} step="1" value={releaseDraft.priceIndex} onChange={(event) => setReleaseDraft((current) => ({ ...current, priceIndex: Number(event.target.value) }))} aria-label="Slider kategori harga CPU" />
+                <input className={styles.slider} type="range" min="0" max={PRICE_PRESETS.length - 1} step="1" value={releaseDraft.priceIndex} onChange={(event) => setReleaseDraft((current) => ({ ...current, priceIndex: Number(event.target.value) }))} aria-label={`Slider kategori harga ${productLabelLower}`} />
                 <div className={styles.sliderLabels}>
                   <span>Murah</span>
                   <span>Seimbang</span>
@@ -2593,7 +2613,7 @@ export function CpuFoundrySim() {
               <div className={styles.releasePreview}>
                 <div>
                   <span>Nama release</span>
-                  <strong>{releaseDraft.series.trim() || 'Seri'} {releaseDraft.cpuName.trim() || 'Nama CPU'}</strong>
+                  <strong>{releaseDraft.series.trim() || 'Seri'} {releaseDraft.cpuName.trim() || `Nama ${productLabel}`}</strong>
                 </div>
                 <div>
                   <span>Estimasi laba</span>
@@ -2612,7 +2632,7 @@ export function CpuFoundrySim() {
               </div>
 
               <button type="button" className={styles.primaryButton} onClick={launchCpu}>
-                Release CPU sekarang
+                Release {productLabel} sekarang
               </button>
             </div>
           </section>
