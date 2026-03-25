@@ -82,7 +82,7 @@ jobs:
         run: |
           mkdir -p "${TWA_DIR}"
           bubblewrap init \
-            --manifest="$(pwd)/twa-manifest.json" \
+            --config="$(pwd)/twa-manifest.json" \
             --directory="$(pwd)/${TWA_DIR}" \
             --skipPwaValidation
 
