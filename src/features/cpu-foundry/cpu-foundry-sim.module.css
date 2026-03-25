@@ -291,6 +291,31 @@
   gap: 6px;
 }
 
+.rankingFilterRow {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.rankingFilterButton,
+.rankingFilterButtonActive {
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 999px;
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 6px 8px;
+  background: #ffffff;
+  color: #334155;
+}
+
+.rankingFilterButtonActive {
+  border-color: rgba(14, 165, 233, 0.65);
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.14), rgba(56, 189, 248, 0.22));
+  color: #0c4a6e;
+}
+
 .forbesCard {
   display: grid;
   grid-template-columns: auto 1fr;
@@ -337,6 +362,36 @@
   font-size: 0.68rem;
   color: #475569;
   line-height: 1.2;
+}
+
+.forbesBusinessCard {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 2px 8px;
+  align-items: center;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 10px;
+  padding: 6px 8px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+}
+
+.forbesBusinessMain {
+  display: grid;
+  gap: 2px;
+}
+
+.forbesBusinessLine {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.forbesBusinessCategory {
+  margin: 0;
+  font-size: 0.64rem;
+  font-weight: 600;
+  color: #64748b;
 }
 
 .costPill {
@@ -726,6 +781,7 @@
   .memoCard,
   .itemCard,
   .forbesCard,
+  .forbesBusinessCard,
   .companyCard,
   .heroMiniCard,
   .feedItem,
@@ -742,6 +798,7 @@
   .memoCard,
   .itemCard,
   .forbesCard,
+  .forbesBusinessCard,
   .sliderCard,
   .releasePreview,
   .loginPreview,
@@ -755,6 +812,7 @@
   .panelBody,
   .panelList,
   .forbesList,
+  .rankingFilterRow,
   .companyList,
   .feedList,
   .npcList,
@@ -807,6 +865,12 @@
     border-radius: 8px;
   }
 
+  .forbesBusinessCard {
+    gap: 1px 6px;
+    padding: 5px 6px;
+    border-radius: 8px;
+  }
+
   .forbesRank {
     min-width: 32px;
     font-size: 0.64rem;
@@ -823,5 +887,15 @@
 
   .forbesCompanies {
     font-size: 0.6rem;
+  }
+
+  .forbesBusinessCategory {
+    font-size: 0.56rem;
+  }
+
+  .rankingFilterButton,
+  .rankingFilterButtonActive {
+    font-size: 0.64rem;
+    padding: 5px 7px;
   }
 }

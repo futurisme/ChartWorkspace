@@ -207,6 +207,7 @@ export function CpuFoundrySim() {
   const [focusedCompanyKey, setFocusedCompanyKey] = useState<CompanyKey | null>(null);
   const [focusedPlanKey, setFocusedPlanKey] = useState<CompanyKey | null>(null);
   const [newsCompanyFilter, setNewsCompanyFilter] = useState<'all' | CompanyKey>('all');
+  const [forbesCategory, setForbesCategory] = useState<'individual' | 'business'>('individual');
   const [companyDetailBackTarget, setCompanyDetailBackTarget] = useState<'game' | 'companies' | 'investor' | 'news' | 'forbes'>('companies');
   const pausedRef = useRef(false);
   const latestGameRef = useRef<GameState | null>(null);
@@ -506,7 +507,7 @@ export function CpuFoundrySim() {
     const filtered = newsCompanyFilter === 'all' ? parsed : parsed.filter((item) => item.companyKey === newsCompanyFilter);
     return filtered.slice(0, 5);
   }, [game, newsCompanyFilter]);
-  const forbesList = useMemo(() => {
+  const forbesIndividualList = useMemo(() => {
     if (!game) return [];
 
     const candidateInvestorIds = new Set<string>();
@@ -519,6 +520,7 @@ export function CpuFoundrySim() {
     });
 
     return Array.from(candidateInvestorIds)
+      .filter((investorId) => !getCompanyKeyFromCorporateInvestorId(investorId))
       .map((investorId) => {
         const cash = getInvestorCash(game, investorId);
         const holdings = COMPANY_KEYS
@@ -544,6 +546,20 @@ export function CpuFoundrySim() {
         || right.companyNames.length - left.companyNames.length
         || left.name.localeCompare(right.name)
       ));
+  }, [game]);
+  const forbesBusinessList = useMemo(() => {
+    if (!game) return [];
+    return COMPANY_KEYS
+      .map((key) => game.companies[key])
+      .filter((company) => company.isEstablished)
+      .map((company) => ({
+        companyKey: company.key,
+        name: company.name,
+        valuation: getCompanyValuation(company),
+        category: 'Semiconductor',
+        investorsCount: Object.values(company.investors).filter((shares) => shares > 0.01).length,
+      }))
+      .sort((left, right) => right.valuation - left.valuation || left.name.localeCompare(right.name));
   }, [game]);
   const activePlayerBoardVote = useMemo(() => {
     if (!game) return null;
@@ -1284,7 +1300,7 @@ export function CpuFoundrySim() {
                   <button type="button" className={styles.primaryButton} onClick={() => setIsNewsFrameOpen(true)}>
                     Buka News
                   </button>
-                  <button type="button" className={styles.secondaryButton} onClick={() => setIsForbesFrameOpen(true)}>
+                  <button type="button" className={styles.secondaryButton} onClick={() => { setForbesCategory('individual'); setIsForbesFrameOpen(true); }}>
                     Forbes ranking
                   </button>
                 </div>
@@ -1577,16 +1593,50 @@ export function CpuFoundrySim() {
               </button>
             </div>
             <div className={styles.screenFrameBody}>
-              <div className={styles.forbesList}>
-                {forbesList.map((entry, index) => (
-                  <article key={entry.investorId} className={styles.forbesCard}>
-                    <p className={styles.forbesRank}>#{index + 1}</p>
-                    <p className={styles.forbesName}>{entry.name}</p>
-                    <p className={styles.forbesWealth}>{formatMoneyCompact(entry.wealth, 2)}</p>
-                    <p className={styles.forbesCompanies}>{entry.companyNames.length ? entry.companyNames.join(', ') : '-'}</p>
-                  </article>
-                ))}
+              <div className={styles.rankingFilterRow}>
+                <button
+                  type="button"
+                  className={forbesCategory === 'individual' ? styles.rankingFilterButtonActive : styles.rankingFilterButton}
+                  onClick={() => setForbesCategory('individual')}
+                >
+                  Individual
+                </button>
+                <button
+                  type="button"
+                  className={forbesCategory === 'business' ? styles.rankingFilterButtonActive : styles.rankingFilterButton}
+                  onClick={() => setForbesCategory('business')}
+                >
+                  Business
+                </button>
               </div>
+              {forbesCategory === 'individual' ? (
+                <div className={styles.forbesList}>
+                  {forbesIndividualList.map((entry, index) => (
+                    <article key={entry.investorId} className={styles.forbesCard}>
+                      <p className={styles.forbesRank}>#{index + 1}</p>
+                      <p className={styles.forbesName}>{entry.name}</p>
+                      <p className={styles.forbesWealth}>{formatMoneyCompact(entry.wealth, 2)}</p>
+                      <p className={styles.forbesCompanies}>{entry.companyNames.length ? entry.companyNames.join(', ') : '-'}</p>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className={styles.forbesList}>
+                  {forbesBusinessList.map((entry, index) => (
+                    <article key={entry.companyKey} className={styles.forbesBusinessCard}>
+                      <p className={styles.forbesRank}>#{index + 1}</p>
+                      <div className={styles.forbesBusinessMain}>
+                        <p className={styles.forbesName}>{entry.name}</p>
+                        <div className={styles.forbesBusinessLine}>
+                          <p className={styles.forbesWealth}>{formatMoneyCompact(entry.valuation, 2)}</p>
+                          <p className={styles.forbesBusinessCategory}>{entry.category}</p>
+                        </div>
+                        <p className={styles.forbesCompanies}>{formatNumber(entry.investorsCount)} Investors</p>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
             </div>
           </section>
         </div>

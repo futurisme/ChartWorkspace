@@ -1013,7 +1013,7 @@ export function addFeedEntry(feed: string[], message: string) {
 export function investorDisplayName(game: GameState, investorId: string) {
   if (investorId === game.player.id) return game.player.name;
   const corporateCompanyKey = getCompanyKeyFromCorporateInvestorId(investorId);
-  if (corporateCompanyKey) return `${game.companies[corporateCompanyKey].name}*`;
+  if (corporateCompanyKey) return game.companies[corporateCompanyKey].name;
   const npc = game.npcs.find((entry) => entry.id === investorId);
   if (npc) return npc.name;
   if (investorId.startsWith('founder_')) {
