@@ -383,6 +383,16 @@ export const NPC_LAST_NAMES = [
   'Hartono', 'Setiawan', 'Purnama', 'Hakim', 'Atmaja', 'Surya', 'Wardana', 'Permana', 'Putra', 'Fadlan',
   'Halim', 'Santoso', 'Morrow', 'Vale', 'Quill', 'Frost', 'Kim', 'Alvarez', 'Suryana', 'Ramadhan',
 ] as const;
+const NPC_NAME_VARIANT_SUFFIXES = ['a', 'an', 'el', 'er', 'ia', 'in', 'is', 'on', 'or', 'us'] as const;
+const toTitleCaseToken = (value: string) => value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+export const NPC_FIRST_NAME_POOL = Array.from(new Set([
+  ...NPC_FIRST_NAMES,
+  ...NPC_FIRST_NAMES.flatMap((name) => NPC_NAME_VARIANT_SUFFIXES.map((suffix) => toTitleCaseToken(`${name}${suffix}`))),
+])).slice(0, 360);
+export const NPC_LAST_NAME_POOL = Array.from(new Set([
+  ...NPC_LAST_NAMES,
+  ...NPC_LAST_NAMES.flatMap((name) => NPC_NAME_VARIANT_SUFFIXES.map((suffix) => toTitleCaseToken(`${name}${suffix}`))),
+])).slice(0, 360);
 export const NPC_PERSONAS = [
   'fund manager adaptif',
   'angel investor oportunis',
@@ -1553,12 +1563,12 @@ function generateUniqueNpcName(
   usedLastNames: Set<string>,
   fallbackSeed: number
 ) {
-  const maxUniquePairs = NPC_FIRST_NAMES.length * NPC_LAST_NAMES.length;
+  const maxUniquePairs = NPC_FIRST_NAME_POOL.length * NPC_LAST_NAME_POOL.length;
   const maxAttempts = Math.max(30, Math.min(maxUniquePairs, 180));
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    const first = randomFrom(random, NPC_FIRST_NAMES);
-    const last = randomFrom(random, NPC_LAST_NAMES);
+    const first = randomFrom(random, NPC_FIRST_NAME_POOL);
+    const last = randomFrom(random, NPC_LAST_NAME_POOL);
     if (usedFirstNames.has(first) || usedLastNames.has(last)) continue;
     const candidate = normalizeNpcName(first, last);
     if (!usedNames.has(candidate)) {
@@ -1568,8 +1578,8 @@ function generateUniqueNpcName(
     }
   }
 
-  const firstName = NPC_FIRST_NAMES[fallbackSeed % NPC_FIRST_NAMES.length];
-  const lastName = NPC_LAST_NAMES[Math.floor(fallbackSeed / NPC_FIRST_NAMES.length) % NPC_LAST_NAMES.length];
+  const firstName = NPC_FIRST_NAME_POOL[fallbackSeed % NPC_FIRST_NAME_POOL.length];
+  const lastName = NPC_LAST_NAME_POOL[Math.floor(fallbackSeed / NPC_FIRST_NAME_POOL.length) % NPC_LAST_NAME_POOL.length];
   let sequence = Math.floor(fallbackSeed / maxUniquePairs) + 2;
   let candidate = normalizeNpcName(firstName, lastName, sequence);
   while (usedNames.has(candidate)) {
