@@ -2968,6 +2968,22 @@ export function scoreCompanyForNpc(npc: NpcInvestor, company: CompanyState) {
   };
 }
 
+export function getNpcAdaptiveReserveCash(npc: NpcInvestor, cash: number, diversificationGap: number) {
+  const baseReserve = 8 + cash * clamp(npc.reserveRatio, 0.12, 0.74);
+  const intelligenceDiscount = 1 - npc.intelligence * 0.22;
+  const boldnessDiscount = 1 - npc.boldness * 0.12;
+  const diversificationDiscount = 1 - clamp(diversificationGap * 0.35, 0, 0.22);
+  return Math.max(6, baseReserve * intelligenceDiscount * boldnessDiscount * diversificationDiscount);
+}
+
+export function getNpcDiversificationGap(analyses: Array<{ ownership: number }>) {
+  const activePositions = analyses.filter((entry) => entry.ownership > 0.7).length;
+  if (activePositions >= 3) return 0;
+  if (activePositions === 2) return 0.18;
+  if (activePositions === 1) return 0.44;
+  return 0.62;
+}
+
 export function getNpcStrategyProfile(strategy: StrategyStyle) {
   if (strategy === 'growth') return { tech: 1.34, operations: 1.04, marketing: 1.1, efficiency: 0.82, finance: 0.74 };
   if (strategy === 'value') return { tech: 0.96, operations: 1.02, marketing: 0.78, efficiency: 1.28, finance: 1.08 };
@@ -3731,11 +3747,15 @@ export function runNpcTurn(current: GameState) {
     const best = analyses[0];
     const second = analyses[1];
     const currentFocus = analyses.find((entry) => entry.key === npc.focusCompany) ?? best;
-    const focusSwitchThreshold = clamp(0.14 + (1 - npc.intelligence) * 0.26 + npc.patience * 0.16, 0.12, 0.48);
+    const daysHeldFocus = Math.max(0, next.elapsedDays - (npc.lastActionDay ?? next.elapsedDays - 30));
+    const forcedRotationSignal = daysHeldFocus > 45 ? 0.05 + npc.intelligence * 0.06 : 0;
+    const explorationBias = (decisionRandom() - 0.5) * clamp(0.08 + (1 - npc.intelligence) * 0.06, 0.04, 0.12);
+    const focusSwitchThreshold = clamp(0.14 + (1 - npc.intelligence) * 0.26 + npc.patience * 0.16 - forcedRotationSignal + explorationBias, 0.06, 0.48);
     const shouldSwitchFocus = best.key !== currentFocus.key && (best.finalScore - currentFocus.finalScore) > focusSwitchThreshold;
     npc.focusCompany = shouldSwitchFocus ? best.key : currentFocus.key;
 
-    const reserveCash = 20 + npc.cash * npc.reserveRatio;
+    const diversificationGap = getNpcDiversificationGap(analyses);
+    const reserveCash = getNpcAdaptiveReserveCash(npc, npc.cash, diversificationGap);
     const listingDecision = manageNpcShareListing(next, npc, currentFocus, best.finalScore, reserveCash);
     if (listingDecision.changed) {
       next = listingDecision.next;
@@ -3829,21 +3849,44 @@ export function runNpcTurn(current: GameState) {
     npc.lastActionDay = next.elapsedDays;
 
     const refreshedNpcCash = next.npcs.find((entry) => entry.id === npc.id)?.cash ?? npc.cash;
-    const diversified = second && refreshedNpcCash > reserveCash + 30 && second.finalScore >= best.finalScore * (0.88 + npc.intelligence * 0.06);
-    if (diversified) {
+    const diversificationCandidates = analyses
+      .filter((entry) => entry.key !== best.key)
+      .filter((entry) => entry.finalScore >= best.finalScore * clamp(0.76 + npc.intelligence * 0.12, 0.76, 0.9))
+      .filter((entry) => entry.ownership < clamp(4 + npc.intelligence * 9 + npc.boldness * 6, 4, 18))
+      .slice(0, 3);
+    const refreshedDiversificationGap = getNpcDiversificationGap(
+      analyses.map((entry) => (
+        entry.key === best.key
+          ? { ownership: getOwnershipPercent(next.companies[entry.key], npc.id) }
+          : { ownership: entry.ownership }
+      ))
+    );
+    const shouldDiversify =
+      diversificationCandidates.length > 0
+      && refreshedNpcCash > reserveCash + 8
+      && (
+        refreshedDiversificationGap > 0.16
+        || (second && second.finalScore >= best.finalScore * 0.84)
+      );
+    if (shouldDiversify) {
       const affordableAfterPrimary = Math.max(0, refreshedNpcCash - reserveCash);
-      const sideBudget = clamp(affordableAfterPrimary * 0.16, MIN_TRADE_AMOUNT, affordableAfterPrimary * 0.22);
-      const sideResult = transactShares(next, npc.id, second.key, 'buy', sideBudget, 'auto');
-      if (sideResult.tradedValue > 0) {
+      diversificationCandidates.some((candidate, candidateIndex) => {
+        const concentrationWeight = candidateIndex === 0 ? 0.2 : candidateIndex === 1 ? 0.13 : 0.09;
+        const sideBudget = clamp(affordableAfterPrimary * concentrationWeight, MIN_TRADE_AMOUNT, affordableAfterPrimary * 0.3);
+        const sideResult = transactShares(next, npc.id, candidate.key, 'buy', sideBudget, 'auto');
+        if (sideResult.tradedValue <= 0) return false;
         next = {
           ...sideResult.next,
           activityFeed: addFeedEntry(
             sideResult.next.activityFeed,
-            `${formatDateFromDays(sideResult.next.elapsedDays)}: ${npc.name} juga menambah posisi kecil di ${second.company.name} untuk diversifikasi tanpa cheating.`
+            `${formatDateFromDays(sideResult.next.elapsedDays)}: ${npc.name} menambah posisi taktis di ${candidate.company.name} untuk menjaga diversifikasi portofolio.`
           ),
         };
         npc.lastActionDay = next.elapsedDays;
-        npc.analysisNote = `${npc.name} memprioritaskan ${best.company.name} dan tetap membuka hedging strategis di ${second.company.name}.`;
+        return true;
+      });
+      if (npc.lastActionDay === next.elapsedDays) {
+        npc.analysisNote = `${npc.name} memprioritaskan ${best.company.name} sambil memperluas posisi lintas emiten secara bertahap tanpa cheating.`;
         return;
       }
     }
