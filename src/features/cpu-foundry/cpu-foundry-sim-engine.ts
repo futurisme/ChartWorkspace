@@ -366,19 +366,21 @@ export const EXECUTIVE_ROLE_META: Record<ExecutiveRole, { title: string; domain:
 };
 export const EXECUTIVE_ROLES = Object.keys(EXECUTIVE_ROLE_META) as ExecutiveRole[];
 export const NPC_FIRST_NAMES = [
-  'Iris', 'Marco', 'Sora', 'Nadia', 'Riven', 'Kael', 'Tala', 'Vera', 'Noel', 'Zane',
-  'Arin', 'Luca', 'Mira', 'Dian', 'Kara', 'Raka', 'Sven', 'Elin', 'Timo', 'Rhea',
-  'Ayla', 'Juno', 'Rafi', 'Gavin', 'Niko', 'Lana', 'Tari', 'Milo', 'Cleo', 'Reza',
-  'Ariq', 'Faye', 'Bima', 'Nara', 'Ivo', 'Dara', 'Reno', 'Liam', 'Sinta', 'Yara',
-  'Dev', 'Maya', 'Ezra', 'Nina', 'Kian', 'Alia', 'Theo', 'Asha', 'Rian', 'Zara',
-  'Dimas', 'Niko', 'Farah', 'Rendra', 'Anya', 'Bagas', 'Kayla', 'Jasper', 'Lina', 'Rizky',
+  'Aiden', 'Aria', 'Amara', 'Bima', 'Clara', 'Dimas', 'Elena', 'Fajar', 'Gavin', 'Hana',
+  'Irfan', 'Jasper', 'Kayla', 'Liam', 'Maya', 'Nadia', 'Owen', 'Putri', 'Quinn', 'Rafi',
+  'Sinta', 'Theo', 'Uma', 'Vera', 'Wira', 'Xena', 'Yara', 'Zane', 'Alya', 'Bagas',
+  'Celine', 'Dion', 'Evan', 'Farah', 'Galih', 'Hugo', 'Indra', 'Jihan', 'Kevin', 'Luna',
+  'Milo', 'Naila', 'Orin', 'Pia', 'Rena', 'Soren', 'Tari', 'Umar', 'Vino', 'Wulan',
+  'Ari', 'Bryn', 'Cora', 'Dara', 'Eka', 'Fina', 'Gio', 'Helmi', 'Isha', 'Juna',
+  'Kira', 'Lara', 'Mira', 'Niko', 'Olya', 'Pasha', 'Raka', 'Sasha', 'Timo', 'Vanya',
 ] as const;
 export const NPC_LAST_NAMES = [
-  'Vale', 'Zhen', 'Kim', 'Torres', 'Hale', 'Morrow', 'Ishida', 'Quill', 'Sato', 'Reyes',
-  'Prasetyo', 'Wijaya', 'Sullivan', 'Frost', 'Tanaka', 'Armand', 'Putra', 'Saputra', 'Mahendra', 'Hidayat',
-  'Nakamura', 'Kusuma', 'Wardana', 'Yamato', 'Hakim', 'Pangestu', 'Santoso', 'Aoki', 'Nugroho', 'Permana',
-  'Lestari', 'Fadlan', 'Gunawan', 'Atmaja', 'Surya', 'Purnama', 'Halim', 'Setiawan', 'Mendoza', 'Laurent',
-  'Alvarez', 'Basuki', 'Firmansyah', 'Matsuda', 'Nair', 'Hansen', 'Keller', 'Bianchi', 'Petrov', 'Nguyen',
+  'Aditya', 'Basuki', 'Chandra', 'Darma', 'Erlangga', 'Firmansyah', 'Gunawan', 'Hidayat', 'Irawan', 'Jayadi',
+  'Kusuma', 'Lestari', 'Mahendra', 'Nugroho', 'Pratama', 'Rahman', 'Saputra', 'Tanjung', 'Utama', 'Wijaya',
+  'Prasetyo', 'Keller', 'Torres', 'Nguyen', 'Sullivan', 'Mendoza', 'Bianchi', 'Petrov', 'Reyes', 'Tanaka',
+  'Nakamura', 'Ishida', 'Aoki', 'Yamato', 'Sato', 'Nair', 'Hansen', 'Armand', 'Laurent', 'Valencia',
+  'Hartono', 'Setiawan', 'Purnama', 'Hakim', 'Atmaja', 'Surya', 'Wardana', 'Permana', 'Putra', 'Fadlan',
+  'Halim', 'Santoso', 'Morrow', 'Vale', 'Quill', 'Frost', 'Kim', 'Alvarez', 'Suryana', 'Ramadhan',
 ] as const;
 export const NPC_PERSONAS = [
   'fund manager adaptif',
@@ -390,9 +392,18 @@ export const NPC_PERSONAS = [
   'direktur family office',
   'portfolio architect jangka panjang',
 ] as const;
-export const COMPANY_NAME_PREFIXES = ['Quantum', 'Aurora', 'Nimbus', 'Titan', 'Atlas', 'Nova', 'Helios', 'Pioneer', 'Vertex', 'Polar', 'Sentra', 'Flux'] as const;
-export const COMPANY_NAME_CORES = ['Logic', 'Circuits', 'Semicon', 'Foundry', 'Compute', 'Micro', 'Core', 'Systems', 'Silica', 'Dynamics', 'Processors', 'Fabric'] as const;
-export const COMPANY_NAME_SUFFIXES = ['Labs', 'Works', 'Technologies', 'Industries', 'Microdevices', 'Engineering', 'Collective', 'Networks'] as const;
+export const COMPANY_NAME_WORDS_PRIMARY = [
+  'Northline', 'Blueforge', 'Corewell', 'Novatek', 'Skyline', 'Pinnacle', 'Brighton', 'Auralis', 'Westbridge', 'Redwood',
+  'Ironclad', 'Suncrest', 'Primevia', 'Eastbay', 'Stonegate', 'Silverline', 'Greenfield', 'Oakridge', 'Moonlake', 'Starline',
+  'Clearpath', 'Bridgepoint', 'Windmark', 'Highland', 'Riverstone', 'Cloudpeak', 'Trailhead', 'Valora', 'Truepoint', 'Nextwave',
+] as const;
+export const COMPANY_NAME_WORDS_SECONDARY = [
+  'Micro', 'Circuits', 'Systems', 'Semicon', 'Logic', 'Compute', 'Devices', 'Works', 'Dynamics', 'Labs',
+  'Networks', 'Fabric', 'Core', 'Modules', 'Engines', 'Platforms', 'Pulse', 'Matrix', 'Foundry', 'Signals',
+] as const;
+export const COMPANY_NAME_WORDS_TERTIARY = [
+  'Group', 'Collective', 'Labs', 'Works', 'Technologies', 'Studio', 'Center', 'Hub', 'Division', 'Factory',
+] as const;
 
 export function createSeededRandom(seed: string) {
   let state = 2166136261;
@@ -423,15 +434,29 @@ export function randomFrom<T>(random: () => number, items: readonly T[]) {
 }
 
 export function generateUniqueCompanyName(game: GameState, random: () => number) {
-  const used = new Set<string>([
+  const usedNames = new Set<string>([
     ...Object.values(game.companies).map((company) => company.name.toLowerCase()),
     ...game.communityPlans.map((plan) => plan.companyName.toLowerCase()),
   ]);
-  for (let attempt = 0; attempt < 60; attempt += 1) {
-    const candidate = `${randomFrom(random, COMPANY_NAME_PREFIXES)} ${randomFrom(random, COMPANY_NAME_CORES)} ${randomFrom(random, COMPANY_NAME_SUFFIXES)}`.replace(/\s+/g, ' ');
-    if (!used.has(candidate.toLowerCase())) return candidate;
+  const usedWords = new Set<string>(
+    Array.from(usedNames)
+      .flatMap((name) => name.split(/\s+/g).map((part) => part.trim()).filter(Boolean))
+  );
+
+  for (let attempt = 0; attempt < 150; attempt += 1) {
+    const wordCountRoll = random();
+    const wordCount = wordCountRoll < 0.44 ? 1 : (wordCountRoll < 0.92 ? 2 : 3);
+    const first = randomFrom(random, COMPANY_NAME_WORDS_PRIMARY);
+    const second = randomFrom(random, COMPANY_NAME_WORDS_SECONDARY);
+    const third = randomFrom(random, COMPANY_NAME_WORDS_TERTIARY);
+    const tokens = wordCount === 1 ? [first] : wordCount === 2 ? [first, second] : [first, second, third];
+    const normalizedTokens = tokens.map((token) => token.toLowerCase());
+    if (normalizedTokens.some((token) => usedWords.has(token))) continue;
+    const candidate = tokens.join(' ').replace(/\s+/g, ' ').trim();
+    if (usedNames.has(candidate.toLowerCase())) continue;
+    return candidate;
   }
-  return `NextGen ${Math.floor(random() * 9000) + 1000} Labs`;
+  return `${randomFrom(random, COMPANY_NAME_WORDS_PRIMARY)} ${Math.floor(random() * 900 + 100)}`;
 }
 
 export function formatNumber(value: number, decimals = 0) {
@@ -462,6 +487,29 @@ export function formatDateFromDays(daysElapsed: number) {
   const month = String(date.getUTCMonth() + 1).padStart(2, '0');
   const year = String(date.getUTCFullYear()).slice(-2);
   return `${day}/${month}/${year}`;
+}
+
+function normalizeCompanyNameWords(value: string) {
+  return value
+    .trim()
+    .replace(/\s+/g, ' ')
+    .split(' ')
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function hasCompanyWordCollision(game: GameState, candidateName: string) {
+  const candidateWords = normalizeCompanyNameWords(candidateName).map((word) => word.toLowerCase());
+  if (candidateWords.length === 0) return true;
+  const usedWords = new Set<string>();
+  Object.values(game.companies).forEach((company) => {
+    normalizeCompanyNameWords(company.name).forEach((word) => usedWords.add(word.toLowerCase()));
+  });
+  game.communityPlans.forEach((plan) => {
+    if (plan.status === 'expired') return;
+    normalizeCompanyNameWords(plan.companyName).forEach((word) => usedWords.add(word.toLowerCase()));
+  });
+  return candidateWords.some((word) => usedWords.has(word));
 }
 
 export function clamp(value: number, min: number, max: number) {
@@ -1496,13 +1544,24 @@ function normalizeNpcName(firstName: string, lastName: string, sequence?: number
   return `${firstName} ${lastName} ${sequence}`;
 }
 
-function generateUniqueNpcName(random: () => number, usedNames: Set<string>, fallbackSeed: number) {
+function generateUniqueNpcName(
+  random: () => number,
+  usedNames: Set<string>,
+  usedFirstNames: Set<string>,
+  usedLastNames: Set<string>,
+  fallbackSeed: number
+) {
   const maxUniquePairs = NPC_FIRST_NAMES.length * NPC_LAST_NAMES.length;
   const maxAttempts = Math.max(30, Math.min(maxUniquePairs, 180));
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    const candidate = normalizeNpcName(randomFrom(random, NPC_FIRST_NAMES), randomFrom(random, NPC_LAST_NAMES));
+    const first = randomFrom(random, NPC_FIRST_NAMES);
+    const last = randomFrom(random, NPC_LAST_NAMES);
+    if (usedFirstNames.has(first) || usedLastNames.has(last)) continue;
+    const candidate = normalizeNpcName(first, last);
     if (!usedNames.has(candidate)) {
+      usedFirstNames.add(first);
+      usedLastNames.add(last);
       return candidate;
     }
   }
@@ -1521,10 +1580,17 @@ function generateUniqueNpcName(random: () => number, usedNames: Set<string>, fal
 export function createGenerativeNpcs(seed: string, count: number, offset = 0, existingNames: Iterable<string> = []): NpcInvestor[] {
   const random = createSeededRandom(`${seed}-${offset}`);
   const usedNames = new Set<string>(existingNames);
+  const usedFirstNames = new Set<string>();
+  const usedLastNames = new Set<string>();
+  Array.from(existingNames).forEach((name) => {
+    const [first, last] = name.split(/\s+/g);
+    if (first) usedFirstNames.add(first);
+    if (last) usedLastNames.add(last);
+  });
   const strategies: StrategyStyle[] = ['value', 'growth', 'dividend', 'activist', 'balanced'];
 
   return Array.from({ length: count }, (_, index) => {
-    const name = generateUniqueNpcName(random, usedNames, offset + index);
+    const name = generateUniqueNpcName(random, usedNames, usedFirstNames, usedLastNames, offset + index);
     usedNames.add(name);
 
     const strategy = randomFrom(random, strategies);
@@ -1867,55 +1933,104 @@ export function resolveGovernance(game: GameState) {
 
 export function createInitialGameState(profile: ProfileDraft): GameState {
   const playerId = `player-${profile.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'neo'}`;
-  const cosmic = createCompany({
-    key: 'cosmic',
-    name: 'Cosmic',
-    founder: 'Lena Voss',
-    focus: 'Mainstream desktop dan supply OEM agresif.',
-    cash: 92,
-    research: 72,
-    marketShare: 12,
-    reputation: 29,
-    upgrades: createUpgrades({ architecture: 2, lithography: 180, clockSpeed: 1.5, coreDesign: 1, cacheStack: 512, powerEfficiency: 98 }),
-    teams: createTeams({ researchers: 2, marketing: 2, fabrication: 2 }),
-    lastRelease: 'Cosmic Sol-1 masih mendominasi OEM murah.',
+  const random = createSeededRandom(`${profile.name.trim()}-genesis`);
+  const usedFounderNames = new Set<string>();
+  const usedFounderFirstNames = new Set<string>();
+  const usedFounderLastNames = new Set<string>();
+  const generateFounderName = (seed: number) => {
+    const generated = generateUniqueNpcName(random, usedFounderNames, usedFounderFirstNames, usedFounderLastNames, seed);
+    usedFounderNames.add(generated);
+    return generated;
+  };
+
+  const generatedCoreNames = new Set<string>();
+  const generateCoreCompanyName = () => {
+    const pseudoGame = {
+      companies: Object.fromEntries(Array.from(generatedCoreNames).map((name, index) => [`tmp_${index}`, { name }])) as Record<string, { name: string }>,
+      communityPlans: [],
+    } as unknown as GameState;
+    const name = generateUniqueCompanyName(pseudoGame, random);
+    generatedCoreNames.add(name);
+    return name;
+  };
+
+  const coreConfigs: Array<{
+    key: CompanyKey;
+    cash: number;
+    research: number;
+    marketShare: number;
+    reputation: number;
+    upgrades: Record<UpgradeKey, UpgradeState>;
+    teams: Record<TeamKey, TeamState>;
+    focus: string;
+  }> = [
+    {
+      key: 'cosmic',
+      cash: 92,
+      research: 72,
+      marketShare: 12,
+      reputation: 29,
+      upgrades: createUpgrades({ architecture: 2, lithography: 180, clockSpeed: 1.5, coreDesign: 1, cacheStack: 512, powerEfficiency: 98 }),
+      teams: createTeams({ researchers: 2, marketing: 2, fabrication: 2 }),
+      focus: 'Mainstream desktop dan supply OEM agresif.',
+    },
+    {
+      key: 'rmd',
+      cash: 86,
+      research: 78,
+      marketShare: 10.5,
+      reputation: 27,
+      upgrades: createUpgrades({ architecture: 2, lithography: 170, clockSpeed: 1.7, coreDesign: 2, cacheStack: 512, powerEfficiency: 102 }),
+      teams: createTeams({ researchers: 3, marketing: 1, fabrication: 1 }),
+      focus: 'Performa enthusiast dengan ritme release lebih cepat.',
+    },
+    {
+      key: 'heroscop',
+      cash: 81,
+      research: 75,
+      marketShare: 9.5,
+      reputation: 26,
+      upgrades: createUpgrades({ architecture: 2, lithography: 160, clockSpeed: 1.4, coreDesign: 2, cacheStack: 768, powerEfficiency: 90 }),
+      teams: createTeams({ researchers: 2, marketing: 1, fabrication: 2 }),
+      focus: 'Efisiensi daya dan workstation premium.',
+    },
+  ];
+
+  const [cosmic, rmd, heroscop] = coreConfigs.map((config, index) => {
+    const generatedName = generateCoreCompanyName();
+    return createCompany({
+      key: config.key,
+      name: generatedName,
+      founder: generateFounderName(index + 1),
+      focus: config.focus,
+      cash: config.cash,
+      research: config.research,
+      marketShare: config.marketShare,
+      reputation: config.reputation,
+      upgrades: config.upgrades,
+      teams: config.teams,
+      shareSheetTotal: pickShareSheetTotal(config.cash + config.research),
+      lastRelease: `${generatedName} Prime-1 membuka babak kompetisi awal.`,
+    });
   });
-  const rmd = createCompany({
-    key: 'rmd',
-    name: 'RMD',
-    founder: 'Mika Ren',
-    focus: 'Performa enthusiast dengan ritme release lebih cepat.',
-    cash: 86,
-    research: 78,
-    marketShare: 10.5,
-    reputation: 27,
-    upgrades: createUpgrades({ architecture: 2, lithography: 170, clockSpeed: 1.7, coreDesign: 2, cacheStack: 512, powerEfficiency: 102 }),
-    teams: createTeams({ researchers: 3, marketing: 1, fabrication: 1 }),
-    lastRelease: 'RMD Ember-2 populer di komunitas builder.',
-  });
-  const heroscop = createCompany({
-    key: 'heroscop',
-    name: 'Heroscop',
-    founder: 'Rafi Helion',
-    focus: 'Efisiensi daya dan workstation premium.',
-    cash: 81,
-    research: 75,
-    marketShare: 9.5,
-    reputation: 26,
-    upgrades: createUpgrades({ architecture: 2, lithography: 160, clockSpeed: 1.4, coreDesign: 2, cacheStack: 768, powerEfficiency: 90 }),
-    teams: createTeams({ researchers: 2, marketing: 1, fabrication: 2 }),
-    lastRelease: 'Heroscop Halo-2 unggul di pasar workstation kecil.',
-  });
+
+  const ventureSeeds = DYNAMIC_COMPANY_KEYS.reduce((acc, key, index) => {
+    acc[key] = {
+      name: generateCoreCompanyName(),
+      founder: generateFounderName(40 + index),
+    };
+    return acc;
+  }, {} as Record<CompanyKey, { name: string; founder: string }>);
 
   const companies = {
     cosmic: { ...cosmic.company, isEstablished: false, establishedDay: null, cash: 0, research: 0, marketShare: 0, reputation: 0, releaseCount: 0, revenuePerDay: 0, researchPerDay: 0, payoutRatio: 0.08, dividendPerShare: 0 },
     rmd: { ...rmd.company, isEstablished: false, establishedDay: null, cash: 0, research: 0, marketShare: 0, reputation: 0, releaseCount: 0, revenuePerDay: 0, researchPerDay: 0, payoutRatio: 0.08, dividendPerShare: 0 },
     heroscop: { ...heroscop.company, isEstablished: false, establishedDay: null, cash: 0, research: 0, marketShare: 0, reputation: 0, releaseCount: 0, revenuePerDay: 0, researchPerDay: 0, payoutRatio: 0.08, dividendPerShare: 0 },
-    venture4: { ...cosmic.company, key: 'venture4', name: 'Venture 4', founder: 'Pending Founder', founderInvestorId: 'founder_venture4', ceoId: 'founder_venture4', ceoName: 'Pending Founder', focus: 'Belum aktif', lastRelease: 'Menunggu plan pendirian.', isEstablished: false, establishedDay: null, cash: 0, research: 0, marketShare: 0, reputation: 0, releaseCount: 0, revenuePerDay: 0, researchPerDay: 0, payoutRatio: 0.08, dividendPerShare: 0, investors: { founder_venture4: 0 }, shareListings: [] },
-    venture5: { ...cosmic.company, key: 'venture5', name: 'Venture 5', founder: 'Pending Founder', founderInvestorId: 'founder_venture5', ceoId: 'founder_venture5', ceoName: 'Pending Founder', focus: 'Belum aktif', lastRelease: 'Menunggu plan pendirian.', isEstablished: false, establishedDay: null, cash: 0, research: 0, marketShare: 0, reputation: 0, releaseCount: 0, revenuePerDay: 0, researchPerDay: 0, payoutRatio: 0.08, dividendPerShare: 0, investors: { founder_venture5: 0 }, shareListings: [] },
-    venture6: { ...cosmic.company, key: 'venture6', name: 'Venture 6', founder: 'Pending Founder', founderInvestorId: 'founder_venture6', ceoId: 'founder_venture6', ceoName: 'Pending Founder', focus: 'Belum aktif', lastRelease: 'Menunggu plan pendirian.', isEstablished: false, establishedDay: null, cash: 0, research: 0, marketShare: 0, reputation: 0, releaseCount: 0, revenuePerDay: 0, researchPerDay: 0, payoutRatio: 0.08, dividendPerShare: 0, investors: { founder_venture6: 0 }, shareListings: [] },
-    venture7: { ...cosmic.company, key: 'venture7', name: 'Venture 7', founder: 'Pending Founder', founderInvestorId: 'founder_venture7', ceoId: 'founder_venture7', ceoName: 'Pending Founder', focus: 'Belum aktif', lastRelease: 'Menunggu plan pendirian.', isEstablished: false, establishedDay: null, cash: 0, research: 0, marketShare: 0, reputation: 0, releaseCount: 0, revenuePerDay: 0, researchPerDay: 0, payoutRatio: 0.08, dividendPerShare: 0, investors: { founder_venture7: 0 }, shareListings: [] },
-    venture8: { ...cosmic.company, key: 'venture8', name: 'Venture 8', founder: 'Pending Founder', founderInvestorId: 'founder_venture8', ceoId: 'founder_venture8', ceoName: 'Pending Founder', focus: 'Belum aktif', lastRelease: 'Menunggu plan pendirian.', isEstablished: false, establishedDay: null, cash: 0, research: 0, marketShare: 0, reputation: 0, releaseCount: 0, revenuePerDay: 0, researchPerDay: 0, payoutRatio: 0.08, dividendPerShare: 0, investors: { founder_venture8: 0 }, shareListings: [] },
+    venture4: { ...cosmic.company, key: 'venture4', name: ventureSeeds.venture4.name, founder: ventureSeeds.venture4.founder, founderInvestorId: 'founder_venture4', ceoId: 'founder_venture4', ceoName: ventureSeeds.venture4.founder, focus: 'Belum aktif', lastRelease: 'Menunggu plan pendirian.', isEstablished: false, establishedDay: null, cash: 0, research: 0, marketShare: 0, reputation: 0, releaseCount: 0, revenuePerDay: 0, researchPerDay: 0, payoutRatio: 0.08, dividendPerShare: 0, investors: { founder_venture4: 0 }, shareListings: [] },
+    venture5: { ...cosmic.company, key: 'venture5', name: ventureSeeds.venture5.name, founder: ventureSeeds.venture5.founder, founderInvestorId: 'founder_venture5', ceoId: 'founder_venture5', ceoName: ventureSeeds.venture5.founder, focus: 'Belum aktif', lastRelease: 'Menunggu plan pendirian.', isEstablished: false, establishedDay: null, cash: 0, research: 0, marketShare: 0, reputation: 0, releaseCount: 0, revenuePerDay: 0, researchPerDay: 0, payoutRatio: 0.08, dividendPerShare: 0, investors: { founder_venture5: 0 }, shareListings: [] },
+    venture6: { ...cosmic.company, key: 'venture6', name: ventureSeeds.venture6.name, founder: ventureSeeds.venture6.founder, founderInvestorId: 'founder_venture6', ceoId: 'founder_venture6', ceoName: ventureSeeds.venture6.founder, focus: 'Belum aktif', lastRelease: 'Menunggu plan pendirian.', isEstablished: false, establishedDay: null, cash: 0, research: 0, marketShare: 0, reputation: 0, releaseCount: 0, revenuePerDay: 0, researchPerDay: 0, payoutRatio: 0.08, dividendPerShare: 0, investors: { founder_venture6: 0 }, shareListings: [] },
+    venture7: { ...cosmic.company, key: 'venture7', name: ventureSeeds.venture7.name, founder: ventureSeeds.venture7.founder, founderInvestorId: 'founder_venture7', ceoId: 'founder_venture7', ceoName: ventureSeeds.venture7.founder, focus: 'Belum aktif', lastRelease: 'Menunggu plan pendirian.', isEstablished: false, establishedDay: null, cash: 0, research: 0, marketShare: 0, reputation: 0, releaseCount: 0, revenuePerDay: 0, researchPerDay: 0, payoutRatio: 0.08, dividendPerShare: 0, investors: { founder_venture7: 0 }, shareListings: [] },
+    venture8: { ...cosmic.company, key: 'venture8', name: ventureSeeds.venture8.name, founder: ventureSeeds.venture8.founder, founderInvestorId: 'founder_venture8', ceoId: 'founder_venture8', ceoName: ventureSeeds.venture8.founder, focus: 'Belum aktif', lastRelease: 'Menunggu plan pendirian.', isEstablished: false, establishedDay: null, cash: 0, research: 0, marketShare: 0, reputation: 0, releaseCount: 0, revenuePerDay: 0, researchPerDay: 0, payoutRatio: 0.08, dividendPerShare: 0, investors: { founder_venture8: 0 }, shareListings: [] },
   } satisfies Record<CompanyKey, CompanyState>;
 
   const plans = {
@@ -1958,11 +2073,11 @@ export function createInitialGameState(profile: ProfileDraft): GameState {
       pledges: [{ investorId: companies.heroscop.founderInvestorId, amount: 36, pledgedDay: 0 }],
       isEstablished: false,
     },
-    venture4: { companyKey: 'venture4', companyName: 'Venture 4', founderInvestorId: 'founder_venture4', founderName: 'Pending Founder', startDay: 0, dueDay: 0, targetCapital: 0, pledgedCapital: 0, pledges: [], isEstablished: true },
-    venture5: { companyKey: 'venture5', companyName: 'Venture 5', founderInvestorId: 'founder_venture5', founderName: 'Pending Founder', startDay: 0, dueDay: 0, targetCapital: 0, pledgedCapital: 0, pledges: [], isEstablished: true },
-    venture6: { companyKey: 'venture6', companyName: 'Venture 6', founderInvestorId: 'founder_venture6', founderName: 'Pending Founder', startDay: 0, dueDay: 0, targetCapital: 0, pledgedCapital: 0, pledges: [], isEstablished: true },
-    venture7: { companyKey: 'venture7', companyName: 'Venture 7', founderInvestorId: 'founder_venture7', founderName: 'Pending Founder', startDay: 0, dueDay: 0, targetCapital: 0, pledgedCapital: 0, pledges: [], isEstablished: true },
-    venture8: { companyKey: 'venture8', companyName: 'Venture 8', founderInvestorId: 'founder_venture8', founderName: 'Pending Founder', startDay: 0, dueDay: 0, targetCapital: 0, pledgedCapital: 0, pledges: [], isEstablished: true },
+    venture4: { companyKey: 'venture4', companyName: companies.venture4.name, founderInvestorId: 'founder_venture4', founderName: companies.venture4.founder, startDay: 0, dueDay: 0, targetCapital: 0, pledgedCapital: 0, pledges: [], isEstablished: true },
+    venture5: { companyKey: 'venture5', companyName: companies.venture5.name, founderInvestorId: 'founder_venture5', founderName: companies.venture5.founder, startDay: 0, dueDay: 0, targetCapital: 0, pledgedCapital: 0, pledges: [], isEstablished: true },
+    venture6: { companyKey: 'venture6', companyName: companies.venture6.name, founderInvestorId: 'founder_venture6', founderName: companies.venture6.founder, startDay: 0, dueDay: 0, targetCapital: 0, pledgedCapital: 0, pledges: [], isEstablished: true },
+    venture7: { companyKey: 'venture7', companyName: companies.venture7.name, founderInvestorId: 'founder_venture7', founderName: companies.venture7.founder, startDay: 0, dueDay: 0, targetCapital: 0, pledgedCapital: 0, pledges: [], isEstablished: true },
+    venture8: { companyKey: 'venture8', companyName: companies.venture8.name, founderInvestorId: 'founder_venture8', founderName: companies.venture8.founder, startDay: 0, dueDay: 0, targetCapital: 0, pledgedCapital: 0, pledges: [], isEstablished: true },
   } satisfies Record<CompanyKey, CompanyEstablishmentPlan>;
 
   const npcSeed = `${profile.name.trim()}-${Date.now()}-${Math.random()}`;
@@ -2147,7 +2262,10 @@ function getActiveCompanyCount(game: GameState) {
 
 export function createCommunityCompanyPlan(game: GameState, founderId: string, companyNameRaw: string, founderContribution: number) {
   const companyName = companyNameRaw.trim().replace(/\s+/g, ' ');
+  const words = normalizeCompanyNameWords(companyName);
   if (!companyName || companyName.length < 3) return game;
+  if (words.length < 1 || words.length > 3) return game;
+  if (hasCompanyWordCollision(game, companyName)) return game;
   if (game.communityPlans.some((plan) => plan.companyName.toLowerCase() === companyName.toLowerCase() && plan.status !== 'expired')) return game;
   if (getActiveCompanyCount(game) >= MAX_ACTIVE_COMPANIES) return game;
   const activeFundingPlans = game.communityPlans.filter((plan) => plan.status === 'funding').length;
