@@ -269,47 +269,70 @@ export function CpuFoundrySim() {
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (!raw) return;
       const parsed = JSON.parse(raw) as GameState;
+      const parsedCompanies = parsed.companies as Partial<Record<CompanyKey, CompanyState>>;
+      const fallbackCompany = (parsedCompanies.cosmic ?? Object.values(parsedCompanies)[0]) as CompanyState | undefined;
+      if (!fallbackCompany) return;
       const normalized = resolveGovernance({
         ...parsed,
-        companies: Object.fromEntries(
-          (Object.entries(parsed.companies) as [CompanyKey, CompanyState][]).map(([key, company]) => [
+        companies: COMPANY_KEYS.reduce((acc, key) => {
+          const company = parsedCompanies[key] ?? {
+            ...fallbackCompany,
             key,
-            {
+            name: key.toUpperCase(),
+            founder: 'Pending Founder',
+            founderInvestorId: `founder_${key}`,
+            ceoId: `founder_${key}`,
+            ceoName: 'Pending Founder',
+            isEstablished: false,
+            establishedDay: null,
+            cash: 0,
+            research: 0,
+            marketShare: 0,
+            reputation: 0,
+            releaseCount: 0,
+            revenuePerDay: 0,
+            researchPerDay: 0,
+            shareListings: [],
+          };
+          acc[key] = {
+            ...company,
+            capitalStrain: company.capitalStrain ?? 0,
+            lastReleaseDay: company.lastReleaseDay ?? 0,
+            lastReleaseCpuScore: company.lastReleaseCpuScore ?? calculateCpuScore(company.upgrades),
+            lastReleasePriceIndex: company.lastReleasePriceIndex ?? 1,
+            emergencyReleaseAnchorDay: company.emergencyReleaseAnchorDay ?? null,
+            emergencyReleaseCount: company.emergencyReleaseCount ?? 0,
+            lastEmergencyReleaseDay: company.lastEmergencyReleaseDay ?? null,
+            activeBoardVote: company.activeBoardVote
+              ? {
+                ...company.activeBoardVote,
+                memberVotes: company.activeBoardVote.memberVotes ?? {},
+              }
+              : null,
+            boardVoteWindowStartDay: company.boardVoteWindowStartDay ?? 0,
+            boardVoteCountInWindow: company.boardVoteCountInWindow ?? 0,
+            shareListings: sanitizeShareListings({
               ...company,
-              capitalStrain: company.capitalStrain ?? 0,
-              lastReleaseDay: company.lastReleaseDay ?? 0,
-              lastReleaseCpuScore: company.lastReleaseCpuScore ?? calculateCpuScore(company.upgrades),
-              lastReleasePriceIndex: company.lastReleasePriceIndex ?? 1,
-              emergencyReleaseAnchorDay: company.emergencyReleaseAnchorDay ?? null,
-              emergencyReleaseCount: company.emergencyReleaseCount ?? 0,
-              lastEmergencyReleaseDay: company.lastEmergencyReleaseDay ?? null,
-              activeBoardVote: company.activeBoardVote
-                ? {
-                  ...company.activeBoardVote,
-                  memberVotes: company.activeBoardVote.memberVotes ?? {},
-                }
-                : null,
-              boardVoteWindowStartDay: company.boardVoteWindowStartDay ?? 0,
-              boardVoteCountInWindow: company.boardVoteCountInWindow ?? 0,
-              shareListings: sanitizeShareListings({
-                ...company,
-                shareListings: company.shareListings ?? [],
-              }),
-            },
-          ])
-        ) as Record<CompanyKey, CompanyState>,
+              shareListings: company.shareListings ?? [],
+            }),
+            isEstablished: company.isEstablished ?? false,
+            establishedDay: company.establishedDay ?? null,
+          };
+          return acc;
+        }, {} as Record<CompanyKey, CompanyState>),
         plans: parsed.plans ?? COMPANY_KEYS.reduce((acc, key) => {
+          const company = parsedCompanies[key] ?? fallbackCompany;
           acc[key] = {
             companyKey: key,
-            companyName: parsed.companies[key].name,
-            founderInvestorId: parsed.companies[key].founderInvestorId,
-            founderName: parsed.companies[key].founder,
+            companyName: company.name,
+            founderInvestorId: company.founderInvestorId,
+            founderName: company.founder,
             startDay: 0,
             dueDay: 0,
-            targetCapital: parsed.companies[key].cash,
-            pledgedCapital: parsed.companies[key].cash,
+            targetCapital: company.cash,
+            pledgedCapital: company.cash,
             pledges: [],
-            isEstablished: true,
+            isEstablished: company.isEstablished ?? true,
           };
           return acc;
         }, {} as Record<CompanyKey, CompanyEstablishmentPlan>),
@@ -1396,7 +1419,7 @@ export function CpuFoundrySim() {
 
             <div className={styles.screenFrameBody}>
               <div className={styles.quickGrid}>
-                {COMPANY_KEYS.map((company) => (
+                {COMPANY_KEYS.filter((company) => game.companies[company].isEstablished).map((company) => (
                   <button key={company} type="button" className={investorFrameCompanyKey === company ? styles.quickButtonActive : styles.quickButton} onClick={() => setInvestorFrameCompanyKey(company)}>
                     {game.companies[company].name}
                   </button>

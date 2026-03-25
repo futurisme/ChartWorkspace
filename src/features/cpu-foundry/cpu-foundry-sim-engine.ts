@@ -2,7 +2,7 @@ export type UpgradeKey = 'architecture' | 'lithography' | 'clockSpeed' | 'coreDe
 export type TeamKey = 'researchers' | 'marketing' | 'fabrication';
 export type PanelKey = 'profile' | 'intel';
 export type CompanyDetailPanelKey = 'overview' | 'management' | 'operations' | 'ownership' | 'governance' | 'intel';
-export type CompanyKey = 'cosmic' | 'rmd' | 'heroscop';
+export type CompanyKey = 'cosmic' | 'rmd' | 'heroscop' | 'venture4' | 'venture5' | 'venture6' | 'venture7' | 'venture8';
 export type InvestorActionMode = 'buy' | 'sell';
 export type StrategyStyle = 'value' | 'growth' | 'dividend' | 'activist' | 'balanced';
 export type ExecutiveRole = 'coo' | 'cfo' | 'cto' | 'cmo';
@@ -284,7 +284,9 @@ export const HOLDER_TRADE_FEE_RATE = 0.052;
 export const MIN_TRADE_AMOUNT = 0.1;
 export const PLAN_DURATION_DAYS = 30;
 export const MAX_ACTIVE_COMPANIES = 8;
-export const COMPANY_KEYS: CompanyKey[] = ['cosmic', 'rmd', 'heroscop'];
+export const COMPANY_KEYS: CompanyKey[] = ['cosmic', 'rmd', 'heroscop', 'venture4', 'venture5', 'venture6', 'venture7', 'venture8'];
+export const CORE_COMPANY_KEYS: CompanyKey[] = ['cosmic', 'rmd', 'heroscop'];
+export const DYNAMIC_COMPANY_KEYS: CompanyKey[] = ['venture4', 'venture5', 'venture6', 'venture7', 'venture8'];
 export const TRANSACTION_SLIDER_STOPS: SliderStop[] = [
   { label: '0%', value: 0 },
   { label: '25%', value: 25 },
@@ -383,6 +385,9 @@ export const NPC_PERSONAS = [
   'direktur family office',
   'portfolio architect jangka panjang',
 ] as const;
+export const COMPANY_NAME_PREFIXES = ['Quantum', 'Aurora', 'Nimbus', 'Titan', 'Atlas', 'Nova', 'Helios', 'Pioneer', 'Vertex', 'Polar', 'Sentra', 'Flux'] as const;
+export const COMPANY_NAME_CORES = ['Logic', 'Circuits', 'Semicon', 'Foundry', 'Compute', 'Micro', 'Core', 'Systems', 'Silica', 'Dynamics', 'Processors', 'Fabric'] as const;
+export const COMPANY_NAME_SUFFIXES = ['Labs', 'Works', 'Technologies', 'Industries', 'Microdevices', 'Engineering', 'Collective', 'Networks'] as const;
 
 export function createSeededRandom(seed: string) {
   let state = 2166136261;
@@ -410,6 +415,18 @@ export function randomInt(random: () => number, min: number, max: number) {
 
 export function randomFrom<T>(random: () => number, items: readonly T[]) {
   return items[Math.floor(random() * items.length)] as T;
+}
+
+export function generateUniqueCompanyName(game: GameState, random: () => number) {
+  const used = new Set<string>([
+    ...Object.values(game.companies).map((company) => company.name.toLowerCase()),
+    ...game.communityPlans.map((plan) => plan.companyName.toLowerCase()),
+  ]);
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    const candidate = `${randomFrom(random, COMPANY_NAME_PREFIXES)} ${randomFrom(random, COMPANY_NAME_CORES)} ${randomFrom(random, COMPANY_NAME_SUFFIXES)}`.replace(/\s+/g, ' ');
+    if (!used.has(candidate.toLowerCase())) return candidate;
+  }
+  return `NextGen ${Math.floor(random() * 9000) + 1000} Labs`;
 }
 
 export function formatNumber(value: number, decimals = 0) {
@@ -563,7 +580,8 @@ export function getUpgradeLevel(key: UpgradeKey, upgrade: UpgradeState, baseline
 }
 
 export function getUpgradeCost(key: UpgradeKey, upgrade: UpgradeState, company: CompanyState) {
-  const baseline = INITIAL_BASELINES[company.key].upgrades[key];
+  const baselineSet = INITIAL_BASELINES[company.key as keyof typeof INITIAL_BASELINES] ?? INITIAL_BASELINES.cosmic;
+  const baseline = baselineSet.upgrades[key];
   const level = getUpgradeLevel(key, upgrade, baseline);
   return Math.round(upgrade.baseCost * Math.pow(upgrade.costGrowth, level));
 }
@@ -1858,6 +1876,11 @@ export function createInitialGameState(profile: ProfileDraft): GameState {
     cosmic: { ...cosmic.company, isEstablished: false, establishedDay: null, cash: 0, research: 0, marketShare: 0, reputation: 0, releaseCount: 0, revenuePerDay: 0, researchPerDay: 0, payoutRatio: 0.08, dividendPerShare: 0 },
     rmd: { ...rmd.company, isEstablished: false, establishedDay: null, cash: 0, research: 0, marketShare: 0, reputation: 0, releaseCount: 0, revenuePerDay: 0, researchPerDay: 0, payoutRatio: 0.08, dividendPerShare: 0 },
     heroscop: { ...heroscop.company, isEstablished: false, establishedDay: null, cash: 0, research: 0, marketShare: 0, reputation: 0, releaseCount: 0, revenuePerDay: 0, researchPerDay: 0, payoutRatio: 0.08, dividendPerShare: 0 },
+    venture4: { ...cosmic.company, key: 'venture4', name: 'Venture 4', founder: 'Pending Founder', founderInvestorId: 'founder_venture4', ceoId: 'founder_venture4', ceoName: 'Pending Founder', focus: 'Belum aktif', lastRelease: 'Menunggu plan pendirian.', isEstablished: false, establishedDay: null, cash: 0, research: 0, marketShare: 0, reputation: 0, releaseCount: 0, revenuePerDay: 0, researchPerDay: 0, payoutRatio: 0.08, dividendPerShare: 0, investors: { founder_venture4: 0 }, shareListings: [] },
+    venture5: { ...cosmic.company, key: 'venture5', name: 'Venture 5', founder: 'Pending Founder', founderInvestorId: 'founder_venture5', ceoId: 'founder_venture5', ceoName: 'Pending Founder', focus: 'Belum aktif', lastRelease: 'Menunggu plan pendirian.', isEstablished: false, establishedDay: null, cash: 0, research: 0, marketShare: 0, reputation: 0, releaseCount: 0, revenuePerDay: 0, researchPerDay: 0, payoutRatio: 0.08, dividendPerShare: 0, investors: { founder_venture5: 0 }, shareListings: [] },
+    venture6: { ...cosmic.company, key: 'venture6', name: 'Venture 6', founder: 'Pending Founder', founderInvestorId: 'founder_venture6', ceoId: 'founder_venture6', ceoName: 'Pending Founder', focus: 'Belum aktif', lastRelease: 'Menunggu plan pendirian.', isEstablished: false, establishedDay: null, cash: 0, research: 0, marketShare: 0, reputation: 0, releaseCount: 0, revenuePerDay: 0, researchPerDay: 0, payoutRatio: 0.08, dividendPerShare: 0, investors: { founder_venture6: 0 }, shareListings: [] },
+    venture7: { ...cosmic.company, key: 'venture7', name: 'Venture 7', founder: 'Pending Founder', founderInvestorId: 'founder_venture7', ceoId: 'founder_venture7', ceoName: 'Pending Founder', focus: 'Belum aktif', lastRelease: 'Menunggu plan pendirian.', isEstablished: false, establishedDay: null, cash: 0, research: 0, marketShare: 0, reputation: 0, releaseCount: 0, revenuePerDay: 0, researchPerDay: 0, payoutRatio: 0.08, dividendPerShare: 0, investors: { founder_venture7: 0 }, shareListings: [] },
+    venture8: { ...cosmic.company, key: 'venture8', name: 'Venture 8', founder: 'Pending Founder', founderInvestorId: 'founder_venture8', ceoId: 'founder_venture8', ceoName: 'Pending Founder', focus: 'Belum aktif', lastRelease: 'Menunggu plan pendirian.', isEstablished: false, establishedDay: null, cash: 0, research: 0, marketShare: 0, reputation: 0, releaseCount: 0, revenuePerDay: 0, researchPerDay: 0, payoutRatio: 0.08, dividendPerShare: 0, investors: { founder_venture8: 0 }, shareListings: [] },
   } satisfies Record<CompanyKey, CompanyState>;
 
   const plans = {
@@ -1897,6 +1920,11 @@ export function createInitialGameState(profile: ProfileDraft): GameState {
       pledges: [{ investorId: companies.heroscop.founderInvestorId, amount: 36, pledgedDay: 0 }],
       isEstablished: false,
     },
+    venture4: { companyKey: 'venture4', companyName: 'Venture 4', founderInvestorId: 'founder_venture4', founderName: 'Pending Founder', startDay: 0, dueDay: 0, targetCapital: 0, pledgedCapital: 0, pledges: [], isEstablished: true },
+    venture5: { companyKey: 'venture5', companyName: 'Venture 5', founderInvestorId: 'founder_venture5', founderName: 'Pending Founder', startDay: 0, dueDay: 0, targetCapital: 0, pledgedCapital: 0, pledges: [], isEstablished: true },
+    venture6: { companyKey: 'venture6', companyName: 'Venture 6', founderInvestorId: 'founder_venture6', founderName: 'Pending Founder', startDay: 0, dueDay: 0, targetCapital: 0, pledgedCapital: 0, pledges: [], isEstablished: true },
+    venture7: { companyKey: 'venture7', companyName: 'Venture 7', founderInvestorId: 'founder_venture7', founderName: 'Pending Founder', startDay: 0, dueDay: 0, targetCapital: 0, pledgedCapital: 0, pledges: [], isEstablished: true },
+    venture8: { companyKey: 'venture8', companyName: 'Venture 8', founderInvestorId: 'founder_venture8', founderName: 'Pending Founder', startDay: 0, dueDay: 0, targetCapital: 0, pledgedCapital: 0, pledges: [], isEstablished: true },
   } satisfies Record<CompanyKey, CompanyEstablishmentPlan>;
 
   const npcSeed = `${profile.name.trim()}-${Date.now()}-${Math.random()}`;
@@ -1960,7 +1988,7 @@ export const INITIAL_BASELINES = {
       powerEfficiency: 90,
     },
   },
-} satisfies Record<CompanyKey, { upgrades: Record<UpgradeKey, number> }>;
+} satisfies Partial<Record<CompanyKey, { upgrades: Record<UpgradeKey, number> }>>;
 
 export function applyCashToInvestor(game: GameState, investorId: string, amount: number) {
   if (amount === 0) return game;
@@ -2142,8 +2170,50 @@ export function progressCommunityPlans(game: GameState) {
   if (!changed) return game;
   const establishedNow = nextPlans.filter((plan, idx) => plan.status === 'established' && game.communityPlans[idx].status === 'funding');
   const expiredNow = nextPlans.filter((plan, idx) => plan.status === 'expired' && game.communityPlans[idx].status === 'funding');
-  let next = { ...game, communityPlans: nextPlans };
+  let next = { ...game, communityPlans: nextPlans, companies: { ...game.companies } };
   establishedNow.forEach((plan) => {
+    const availableSlot = DYNAMIC_COMPANY_KEYS.find((key) => !next.companies[key].isEstablished);
+    if (availableSlot) {
+      const company = next.companies[availableSlot];
+      const founderShares = Math.round(Math.max(0, TOTAL_SHARES * 0.4));
+      const marketPoolShares = Math.max(0, TOTAL_SHARES - founderShares);
+      const seededTeams = createTeams({ researchers: 2, marketing: 1, fabrication: 1 });
+      const seededUpgrades = createUpgrades({ architecture: 2, lithography: 170, clockSpeed: 1.5, coreDesign: 2, cacheStack: 512, powerEfficiency: 96 });
+      next.companies[availableSlot] = {
+        ...company,
+        key: availableSlot,
+        name: plan.companyName,
+        founder: plan.founderName,
+        founderInvestorId: plan.founderId,
+        ceoId: plan.founderId,
+        ceoName: plan.founderName,
+        cash: Math.max(16, plan.pledgedCapital * 0.74),
+        research: Math.max(10, plan.pledgedCapital * 0.34),
+        marketShare: clamp(plan.pledgedCapital / 30, 2.4, 11),
+        reputation: clamp(8 + plan.pledgedCapital / 18, 8, 34),
+        releaseCount: 1,
+        bestCpuScore: calculateCpuScore(seededUpgrades),
+        revenuePerDay: Math.max(1.8, plan.pledgedCapital / 24),
+        researchPerDay: Math.max(1.1, plan.pledgedCapital / 34),
+        lastRelease: `${plan.companyName} menyiapkan lineup pembuka untuk menantang ${plan.competesWith}.`,
+        focus: `Pendatang baru yang menantang ${plan.competesWith}.`,
+        upgrades: seededUpgrades,
+        teams: seededTeams,
+        investors: { [plan.founderId]: founderShares },
+        sharesOutstanding: TOTAL_SHARES,
+        marketPoolShares,
+        dividendPerShare: 0.01,
+        payoutRatio: 0.09,
+        ceoSalaryPerDay: Math.max(0.7, plan.pledgedCapital * 0.018),
+        boardMood: 0.56,
+        shareListings: [],
+        activeBoardVote: null,
+        boardVoteWindowStartDay: next.elapsedDays,
+        boardVoteCountInWindow: 0,
+        isEstablished: true,
+        establishedDay: next.elapsedDays,
+      };
+    }
     next.activityFeed = addFeedEntry(next.activityFeed, `${formatDateFromDays(next.elapsedDays)}: ${plan.companyName} resmi berdiri dan mulai menantang ${plan.competesWith}.`);
   });
   expiredNow.forEach((plan) => {
@@ -2447,7 +2517,7 @@ export function runNpcCommunityPlanning(current: GameState) {
     if (seed() < founderChance && getActiveCompanyCount(next) < MAX_ACTIVE_COMPANIES) {
       const contribution = clamp(npc.cash * (0.08 + npc.boldness * 0.12), 0, 24);
       if (contribution >= 8) {
-        const candidateName = `${randomFrom(seed, NPC_FIRST_NAMES)} ${randomFrom(seed, NPC_LAST_NAMES)} Labs`;
+        const candidateName = generateUniqueCompanyName(next, seed);
         next = createCommunityCompanyPlan(next, npc.id, candidateName, contribution);
       }
     }
