@@ -283,7 +283,8 @@ export const EXECUTIVE_MIN_TENURE_DAYS = 30;
 export const BOARD_VOTE_WINDOW_DAYS = 30;
 export const BOARD_VOTE_LIMIT_PER_WINDOW = 2;
 export const SHARE_SHEET_OPTIONS = [100, 500, 1000] as const;
-export const SHARE_SHEET_COOLDOWN_DAYS = 180;
+export const SHARE_SHEET_COOLDOWN_DAYS = 240;
+export const INVESTOR_TAX_INTERVAL_DAYS = 30;
 export const TOTAL_SHARES = 1000;
 export const INITIAL_FOUNDER_OWNERSHIP_RATIO = 0.52;
 export const COMPANY_TRADE_FEE_RATE = 0.018;
@@ -761,6 +762,19 @@ export function canChangeShareSheetTotal(company: CompanyState, nextTotal: numbe
     return { ok: false, reason: `Perubahan share sheets masih cooldown ${formatNumber(SHARE_SHEET_COOLDOWN_DAYS - elapsed)} hari.` };
   }
   if (nextTotal < company.sharesOutstanding) {
+    const sortedTotals = [...SHARE_SHEET_OPTIONS].sort((a, b) => a - b);
+    const currentIndex = sortedTotals.findIndex((value) => value === company.sharesOutstanding);
+    const targetIndex = sortedTotals.findIndex((value) => value === nextTotal);
+    const downshiftSteps = currentIndex >= 0 && targetIndex >= 0 ? Math.max(0, currentIndex - targetIndex) : 1;
+    const ceoShares = company.investors[company.ceoId] ?? 0;
+    const baseMajorityRatio = 0.35;
+    const requiredCeoShares = company.sharesOutstanding * baseMajorityRatio * downshiftSteps;
+    if (ceoShares + 0.0001 < requiredCeoShares) {
+      return {
+        ok: false,
+        reason: `CEO harus pegang minimal ${formatNumber(requiredCeoShares, 2)} saham untuk turun ke ${formatNumber(nextTotal)} lembar (saat ini ${formatNumber(ceoShares, 2)}).`,
+      };
+    }
     const reduction = company.sharesOutstanding - nextTotal;
     if (company.marketPoolShares + 0.0001 < reduction) {
       return { ok: false, reason: 'Turun share sheets butuh buyback/treasury cukup agar saham beredar yang tersisa tidak melebihi target.' };
@@ -2266,6 +2280,130 @@ export function applyCashToInvestor(game: GameState, investorId: string, amount:
   };
 }
 
+export function isIndividualInvestorId(investorId: string) {
+  return !getCompanyKeyFromCorporateInvestorId(investorId);
+}
+
+export function getInvestorHoldingsValue(game: GameState, investorId: string) {
+  return COMPANY_KEYS.reduce((sum, key) => {
+    const company = game.companies[key];
+    const shares = company.investors[investorId] ?? 0;
+    if (shares <= 0.0001) return sum;
+    return sum + shares * getSharePrice(company);
+  }, 0);
+}
+
+export function getInvestorWeeklyIncomeEstimate(game: GameState, investorId: string) {
+  const dividendIncomeWeekly = COMPANY_KEYS.reduce((sum, key) => {
+    const company = game.companies[key];
+    const shares = company.investors[investorId] ?? 0;
+    if (shares <= 0.0001) return sum;
+    return sum + shares * company.dividendPerShare * 7;
+  }, 0);
+  const executiveIncomePerDay = COMPANY_KEYS.reduce((sum, key) => {
+    const company = game.companies[key];
+    if (!company.isEstablished) return sum;
+    let perDay = 0;
+    if (company.ceoId === investorId) perDay += company.ceoSalaryPerDay;
+    EXECUTIVE_ROLES.forEach((role) => {
+      if (company.executives[role]?.occupantId === investorId) {
+        perDay += company.executives[role]!.salaryPerDay;
+      }
+    });
+    return sum + perDay;
+  }, 0);
+  return dividendIncomeWeekly + executiveIncomePerDay * 7;
+}
+
+export function estimateMonthlyInvestorTax(game: GameState, investorId: string) {
+  const cash = getInvestorCash(game, investorId);
+  const wealth = cash + getInvestorHoldingsValue(game, investorId);
+  const weeklyIncome = getInvestorWeeklyIncomeEstimate(game, investorId);
+  const progressiveRate =
+    wealth > 1800 ? 0.045
+      : wealth > 900 ? 0.035
+        : wealth > 320 ? 0.026
+          : wealth > 140 ? 0.021
+            : 0.016;
+  const baseTax = wealth * progressiveRate;
+  const incomeFloor = weeklyIncome * 1.18;
+  return Math.max(baseTax, incomeFloor, wealth > 18 ? 0.25 : 0.08);
+}
+
+export function liquidateInvestorHoldingsForTax(game: GameState, investorId: string, neededCash: number) {
+  if (neededCash <= 0) return { next: game, raisedCash: 0 };
+  const holdings = COMPANY_KEYS
+    .map((key) => {
+      const company = game.companies[key];
+      const shares = company.investors[investorId] ?? 0;
+      return { key, company, shares, value: shares * getSharePrice(company), price: getSharePrice(company) };
+    })
+    .filter((entry) => entry.shares > 0.0001 && entry.value > 0.0001)
+    .sort((left, right) => right.value - left.value);
+
+  if (holdings.length === 0) return { next: game, raisedCash: 0 };
+
+  let next = { ...game, companies: { ...game.companies } };
+  let raisedCash = 0;
+
+  holdings.some((holding) => {
+    if (raisedCash >= neededCash) return true;
+    const company = next.companies[holding.key];
+    const currentShares = company.investors[investorId] ?? 0;
+    if (currentShares <= 0.0001) return false;
+    const neededShares = clamp((neededCash - raisedCash) / Math.max(0.0001, holding.price), 0, currentShares);
+    const sharesToSell = Math.min(currentShares, Math.max(0.01, neededShares));
+    const cashFromSale = sharesToSell * holding.price;
+    raisedCash += cashFromSale;
+    const updatedShares = Math.max(0, currentShares - sharesToSell);
+    const investors = { ...company.investors, [investorId]: updatedShares };
+    if (updatedShares <= 0.0001) delete investors[investorId];
+    next.companies[holding.key] = {
+      ...company,
+      investors,
+      marketPoolShares: company.marketPoolShares + sharesToSell,
+    };
+    return false;
+  });
+
+  return { next, raisedCash };
+}
+
+export function applyMonthlyInvestorTaxes(game: GameState) {
+  const individualIds = new Set<string>([game.player.id, ...game.npcs.map((npc) => npc.id)]);
+  COMPANY_KEYS.forEach((key) => {
+    Object.keys(game.companies[key].investors).forEach((investorId) => {
+      if (isIndividualInvestorId(investorId)) individualIds.add(investorId);
+    });
+  });
+
+  let next = game;
+  individualIds.forEach((investorId) => {
+    const taxDue = estimateMonthlyInvestorTax(next, investorId);
+    if (taxDue <= 0.01) return;
+    const currentCash = getInvestorCash(next, investorId);
+    let taxableState = next;
+    let taxPaidFromLiquidation = 0;
+    if (currentCash + 0.0001 < taxDue) {
+      const liquidation = liquidateInvestorHoldingsForTax(next, investorId, taxDue - currentCash);
+      taxableState = liquidation.next;
+      taxPaidFromLiquidation = liquidation.raisedCash;
+    }
+    const payable = Math.min(taxDue, getInvestorCash(taxableState, investorId));
+    if (payable <= 0.0001) {
+      next = taxableState;
+      return;
+    }
+    const taxedState = applyCashToInvestor(taxableState, investorId, -payable);
+    const note = taxPaidFromLiquidation > 0
+      ? `${formatDateFromDays(taxedState.elapsedDays)}: ${investorDisplayName(taxedState, investorId)} menjual saham kecil otomatis untuk bayar pajak bulanan ${formatMoneyCompact(payable, 2)}.`
+      : `${formatDateFromDays(taxedState.elapsedDays)}: ${investorDisplayName(taxedState, investorId)} membayar pajak bulanan ${formatMoneyCompact(payable, 2)} dari kas.`;
+    next = { ...taxedState, activityFeed: addFeedEntry(taxedState.activityFeed, note) };
+  });
+
+  return next;
+}
+
 export function investInCompanyPlan(game: GameState, investorId: string, companyKey: CompanyKey, amount: number) {
   const plan = game.plans[companyKey];
   if (!plan || plan.isEstablished || amount <= 0) return game;
@@ -2866,6 +3004,8 @@ export function simulateTick(current: GameState) {
   const tickDays = TICK_MS / 1000;
   const nextElapsedDays = current.elapsedDays + tickDays;
   const reachedNewDay = Math.floor(nextElapsedDays) > Math.floor(current.elapsedDays);
+  const reachedNewTaxMonth =
+    Math.floor(nextElapsedDays / INVESTOR_TAX_INTERVAL_DAYS) > Math.floor(current.elapsedDays / INVESTOR_TAX_INTERVAL_DAYS);
   const shouldRefreshGovernance =
     reachedNewDay
     || current.tickCount % GOVERNANCE_REFRESH_TICK_INTERVAL === 0
@@ -2973,6 +3113,9 @@ export function simulateTick(current: GameState) {
   }
 
   if (reachedNewDay) {
+    if (reachedNewTaxMonth) {
+      nextState = applyMonthlyInvestorTaxes(nextState);
+    }
     nextState = progressCompanyPlans(nextState);
     nextState = progressCommunityPlans(nextState);
     nextState = runNpcCommunityPlanning(nextState);
@@ -3824,7 +3967,10 @@ export function runNpcTurn(current: GameState) {
     npc.focusCompany = shouldSwitchFocus ? best.key : currentFocus.key;
 
     const diversificationGap = getNpcDiversificationGap(analyses);
-    const reserveCash = getNpcAdaptiveReserveCash(npc, npc.cash, diversificationGap);
+    const reserveCash = Math.max(
+      getNpcAdaptiveReserveCash(npc, npc.cash, diversificationGap),
+      estimateMonthlyInvestorTax(next, npc.id) * 0.95
+    );
     const listingDecision = manageNpcShareListing(next, npc, currentFocus, best.finalScore, reserveCash);
     if (listingDecision.changed) {
       next = listingDecision.next;
