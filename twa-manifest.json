@@ -1,0 +1,38 @@
+{
+  "packageId": "com.chartworkspace.game",
+  "host": "yourdomain.com",
+  "name": "ChartWorkspace Game",
+  "launcherName": "CW Game",
+  "display": "standalone",
+  "themeColor": "#0a0f1f",
+  "navigationColor": "#0a0f1f",
+  "backgroundColor": "#0a0f1f",
+  "startUrl": "https://yourdomain.com/game",
+  "scope": "/game",
+  "webManifestUrl": "https://yourdomain.com/manifest.webmanifest",
+  "iconUrl": "https://yourdomain.com/favicon.ico",
+  "maskableIconUrl": "https://yourdomain.com/favicon.ico",
+  "monochromeIconUrl": "https://yourdomain.com/favicon.ico",
+  "fallbackType": "customtabs",
+  "enableNotifications": false,
+  "appVersionName": "1.0.0",
+  "appVersionCode": 1,
+  "generatorApp": "bubblewrap",
+  "intentFilters": [
+    {
+      "action": "VIEW",
+      "autoVerify": true,
+      "categories": [
+        "BROWSABLE",
+        "DEFAULT"
+      ],
+      "data": [
+        {
+          "scheme": "https",
+          "host": "yourdomain.com",
+          "pathPrefix": "/game"
+        }
+      ]
+    }
+  ]
+}

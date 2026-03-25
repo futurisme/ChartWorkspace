@@ -1,0 +1,141 @@
+name: Build TWA Game APK/AAB
+
+on:
+  push:
+    tags:
+      - 'twa-v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release tag (example: twa-v1.0.0)'
+        required: true
+        default: 'twa-v0.0.1'
+
+permissions:
+  contents: write
+
+jobs:
+  twa-release:
+    runs-on: ubuntu-latest
+    env:
+      JAVA_VERSION: '21'
+      NODE_VERSION: '22'
+      TWA_DIR: twa-android
+      OUTPUT_DIR: dist/twa
+      KEYSTORE_PATH: android.keystore
+      GAME_URL: https://yourdomain.com/game
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Optimize /game media assets (WebP + Ogg/Opus)
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y webp ffmpeg
+          if [ -d "public/game" ]; then
+            find public/game -type f \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' \) -print0 | while IFS= read -r -d '' file; do
+              cwebp -q 82 "$file" -o "${file%.*}.webp" || true
+            done
+            find public/game -type f \( -iname '*.wav' -o -iname '*.mp3' \) -print0 | while IFS= read -r -d '' file; do
+              ffmpeg -y -i "$file" -c:a libopus -b:a 64k "${file%.*}.ogg" || true
+            done
+          fi
+
+      - name: Build production web app (tree-shaken + terser)
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+          NODE_ENV: production
+        run: npm run build
+
+      - name: Install Bubblewrap CLI
+        run: npm install -g @bubblewrap/cli
+
+      - name: Prepare signing keystore from secrets
+        shell: bash
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > "${KEYSTORE_PATH}"
+
+      - name: Generate / update TWA project scoped to /game
+        shell: bash
+        run: |
+          mkdir -p "${TWA_DIR}"
+          bubblewrap init \
+            --manifest="$(pwd)/twa-manifest.json" \
+            --directory="$(pwd)/${TWA_DIR}" \
+            --skipPwaValidation
+
+      - name: Build TWA app bundle and APK
+        shell: bash
+        run: |
+          cd "${TWA_DIR}"
+          ./gradlew --no-daemon clean assembleRelease bundleRelease
+
+      - name: Align and sign APK (zipalign + apksigner)
+        shell: bash
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        run: |
+          mkdir -p "${OUTPUT_DIR}"
+          ZIPALIGN_BIN=$(find "$ANDROID_HOME/build-tools" -name zipalign | sort -V | tail -n 1)
+          APKSIGNER_BIN=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)
+          UNSIGNED_APK=$(find "${TWA_DIR}" -path '*outputs/apk/release/*-unsigned.apk' | head -n 1)
+          SIGNED_APK="${OUTPUT_DIR}/chartworkspace-game-release.apk"
+          "$ZIPALIGN_BIN" -v -p 4 "$UNSIGNED_APK" "${OUTPUT_DIR}/aligned.apk"
+          "$APKSIGNER_BIN" sign \
+            --ks "${KEYSTORE_PATH}" \
+            --ks-key-alias "${KEY_ALIAS}" \
+            --ks-pass pass:"${KEYSTORE_PASSWORD}" \
+            --key-pass pass:"${KEYSTORE_PASSWORD}" \
+            --out "$SIGNED_APK" \
+            "${OUTPUT_DIR}/aligned.apk"
+          cp "$(find "${TWA_DIR}" -path '*outputs/bundle/release/*.aab' | head -n 1)" "${OUTPUT_DIR}/chartworkspace-game-release.aab"
+
+      - name: Enforce APK size target (< 2MB)
+        shell: bash
+        run: |
+          APK_FILE="${OUTPUT_DIR}/chartworkspace-game-release.apk"
+          APK_BYTES=$(stat -c%s "$APK_FILE")
+          LIMIT=$((2 * 1024 * 1024))
+          echo "APK size bytes: ${APK_BYTES}"
+          if [ "$APK_BYTES" -ge "$LIMIT" ]; then
+            echo "APK exceeded 2MB target." >&2
+            exit 1
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: twa-game-build
+          path: |
+            ${{ env.OUTPUT_DIR }}/chartworkspace-game-release.apk
+            ${{ env.OUTPUT_DIR }}/chartworkspace-game-release.aab
+
+      - name: Create GitHub Release and attach APK/AAB
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.release_tag || github.ref_name }}
+          generate_release_notes: true
+          files: |
+            ${{ env.OUTPUT_DIR }}/chartworkspace-game-release.apk
+            ${{ env.OUTPUT_DIR }}/chartworkspace-game-release.aab
