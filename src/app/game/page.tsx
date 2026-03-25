@@ -1,5 +1,5 @@
-import { CpuFoundrySim } from '@/features/cpu-foundry/cpu-foundry-sim';
+import { GameStudioSim } from '@/features/game-studio/game-studio-sim';
 
 export default function GamePage() {
-  return <CpuFoundrySim />;
+  return <GameStudioSim />;
 }
