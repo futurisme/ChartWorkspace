@@ -708,20 +708,31 @@ export function getSharePrice(company: CompanyState) {
   return Math.max(0.08, valuation / company.sharesOutstanding);
 }
 
+export function getCompanyResearchAssetValue(company: CompanyState) {
+  const baselineSet = INITIAL_BASELINES[company.key as keyof typeof INITIAL_BASELINES] ?? INITIAL_BASELINES.cosmic;
+  const upgradeAssetValue =
+    getUpgradeLevel('architecture', company.upgrades.architecture, baselineSet.upgrades.architecture) * 14
+    + getUpgradeLevel('coreDesign', company.upgrades.coreDesign, baselineSet.upgrades.coreDesign) * 12
+    + getUpgradeLevel('clockSpeed', company.upgrades.clockSpeed, baselineSet.upgrades.clockSpeed) * 10
+    + getUpgradeLevel('cacheStack', company.upgrades.cacheStack, baselineSet.upgrades.cacheStack) * 6
+    + getUpgradeLevel('powerEfficiency', company.upgrades.powerEfficiency, baselineSet.upgrades.powerEfficiency) * 7
+    + getUpgradeLevel('lithography', company.upgrades.lithography, baselineSet.upgrades.lithography) * 8;
+  return Math.max(
+    0,
+    company.research * 0.56
+    + company.researchPerDay * 7.2
+    + upgradeAssetValue
+  );
+}
+
 export function getCompanyValuation(company: CompanyState) {
-  const cpuScore = calculateCpuScore(company.upgrades);
   return Math.max(
     20,
     Math.round((
       company.cash
-      + company.revenuePerDay * 6.2
-      + company.marketShare * 7
-      + company.reputation * 4.1
-      + cpuScore * 0.082
-      + company.research * 0.08
-      + company.portfolioValue * 0.72
-      + company.boardMood * 6
-      - company.capitalStrain
+      + getCompanyResearchAssetValue(company)
+      + company.portfolioValue
+      - company.capitalStrain * 0.46
     ) * 10) / 10
   );
 }

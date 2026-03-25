@@ -96,6 +96,7 @@ const {
   getCompanyInvestmentTotal,
   getSharePrice,
   getCompanyValuation,
+  getCompanyResearchAssetValue,
   getOwnershipPercent,
   getCorporateInvestorId,
   getCompanyKeyFromCorporateInvestorId,
@@ -546,7 +547,7 @@ export function CpuFoundrySim() {
       };
     }
 
-    const researchWealth = Math.max(0, focusedCompany.research * 0.9 + focusedCompany.researchPerDay * 8);
+    const researchWealth = Math.max(0, getCompanyResearchAssetValue(focusedCompany));
     const investmentWealth = Math.max(0, focusedCompany.portfolioValue);
     const latestSalesWealth = Math.max(0, calculateLaunchRevenue(
       Math.max(1, focusedCompany.lastReleaseCpuScore),
@@ -1766,7 +1767,7 @@ export function CpuFoundrySim() {
       ) : null}
 
       {isStatisticsFrameOpen && focusedCompany ? (
-        <div className={styles.screenFrameOverlay} role="presentation" onClick={() => setIsStatisticsFrameOpen(false)}>
+        <div className={`${styles.screenFrameOverlay} ${styles.statisticsOverlay}`} role="presentation" onClick={() => setIsStatisticsFrameOpen(false)}>
           <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label={`Statistik ${focusedCompany.name}`} onClick={(event) => event.stopPropagation()}>
             <div className={styles.screenFrameHeader}>
               <div>
