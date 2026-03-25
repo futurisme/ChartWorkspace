@@ -274,10 +274,11 @@ export const START_DATE_UTC = Date.UTC(2000, 0, 1);
 export const NPC_ACTION_EVERY_TICKS = 10;
 export const PLAYER_STARTING_CASH = 140;
 export const INITIAL_NPC_COUNT = 20;
-export const MAX_ACTIVE_NPCS = 35;
+export const MAX_ACTIVE_NPCS = 50;
 export const NPC_GROWTH_START_DAY = 180;
 export const NPC_GROWTH_INTERVAL_DAYS = 60;
 export const NPC_GROWTH_BATCH = 3;
+export const GOVERNANCE_REFRESH_TICK_INTERVAL = 5;
 export const EXECUTIVE_MIN_TENURE_DAYS = 30;
 export const BOARD_VOTE_WINDOW_DAYS = 30;
 export const BOARD_VOTE_LIMIT_PER_WINDOW = 2;
@@ -1098,6 +1099,19 @@ export function getTradePreview(
 }
 
 export function addFeedEntry(feed: string[], message: string) {
+  const latest = feed[0];
+  if (latest) {
+    const sameMessage = latest === message;
+    const collapsed = latest.match(/^(.*)\s\(x(\d+)\)$/);
+    const collapsedBase = collapsed?.[1];
+    const collapsedCount = collapsed?.[2];
+    if (sameMessage || collapsedBase === message) {
+      const base = sameMessage ? message : (collapsedBase ?? message);
+      const currentCount = sameMessage ? 1 : Number(collapsedCount);
+      const nextCount = Number.isFinite(currentCount) ? currentCount + 1 : 2;
+      return [`${base} (x${nextCount})`, ...feed.slice(1)].slice(0, 12);
+    }
+  }
   return [message, ...feed].slice(0, 12);
 }
 
@@ -2841,7 +2855,11 @@ export function simulateTick(current: GameState) {
   const tickDays = TICK_MS / 1000;
   const nextElapsedDays = current.elapsedDays + tickDays;
   const reachedNewDay = Math.floor(nextElapsedDays) > Math.floor(current.elapsedDays);
-  const governedCurrent = resolveGovernance(current);
+  const shouldRefreshGovernance =
+    reachedNewDay
+    || current.tickCount % GOVERNANCE_REFRESH_TICK_INTERVAL === 0
+    || (Object.values(current.companies) as CompanyState[]).some((company) => Boolean(company.activeBoardVote));
+  const governedCurrent = shouldRefreshGovernance ? resolveGovernance(current) : current;
 
   let nextPlayerCash = governedCurrent.player.cash;
   const npcCashMap = new Map(governedCurrent.npcs.map((npc) => [npc.id, npc.cash]));
