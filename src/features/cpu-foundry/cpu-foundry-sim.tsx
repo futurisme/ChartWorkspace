@@ -184,6 +184,8 @@ const {
   ,
   investInCompanyPlan,
   createCommunityCompanyPlan,
+  getCompanyFieldLabel,
+  mapProfileCompanyTypeToField,
   investInCommunityPlan,
   changeCompanyShareSheetTotal,
   MAX_ACTIVE_COMPANIES
@@ -351,9 +353,11 @@ export function CpuFoundrySim() {
             revenuePerDay: 0,
             researchPerDay: 0,
             shareListings: [],
+            field: parsed.player.companyType === 'game' ? 'game' : 'semiconductor',
           };
           acc[key] = {
             ...company,
+            field: company.field === 'game' ? 'game' : 'semiconductor',
             shareSheetTotal: company.shareSheetTotal ?? company.sharesOutstanding ?? TOTAL_SHARES,
             lastShareSheetChangeDay: company.lastShareSheetChangeDay ?? 0,
             portfolioValue: company.portfolioValue ?? 0,
@@ -387,6 +391,7 @@ export function CpuFoundrySim() {
           const sourcePlan = parsed.plans?.[key];
           acc[key] = {
             companyKey: key,
+            field: sourcePlan?.field === 'game' ? 'game' : (company.field === 'game' ? 'game' : 'semiconductor'),
             companyName: sourcePlan?.companyName ?? company.name,
             founderInvestorId: sourcePlan?.founderInvestorId ?? company.founderInvestorId,
             founderName: sourcePlan?.founderName ?? company.founder,
@@ -405,6 +410,7 @@ export function CpuFoundrySim() {
             .filter((plan): plan is CommunityCompanyPlan => Boolean(plan?.id && plan?.companyName))
             .map((plan) => ({
               ...plan,
+              field: plan.field === 'game' ? 'game' : 'semiconductor',
               investorIds: Array.isArray(plan.investorIds) ? plan.investorIds : [],
               status: plan.status === 'established' || plan.status === 'expired' ? plan.status : 'funding',
               pledgedCapital: Number.isFinite(plan.pledgedCapital) ? plan.pledgedCapital : 0,
@@ -862,7 +868,8 @@ export function CpuFoundrySim() {
   const createCompanyPlanByPlayer = () => {
     if (!game) return;
     const contribution = clamp(game.player.cash * (createCompanyDraft.percent / 100), 0, game.player.cash);
-    const next = createCommunityCompanyPlan(game, game.player.id, createCompanyDraft.name, contribution);
+    const field = mapProfileCompanyTypeToField(game.player.companyType);
+    const next = createCommunityCompanyPlan(game, game.player.id, createCompanyDraft.name, contribution, field);
     if (next === game) {
       setStatusMessage(`Plan gagal dibuat. Pastikan nama unik, modal cukup, dan total perusahaan aktif belum mencapai ${MAX_ACTIVE_COMPANIES}.`);
       return;
@@ -870,7 +877,7 @@ export function CpuFoundrySim() {
     setGame(next);
     setIsCreateCompanyOpen(false);
     setCreateCompanyDraft({ name: '', percent: 12 });
-    setStatusMessage(`Plan ${createCompanyDraft.name.trim()} berhasil dibuat. Dana awal ${formatCurrencyCompact(contribution, 2)} disalurkan.`);
+    setStatusMessage(`Plan ${createCompanyDraft.name.trim()} (${getCompanyFieldLabel(field)}) berhasil dibuat. Dana awal ${formatCurrencyCompact(contribution, 2)} disalurkan.`);
   };
 
   const investInCompany = () => {
@@ -1534,7 +1541,7 @@ export function CpuFoundrySim() {
                           <p className={styles.itemLabel}>Company Establishment Plan</p>
                           <h3>{plan.companyName}</h3>
                         </div>
-                        <span className={styles.costPill}>1 bulan pendanaan</span>
+                        <span className={styles.costPill}>{getCompanyFieldLabel(plan.field)} · 1 bulan pendanaan</span>
                       </div>
                       <div className={styles.infoRowCompact}>
                         <div>
@@ -1568,6 +1575,10 @@ export function CpuFoundrySim() {
                       <span className={styles.costPill}>{plan.status}</span>
                     </div>
                     <div className={styles.infoRowCompact}>
+                      <div>
+                        <span>Field</span>
+                        <strong>{getCompanyFieldLabel(plan.field)}</strong>
+                      </div>
                       <div>
                         <span>Capital</span>
                         <strong>{formatCurrencyCompact(plan.pledgedCapital, 2)}</strong>
