@@ -286,6 +286,59 @@
   align-items: flex-start;
 }
 
+.forbesList {
+  display: grid;
+  gap: 6px;
+}
+
+.forbesCard {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 8px;
+  align-items: center;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 10px;
+  padding: 6px 8px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+}
+
+.forbesRank {
+  grid-column: 1;
+  grid-row: 1 / span 3;
+  align-self: center;
+  font-size: 0.7rem;
+  font-weight: 800;
+  color: #0f172a;
+  border-radius: 999px;
+  background: rgba(14, 165, 233, 0.14);
+  padding: 3px 7px;
+  min-width: 36px;
+  text-align: center;
+}
+
+.forbesName {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1.15;
+}
+
+.forbesWealth {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #0369a1;
+  line-height: 1.1;
+}
+
+.forbesCompanies {
+  margin: 0;
+  font-size: 0.68rem;
+  color: #475569;
+  line-height: 1.2;
+}
+
 .costPill {
   flex-shrink: 0;
   border-radius: 999px;
@@ -672,6 +725,7 @@
   .panel,
   .memoCard,
   .itemCard,
+  .forbesCard,
   .companyCard,
   .heroMiniCard,
   .feedItem,
@@ -687,6 +741,7 @@
   .statChip,
   .memoCard,
   .itemCard,
+  .forbesCard,
   .sliderCard,
   .releasePreview,
   .loginPreview,
@@ -699,6 +754,7 @@
   .panelStack,
   .panelBody,
   .panelList,
+  .forbesList,
   .companyList,
   .feedList,
   .npcList,
@@ -743,5 +799,29 @@
     padding: 6px 7px;
     font-size: 0.74rem;
     font-weight: 800;
+  }
+
+  .forbesCard {
+    gap: 1px 6px;
+    padding: 5px 6px;
+    border-radius: 8px;
+  }
+
+  .forbesRank {
+    min-width: 32px;
+    font-size: 0.64rem;
+    padding: 2px 6px;
+  }
+
+  .forbesName {
+    font-size: 0.74rem;
+  }
+
+  .forbesWealth {
+    font-size: 0.72rem;
+  }
+
+  .forbesCompanies {
+    font-size: 0.6rem;
   }
 }

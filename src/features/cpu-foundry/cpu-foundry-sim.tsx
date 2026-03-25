@@ -508,26 +508,42 @@ export function CpuFoundrySim() {
   }, [game, newsCompanyFilter]);
   const forbesList = useMemo(() => {
     if (!game) return [];
-    const buildEntry = (investorId: string, forcedName?: string) => {
-      const cash = getInvestorCash(game, investorId);
-      const nonCash = COMPANY_KEYS.reduce((sum, key) => {
-        const company = game.companies[key];
-        return sum + (company.investors[investorId] ?? 0) * getSharePrice(company);
-      }, 0);
-      return {
-        investorId,
-        name: forcedName ?? investorDisplayName(game, investorId),
-        cash,
-        nonCash,
-        total: cash + nonCash,
-      };
-    };
-    const founderEntries = COMPANY_KEYS.map((key) => {
+
+    const candidateInvestorIds = new Set<string>();
+    candidateInvestorIds.add(game.player.id);
+    game.npcs.forEach((npc) => candidateInvestorIds.add(npc.id));
+    COMPANY_KEYS.forEach((key) => {
       const company = game.companies[key];
-      return buildEntry(company.founderInvestorId, company.founder);
+      candidateInvestorIds.add(company.founderInvestorId);
+      Object.keys(company.investors).forEach((investorId) => candidateInvestorIds.add(investorId));
     });
-    return [buildEntry(game.player.id), ...game.npcs.map((npc) => buildEntry(npc.id)), ...founderEntries]
-      .sort((left, right) => right.total - left.total);
+
+    return Array.from(candidateInvestorIds)
+      .map((investorId) => {
+        const cash = getInvestorCash(game, investorId);
+        const holdings = COMPANY_KEYS
+          .map((key) => {
+            const company = game.companies[key];
+            const shares = company.investors[investorId] ?? 0;
+            return { companyName: company.name, shares, value: shares * getSharePrice(company) };
+          })
+          .filter((holding) => holding.shares > 0.0001);
+        const equity = holdings.reduce((sum, holding) => sum + holding.value, 0);
+        const total = cash + equity;
+        const uniqueCompanyNames = Array.from(new Set(holdings.map((holding) => holding.companyName)));
+        return {
+          investorId,
+          name: investorDisplayName(game, investorId),
+          wealth: total,
+          companyNames: uniqueCompanyNames,
+        };
+      })
+      .filter((entry) => entry.wealth > 0.01)
+      .sort((left, right) => (
+        right.wealth - left.wealth
+        || right.companyNames.length - left.companyNames.length
+        || left.name.localeCompare(right.name)
+      ));
   }, [game]);
   const activePlayerBoardVote = useMemo(() => {
     if (!game) return null;
@@ -1269,13 +1285,13 @@ export function CpuFoundrySim() {
                     Buka News
                   </button>
                   <button type="button" className={styles.secondaryButton} onClick={() => setIsForbesFrameOpen(true)}>
-                    Buka Richest People List
+                    Forbes ranking
                   </button>
                 </div>
                 <div className={styles.memoCard}>
                   <p className={styles.panelTag}>Intel split frame</p>
                   <p>
-                    News memuat 5 berita terbaru (dengan filter perusahaan). Richest People List memuat ranking kekayaan gabungan semua orang (investor maupun non-investor).
+                    News memuat 5 berita terbaru (dengan filter perusahaan). Forbes ranking memuat ranking kekayaan semua investor unik tanpa duplikasi identitas.
                   </p>
                 </div>
               </div>
@@ -1550,30 +1566,24 @@ export function CpuFoundrySim() {
 
       {isForbesFrameOpen ? (
         <div className={styles.screenFrameOverlay} role="presentation" onClick={() => setIsForbesFrameOpen(false)}>
-          <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label="Richest people frame" onClick={(event) => event.stopPropagation()}>
+          <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label="Forbes ranking frame" onClick={(event) => event.stopPropagation()}>
             <div className={styles.screenFrameHeader}>
               <div>
-                <p className={styles.panelTag}>Richest People List</p>
-                <h2>Orang terkaya dunia (AI + pemain + founder)</h2>
+                <p className={styles.panelTag}>Forbes Ranking</p>
+                <h2>Nama · Wealth · Company name</h2>
               </div>
               <button type="button" className={styles.closeButton} onClick={() => setIsForbesFrameOpen(false)} aria-label="Kembali dari forbes">
                 ←
               </button>
             </div>
             <div className={styles.screenFrameBody}>
-              <div className={styles.panelList}>
+              <div className={styles.forbesList}>
                 {forbesList.map((entry, index) => (
-                  <article key={entry.investorId} className={styles.itemCard}>
-                    <div className={styles.itemTop}>
-                      <div>
-                        <p className={styles.itemLabel}>Richest #{index + 1}</p>
-                        <h3>{entry.name}</h3>
-                      </div>
-                      <span className={styles.costPill}>$ {formatMoneyCompact(entry.total, 2)}</span>
-                    </div>
-                    <p className={styles.itemDescription}>
-                      Tunai $ {formatMoneyCompact(entry.cash, 2)} · Non tunai $ {formatMoneyCompact(entry.nonCash, 2)}.
-                    </p>
+                  <article key={entry.investorId} className={styles.forbesCard}>
+                    <p className={styles.forbesRank}>#{index + 1}</p>
+                    <p className={styles.forbesName}>{entry.name}</p>
+                    <p className={styles.forbesWealth}>{formatMoneyCompact(entry.wealth, 2)}</p>
+                    <p className={styles.forbesCompanies}>{entry.companyNames.length ? entry.companyNames.join(', ') : '-'}</p>
                   </article>
                 ))}
               </div>
