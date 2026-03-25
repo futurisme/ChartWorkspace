@@ -1,5 +1,5 @@
-import { GameStudioSim } from '@/features/game-studio/game-studio-sim';
+import { UnifiedGameField } from '@/features/game-field/unified-game-field';
 
 export default function GamePage() {
-  return <GameStudioSim />;
+  return <UnifiedGameField />;
 }
