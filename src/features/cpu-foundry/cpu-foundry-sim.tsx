@@ -184,6 +184,8 @@ const {
   MAX_ACTIVE_COMPANIES
 } = Engine;
 
+const STORAGE_PERSIST_INTERVAL_MS = 5000;
+
 export function CpuFoundrySim() {
   const [game, setGame] = useState<GameState | null>(null);
   const [profileDraft, setProfileDraft] = useState<ProfileDraft>(DEFAULT_PROFILE_DRAFT);
@@ -207,6 +209,9 @@ export function CpuFoundrySim() {
   const [newsCompanyFilter, setNewsCompanyFilter] = useState<'all' | CompanyKey>('all');
   const [companyDetailBackTarget, setCompanyDetailBackTarget] = useState<'game' | 'companies' | 'investor' | 'news' | 'forbes'>('companies');
   const pausedRef = useRef(false);
+  const latestGameRef = useRef<GameState | null>(null);
+  const pendingPersistTimeoutRef = useRef<number | null>(null);
+  const lastPersistedAtRef = useRef(0);
   const hasPendingPlayerBoardVote = useMemo(() => {
     if (!game) return false;
     return COMPANY_KEYS.some((key) => {
@@ -376,8 +381,35 @@ export function CpuFoundrySim() {
 
   useEffect(() => {
     if (!game) return;
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(game));
+    latestGameRef.current = game;
+
+    const persistNow = () => {
+      if (!latestGameRef.current) return;
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(latestGameRef.current));
+      lastPersistedAtRef.current = Date.now();
+      pendingPersistTimeoutRef.current = null;
+    };
+
+    const elapsed = Date.now() - lastPersistedAtRef.current;
+    if (elapsed >= STORAGE_PERSIST_INTERVAL_MS) {
+      persistNow();
+      return;
+    }
+
+    if (pendingPersistTimeoutRef.current !== null) return;
+    pendingPersistTimeoutRef.current = window.setTimeout(persistNow, STORAGE_PERSIST_INTERVAL_MS - elapsed);
   }, [game]);
+
+  useEffect(() => (
+    () => {
+      if (pendingPersistTimeoutRef.current !== null) {
+        window.clearTimeout(pendingPersistTimeoutRef.current);
+      }
+      if (latestGameRef.current) {
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(latestGameRef.current));
+      }
+    }
+  ), []);
 
   useEffect(() => {
     if (isGamePaused) return undefined;
