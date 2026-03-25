@@ -292,23 +292,21 @@ export function CpuFoundrySim() {
             },
           ])
         ) as Record<CompanyKey, CompanyState>,
-        plans: parsed.plans ?? (Object.fromEntries(
-          COMPANY_KEYS.map((key) => [
-            key,
-            {
-              companyKey: key,
-              companyName: parsed.companies[key].name,
-              founderInvestorId: parsed.companies[key].founderInvestorId,
-              founderName: parsed.companies[key].founder,
-              startDay: 0,
-              dueDay: 0,
-              targetCapital: parsed.companies[key].cash,
-              pledgedCapital: parsed.companies[key].cash,
-              pledges: [],
-              isEstablished: true,
-            } satisfies CompanyEstablishmentPlan,
-          ])
-        ) as Record<CompanyKey, CompanyEstablishmentPlan>),
+        plans: parsed.plans ?? COMPANY_KEYS.reduce((acc, key) => {
+          acc[key] = {
+            companyKey: key,
+            companyName: parsed.companies[key].name,
+            founderInvestorId: parsed.companies[key].founderInvestorId,
+            founderName: parsed.companies[key].founder,
+            startDay: 0,
+            dueDay: 0,
+            targetCapital: parsed.companies[key].cash,
+            pledgedCapital: parsed.companies[key].cash,
+            pledges: [],
+            isEstablished: true,
+          };
+          return acc;
+        }, {} as Record<CompanyKey, CompanyEstablishmentPlan>),
         npcs: parsed.npcs.map((npc) => ({
           ...npc,
           strategy: npc.strategy ?? 'balanced',
