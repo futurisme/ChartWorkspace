@@ -196,6 +196,14 @@ const STATISTICS_COLORS = ['#0ea5e9', '#38bdf8', '#6366f1', '#8b5cf6', '#ec4899'
 
 type StatisticsTab = 'wealth' | 'investments' | 'ownership';
 type PieSlice = { label: string; value: number; color: string };
+type GameReleaseCard = { id: string; name: string; genre: string; releaseDate: string; popularity: number; communities: string[] };
+type GameCommunityCard = {
+  id: string;
+  name: string;
+  games: string[];
+  leadership: { owner: string; coOwner: string; admin: string; moderator: string; helper: string };
+  messages: string[];
+};
 
 function ReusablePieDiagram({ title, slices }: { title: string; slices: PieSlice[] }) {
   const total = slices.reduce((sum, slice) => sum + slice.value, 0);
@@ -255,6 +263,11 @@ export function CpuFoundrySim() {
   const [statisticsTab, setStatisticsTab] = useState<StatisticsTab>('wealth');
   const [isStatisticsFrameOpen, setIsStatisticsFrameOpen] = useState(false);
   const [companyDetailBackTarget, setCompanyDetailBackTarget] = useState<'game' | 'companies' | 'investor' | 'news' | 'forbes'>('companies');
+  const [selectedGameReleaseId, setSelectedGameReleaseId] = useState<string | null>(null);
+  const [selectedGameCommunityId, setSelectedGameCommunityId] = useState<string | null>(null);
+  const [communityPanelOpen, setCommunityPanelOpen] = useState({ games: true, leadership: true, social: true });
+  const [communityChatDraft, setCommunityChatDraft] = useState('');
+  const [communityChatMessages, setCommunityChatMessages] = useState<Record<string, string[]>>({});
   const pausedRef = useRef(false);
   const latestGameRef = useRef<GameState | null>(null);
   const pendingPersistTimeoutRef = useRef<number | null>(null);
@@ -553,14 +566,65 @@ export function CpuFoundrySim() {
 
   const activeCompany = game ? game.companies[game.player.selectedCompany] : null;
   const focusedCompany = game && focusedCompanyKey ? game.companies[focusedCompanyKey] : null;
-  const focusedGameReleaseCards = useMemo(() => {
+  const focusedGameReleaseCards = useMemo<GameReleaseCard[]>(() => {
     if (!game || !focusedCompany || focusedCompany.field !== 'game') return [];
     const releaseEntries = game.activityFeed
       .filter((entry) => entry.includes(focusedCompany.name) && entry.includes('merilis'))
-      .slice(0, 14);
-    if (releaseEntries.length > 0) return releaseEntries;
-    return [focusedCompany.lastRelease].filter(Boolean);
+      .slice(0, 18);
+    const source = releaseEntries.length > 0 ? releaseEntries : [focusedCompany.lastRelease];
+    return source.map((entry, index) => {
+      const seeded = createSeededRandom(`${focusedCompany.key}-release-${index}-${entry}`);
+      const releaseDate = entry.match(/\d{2}\/\d{2}\/\d{2}/)?.[0] ?? formatDateFromDays(game.elapsedDays - index * 12);
+      const nameMatch = entry.match(/merilis (?:game )?(.+?) \(rating/i);
+      const name = nameMatch?.[1]?.trim() || `Game Release ${index + 1}`;
+      const genres = ['Action RPG', 'MMO Strategy', 'Simulation', 'Co-op Survival', 'Competitive Arena'];
+      const communities = [`${name} HQ`, `${name} Guild`, `${name} Indonesia`];
+      return {
+        id: `${focusedCompany.key}-game-${index}`,
+        name,
+        genre: genres[Math.floor(seeded() * genres.length)],
+        releaseDate,
+        popularity: Math.round(clamp((focusedCompany.reputation / 100) * 72 + seeded() * 28, 12, 99) * 10) / 10,
+        communities,
+      };
+    });
   }, [focusedCompany, game]);
+  const selectedGameRelease = useMemo(
+    () => focusedGameReleaseCards.find((entry) => entry.id === selectedGameReleaseId) ?? null,
+    [focusedGameReleaseCards, selectedGameReleaseId]
+  );
+  const selectedGameCommunities = useMemo<GameCommunityCard[]>(() => {
+    if (!selectedGameRelease || !game) return [];
+    const nonEntrepreneurNpcs = game.npcs.filter((npc) => {
+      const hasCorporateIdentity = Object.values(game.companies).some((company) => (
+        company.founderInvestorId === npc.id
+        || company.ceoId === npc.id
+        || Object.values(company.executives).some((executive) => executive?.occupantId === npc.id)
+      ));
+      return !hasCorporateIdentity;
+    });
+    return selectedGameRelease.communities.slice(0, 3).map((name, index) => {
+      const seeded = createSeededRandom(`${selectedGameRelease.id}-${name}`);
+      const getNpcName = (offset: number) => nonEntrepreneurNpcs[(index * 7 + offset) % Math.max(1, nonEntrepreneurNpcs.length)]?.name ?? `Gamer-${index + 1}-${offset}`;
+      return {
+        id: `${selectedGameRelease.id}-community-${index}`,
+        name,
+        games: [selectedGameRelease.name, focusedCompany?.name ?? 'Studio Project', `Side Quest ${Math.round(seeded() * 100)}`],
+        leadership: {
+          owner: getNpcName(0),
+          coOwner: getNpcName(1),
+          admin: getNpcName(2),
+          moderator: getNpcName(3),
+          helper: getNpcName(4),
+        },
+        messages: [`[${name}] Selamat datang di #general!`, 'Patch baru sudah live, share feedback kalian.', 'Scrim night jam 20:00 UTC.'],
+      };
+    });
+  }, [selectedGameRelease, game, focusedCompany]);
+  const selectedGameCommunity = useMemo(
+    () => selectedGameCommunities.find((entry) => entry.id === selectedGameCommunityId) ?? null,
+    [selectedGameCommunities, selectedGameCommunityId]
+  );
   const focusedPlan = game && focusedPlanKey ? game.plans[focusedPlanKey] : null;
   const companyStatisticsSlices = useMemo(() => {
     if (!game || !focusedCompany) {
@@ -2529,12 +2593,12 @@ export function CpuFoundrySim() {
                   focusedIsGameField ? (
                     <div className={styles.panelList}>
                       {focusedGameReleaseCards.map((entry, index) => (
-                        <article key={`${entry}-${index}`} className={styles.itemCard}>
+                        <article key={entry.id} className={styles.itemCard} onClick={() => { setSelectedGameReleaseId(entry.id); setSelectedGameCommunityId(null); }}>
                           <div className={styles.itemTop}>
-                            <p className={styles.itemLabel}>Game Card #{index + 1}</p>
-                            <span className={styles.costPill}>Released</span>
+                            <p className={styles.itemLabel}>Game Name Card #{index + 1}</p>
+                            <span className={styles.costPill}>{entry.releaseDate}</span>
                           </div>
-                          <p className={styles.itemDescription}>{entry}</p>
+                          <p className={styles.itemDescription}><strong>{entry.name}</strong> · {entry.genre} · Popularity {formatNumber(entry.popularity, 1)}%</p>
                         </article>
                       ))}
                     </div>
@@ -2568,6 +2632,116 @@ export function CpuFoundrySim() {
                       </div>
                     </div>
                   )
+                ) : null}
+              </section>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {selectedGameRelease && focusedCompany ? (
+        <div className={styles.screenFrameOverlay} role="presentation" onClick={() => setSelectedGameReleaseId(null)}>
+          <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label={`About the Game ${selectedGameRelease.name}`} onClick={(event) => event.stopPropagation()}>
+            <div className={styles.screenFrameHeader}>
+              <div>
+                <p className={styles.panelTag}>About the Game</p>
+                <h2>{selectedGameRelease.name}</h2>
+              </div>
+              <button type="button" className={styles.closeButton} onClick={() => setSelectedGameReleaseId(null)} aria-label="Back from about the game">
+                ←
+              </button>
+            </div>
+            <div className={styles.screenFrameBody}>
+              <div className={styles.memoCard}>
+                <p className={styles.panelTag}>Brief Specifications</p>
+                <p>Genre: {selectedGameRelease.genre} · Release Date: {selectedGameRelease.releaseDate} · Popularity: {formatNumber(selectedGameRelease.popularity, 1)}%</p>
+              </div>
+              <div className={styles.panelList}>
+                {selectedGameCommunities.map((community) => (
+                  <article key={community.id} className={styles.itemCard} onClick={() => setSelectedGameCommunityId(community.id)}>
+                    <div className={styles.itemTop}>
+                      <p className={styles.itemLabel}>Community</p>
+                      <span className={styles.costPill}>Active</span>
+                    </div>
+                    <h3>{community.name}</h3>
+                  </article>
+                ))}
+              </div>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {selectedGameCommunity ? (
+        <div className={styles.screenFrameOverlay} role="presentation" onClick={() => setSelectedGameCommunityId(null)}>
+          <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label={`About the Community ${selectedGameCommunity.name}`} onClick={(event) => event.stopPropagation()}>
+            <div className={styles.screenFrameHeader}>
+              <div>
+                <p className={styles.panelTag}>About the Community</p>
+                <h2>{selectedGameCommunity.name}</h2>
+              </div>
+              <button type="button" className={styles.closeButton} onClick={() => setSelectedGameCommunityId(null)} aria-label="Back from community">
+                ←
+              </button>
+            </div>
+            <div className={styles.screenFrameBody}>
+              <section className={styles.panel}>
+                <button type="button" className={styles.panelToggle} onClick={() => setCommunityPanelOpen((current) => ({ ...current, games: !current.games }))}>
+                  <div><p className={styles.panelTag}>Panel</p><h2>Games the community plays</h2></div>
+                  <span>{communityPanelOpen.games ? 'Tutup' : 'Buka'}</span>
+                </button>
+                {communityPanelOpen.games ? (
+                  <div className={styles.panelList}>
+                    {selectedGameCommunity.games.map((gameName) => <article className={styles.itemCard} key={gameName}><p className={styles.itemDescription}>{gameName}</p></article>)}
+                  </div>
+                ) : null}
+              </section>
+              <section className={styles.panel}>
+                <button type="button" className={styles.panelToggle} onClick={() => setCommunityPanelOpen((current) => ({ ...current, leadership: !current.leadership }))}>
+                  <div><p className={styles.panelTag}>Panel</p><h2>Leadership</h2></div>
+                  <span>{communityPanelOpen.leadership ? 'Tutup' : 'Buka'}</span>
+                </button>
+                {communityPanelOpen.leadership ? (
+                  <div className={styles.infoRow}>
+                    <div><span>Owner</span><strong>{selectedGameCommunity.leadership.owner}</strong></div>
+                    <div><span>Co-Owner</span><strong>{selectedGameCommunity.leadership.coOwner}</strong></div>
+                    <div><span>Admin</span><strong>{selectedGameCommunity.leadership.admin}</strong></div>
+                    <div><span>Moderator</span><strong>{selectedGameCommunity.leadership.moderator}</strong></div>
+                    <div><span>Helper</span><strong>{selectedGameCommunity.leadership.helper}</strong></div>
+                  </div>
+                ) : null}
+              </section>
+              <section className={styles.panel}>
+                <button type="button" className={styles.panelToggle} onClick={() => setCommunityPanelOpen((current) => ({ ...current, social: !current.social }))}>
+                  <div><p className={styles.panelTag}>Panel</p><h2>Community Interface (#general)</h2></div>
+                  <span>{communityPanelOpen.social ? 'Tutup' : 'Buka'}</span>
+                </button>
+                {communityPanelOpen.social ? (
+                  <div className={styles.panelBody}>
+                    <div className={styles.memoCard}>
+                      <p className={styles.panelTag}>Discord-style container · #general</p>
+                      {[...(selectedGameCommunity.messages ?? []), ...(communityChatMessages[selectedGameCommunity.id] ?? [])].map((message, index) => (
+                        <p key={`${message}-${index}`} className={styles.kv}>• {message}</p>
+                      ))}
+                    </div>
+                    <div className={styles.actionRow}>
+                      <input className={styles.input} value={communityChatDraft} onChange={(event) => setCommunityChatDraft(event.target.value)} placeholder="Kirim pesan ke #general" />
+                      <button
+                        type="button"
+                        className={styles.secondaryButton}
+                        onClick={() => {
+                          if (!communityChatDraft.trim()) return;
+                          setCommunityChatMessages((current) => ({
+                            ...current,
+                            [selectedGameCommunity.id]: [...(current[selectedGameCommunity.id] ?? []), `${game?.player.name ?? 'Player'}: ${communityChatDraft.trim()}`],
+                          }));
+                          setCommunityChatDraft('');
+                        }}
+                      >
+                        Send
+                      </button>
+                    </div>
+                  </div>
                 ) : null}
               </section>
             </div>

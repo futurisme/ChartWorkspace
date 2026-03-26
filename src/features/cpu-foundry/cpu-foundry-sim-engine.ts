@@ -289,7 +289,7 @@ export const START_DATE_UTC = Date.UTC(2000, 0, 1);
 export const NPC_ACTION_EVERY_TICKS = 10;
 export const PLAYER_STARTING_CASH = 140;
 export const INITIAL_NPC_COUNT = 20;
-export const MAX_ACTIVE_NPCS = 50;
+export const MAX_ACTIVE_NPCS = 75;
 export const NPC_GROWTH_START_DAY = 180;
 export const NPC_GROWTH_INTERVAL_DAYS = 60;
 export const NPC_GROWTH_BATCH = 3;
@@ -1718,9 +1718,9 @@ export function createGenerativeNpcs(seed: string, count: number, offset = 0, ex
       strategy,
       cash: randomInt(random, 55, 190),
       focusCompany,
-      boldness: Math.round(randomBetween(random, 0.48, 0.95) * 100) / 100,
-      patience: Math.round(randomBetween(random, 0.4, 0.92) * 100) / 100,
-      intelligence: Math.round(randomBetween(random, 0.68, 0.99) * 100) / 100,
+      boldness: Math.round(randomBetween(random, 0.52, 0.96) * 100) / 100,
+      patience: Math.round(randomBetween(random, 0.5, 0.95) * 100) / 100,
+      intelligence: Math.round(randomBetween(random, 0.76, 0.995) * 100) / 100,
       horizonDays: randomInt(random, 120, 720),
       reserveRatio: Math.round(randomBetween(random, 0.14, 0.36) * 100) / 100,
       analysisNote: `Masih membangun tesis awal untuk ${focusCompany.toUpperCase()}.`,
