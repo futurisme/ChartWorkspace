@@ -288,9 +288,10 @@ export function CpuFoundrySim() {
   const [isNewsFrameOpen, setIsNewsFrameOpen] = useState(false);
   const [isForbesFrameOpen, setIsForbesFrameOpen] = useState(false);
   const [isCreateCompanyOpen, setIsCreateCompanyOpen] = useState(false);
-  const [createCompanyDraft, setCreateCompanyDraft] = useState<{ name: string; percent: number; softwareSpecialization: SoftwareSpecialization }>({
+  const [createCompanyDraft, setCreateCompanyDraft] = useState<{ name: string; percent: number; companyType: 'cpu' | 'game' | 'software'; softwareSpecialization: SoftwareSpecialization }>({
     name: '',
     percent: 12,
+    companyType: 'cpu',
     softwareSpecialization: 'app-store',
   });
   const [investorFrameCompanyKey, setInvestorFrameCompanyKey] = useState<CompanyKey>('cosmic');
@@ -324,6 +325,10 @@ export function CpuFoundrySim() {
   const activeCompanyType = game?.player.companyType ?? profileDraft.companyType;
   const productLabel = activeCompanyType === 'game' ? 'Game' : activeCompanyType === 'software' ? 'Software' : 'CPU';
   const productLabelLower = productLabel.toLowerCase();
+
+  useEffect(() => {
+    setCreateCompanyDraft((current) => ({ ...current, companyType: activeCompanyType }));
+  }, [activeCompanyType]);
   const simulatorTitle = 'Career Simulator';
   const isGamePaused = isInvestmentMenuOpen || hasPendingPlayerBoardVote;
 
@@ -1024,7 +1029,7 @@ export function CpuFoundrySim() {
   const createCompanyPlanByPlayer = () => {
     if (!game) return;
     const contribution = clamp(game.player.cash * (createCompanyDraft.percent / 100), 0, game.player.cash);
-    const field = mapProfileCompanyTypeToField(game.player.companyType);
+    const field = mapProfileCompanyTypeToField(createCompanyDraft.companyType);
     const next = createCommunityCompanyPlan(
       game,
       game.player.id,
@@ -1039,7 +1044,7 @@ export function CpuFoundrySim() {
     }
     setGame(next);
     setIsCreateCompanyOpen(false);
-    setCreateCompanyDraft({ name: '', percent: 12, softwareSpecialization: 'app-store' });
+    setCreateCompanyDraft({ name: '', percent: 12, companyType: activeCompanyType, softwareSpecialization: 'app-store' });
     const specializationSuffix = field === 'software' ? ` · ${getSoftwareSpecializationLabel(createCompanyDraft.softwareSpecialization)}` : '';
     setStatusMessage(`Plan ${createCompanyDraft.name.trim()} (${getCompanyFieldLabel(field)}${specializationSuffix}) berhasil dibuat. Dana awal ${formatCurrencyCompact(contribution, 2)} disalurkan.`);
   };
@@ -1667,7 +1672,21 @@ export function CpuFoundrySim() {
                 <span>Personal funds disalurkan (%)</span>
                 <input type="range" min={5} max={45} step={1} value={createCompanyDraft.percent} onChange={(event) => setCreateCompanyDraft((current) => ({ ...current, percent: Number(event.target.value) }))} />
               </label>
-              {game.player.companyType === 'software' ? (
+              <div className={styles.field}>
+                <span>Company type for this plan</span>
+                <div className={styles.quickGrid}>
+                  <button type="button" className={createCompanyDraft.companyType === 'cpu' ? styles.quickButtonActive : styles.quickButton} onClick={() => setCreateCompanyDraft((current) => ({ ...current, companyType: 'cpu' }))}>
+                    CPU Company
+                  </button>
+                  <button type="button" className={createCompanyDraft.companyType === 'game' ? styles.quickButtonActive : styles.quickButton} onClick={() => setCreateCompanyDraft((current) => ({ ...current, companyType: 'game' }))}>
+                    Game Company
+                  </button>
+                  <button type="button" className={createCompanyDraft.companyType === 'software' ? styles.quickButtonActive : styles.quickButton} onClick={() => setCreateCompanyDraft((current) => ({ ...current, companyType: 'software' }))}>
+                    Software Company
+                  </button>
+                </div>
+              </div>
+              {createCompanyDraft.companyType === 'software' ? (
                 <label className={styles.field}>
                   <span>Software focus</span>
                   <select value={createCompanyDraft.softwareSpecialization} onChange={(event) => setCreateCompanyDraft((current) => ({ ...current, softwareSpecialization: event.target.value as SoftwareSpecialization }))}>

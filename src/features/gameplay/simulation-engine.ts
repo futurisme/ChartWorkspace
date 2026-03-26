@@ -2545,6 +2545,21 @@ function getActiveCompanyCount(game: GameState) {
   return baseEstablished + communityEstablished;
 }
 
+function getActiveCompanyCountByField(game: GameState, field: CompanyField) {
+  const baseEstablished = COMPANY_KEYS.filter((key) => game.companies[key].isEstablished && game.companies[key].field === field).length;
+  const communityEstablished = game.communityPlans.filter((plan) => plan.status === 'established' && plan.field === field).length;
+  return baseEstablished + communityEstablished;
+}
+
+function getTargetActiveCompanyCount(elapsedDays: number) {
+  if (elapsedDays <= 365) return 5;
+  if (elapsedDays <= 1095) {
+    const progress = (elapsedDays - 365) / (1095 - 365);
+    return Math.round(5 + progress * 3);
+  }
+  return 8;
+}
+
 export function getCompanyFieldLabel(field: CompanyField) {
   if (field === 'game') return 'Game';
   if (field === 'software') return 'Software';
@@ -3084,12 +3099,16 @@ export function maybeGenerateMoreNpcs(current: GameState) {
 
 export function runNpcCommunityPlanning(current: GameState) {
   let next = current;
-  const openFundingPlans = next.communityPlans.filter((plan) => plan.status === 'funding').length;
+  const getOpenFundingPlans = () => next.communityPlans.filter((plan) => plan.status === 'funding');
+  const getOpenFundingCount = () => getOpenFundingPlans().length;
   const lastInitiationDay = next.communityPlans.reduce((max, plan) => Math.max(max, plan.startDay), -Infinity);
-  const canForceInitiate = !Number.isFinite(lastInitiationDay) || (next.elapsedDays - lastInitiationDay >= SHARE_SHEET_COOLDOWN_DAYS);
+  const minInitiationGapDays = next.elapsedDays < 365 ? 40 : next.elapsedDays < 1095 ? 28 : 20;
+  const canForceInitiate = !Number.isFinite(lastInitiationDay) || (next.elapsedDays - lastInitiationDay >= minInitiationGapDays);
   const marketNeedsCompetition = (Object.values(next.companies) as CompanyState[])
     .filter((company) => company.isEstablished)
     .some((company) => company.marketShare > 34 || company.boardMood < 0.46 || company.reputation < 26);
+  const targetActiveCompanies = getTargetActiveCompanyCount(next.elapsedDays);
+  const openFundingLimit = next.elapsedDays < 365 ? 2 : next.elapsedDays < 1095 ? 3 : 4;
 
   const rankedFounderCandidates = [...next.npcs]
     .sort((left, right) => (
@@ -3097,7 +3116,29 @@ export function runNpcCommunityPlanning(current: GameState) {
       - (left.intelligence * 0.62 + left.boldness * 0.38 + left.cash / 240)
     ));
 
-  if (canForceInitiate && marketNeedsCompetition && getActiveCompanyCount(next) < MAX_ACTIVE_COMPANIES && openFundingPlans < 2) {
+  const missingFields = (['semiconductor', 'game', 'software'] as CompanyField[]).filter((field) => (
+    getActiveCompanyCountByField(next, field) === 0
+    && getOpenFundingPlans().every((plan) => plan.field !== field)
+  ));
+  missingFields.forEach((field) => {
+    if (!canForceInitiate) return;
+    if (getActiveCompanyCount(next) >= Math.min(MAX_ACTIVE_COMPANIES, targetActiveCompanies + 1)) return;
+    if (getOpenFundingCount() >= openFundingLimit) return;
+    const founder = rankedFounderCandidates.find((candidate) => candidate.cash >= 12);
+    if (!founder) return;
+    const seed = createSeededRandom(`${founder.id}-${Math.floor(next.elapsedDays)}-missing-field-${field}`);
+    const contribution = clamp(founder.cash * (0.1 + founder.boldness * 0.1), 0, 26);
+    if (contribution < 8) return;
+    const candidateName = generateUniqueCompanyName(next, seed, field);
+    next = createCommunityCompanyPlan(next, founder.id, candidateName, contribution, field);
+  });
+
+  if (
+    canForceInitiate
+    && marketNeedsCompetition
+    && getActiveCompanyCount(next) < Math.min(MAX_ACTIVE_COMPANIES, targetActiveCompanies)
+    && getOpenFundingCount() < openFundingLimit
+  ) {
     const founder = rankedFounderCandidates[0];
     if (founder) {
       const seed = createSeededRandom(`${founder.id}-${Math.floor(next.elapsedDays)}-forced-community`);
@@ -3112,9 +3153,14 @@ export function runNpcCommunityPlanning(current: GameState) {
 
   next.npcs.forEach((npc) => {
     const preferredField = chooseBestCompanyFieldForNpc(next, npc);
-    const founderChance = npc.boldness * 0.08 + npc.intelligence * 0.07 + (marketNeedsCompetition ? 0.03 : 0) + (preferredField === 'game' ? 0.045 : 0);
+    const founderChanceBase = next.elapsedDays < 365 ? 0.045 : next.elapsedDays < 1095 ? 0.06 : 0.075;
+    const founderChance = founderChanceBase + npc.boldness * 0.06 + npc.intelligence * 0.055 + (marketNeedsCompetition ? 0.025 : 0) + (preferredField === 'game' || preferredField === 'software' ? 0.035 : 0);
     const seed = createSeededRandom(`${npc.id}-${Math.floor(next.elapsedDays)}-community`);
-    if (seed() < founderChance && getActiveCompanyCount(next) < MAX_ACTIVE_COMPANIES && openFundingPlans < 2) {
+    if (
+      seed() < founderChance
+      && getActiveCompanyCount(next) < Math.min(MAX_ACTIVE_COMPANIES, targetActiveCompanies + 1)
+      && getOpenFundingCount() < openFundingLimit
+    ) {
       const contribution = clamp(npc.cash * (0.06 + npc.boldness * 0.1), 0, 18);
       if (contribution >= 8) {
         const candidateName = generateUniqueCompanyName(next, seed, preferredField);
