@@ -1,4 +1,4 @@
-export type NameField = 'semiconductor' | 'game';
+export type NameField = 'semiconductor' | 'game' | 'software';
 
 const SEMICONDUCTOR_PRIMARY = [
   'Nova', 'Quantum', 'Vertex', 'Neutron', 'Ion', 'Silica', 'Helix', 'Aether', 'Core', 'Pulse',
@@ -21,6 +21,16 @@ const GAME_SECONDARY = [
   'Guild', 'Factory', 'House', 'Online', 'Digital', 'Play', 'Arcade', 'Realms', 'Universe', 'Ventures',
 ] as const;
 
+const SOFTWARE_PRIMARY = [
+  'Nimbus', 'Orbit', 'Atlas', 'Catalyst', 'Vector', 'Prism', 'Relay', 'Zen', 'Modular', 'Pulse',
+  'Elevate', 'Aster', 'Lattice', 'Vertex', 'Nova', 'Cloudline', 'Openlane', 'Spark', 'Beacon', 'Kernel',
+] as const;
+
+const SOFTWARE_SECONDARY = [
+  'Software', 'Systems', 'Platform', 'Apps', 'Suite', 'Stack', 'OS', 'Store', 'Services', 'Runtime',
+  'Cloud', 'Labs', 'Works', 'Digital', 'Foundation', 'Engine', 'Network', 'Tools', 'Flow', 'Gateway',
+] as const;
+
 const TERTIARY = ['Group', 'Works', 'Labs', 'Collective', 'Hub', 'Division', 'Center', 'Network'] as const;
 
 function randomFrom<T>(random: () => number, items: readonly T[]) {
@@ -34,8 +44,16 @@ export function generateCatalogCompanyName(params: {
   usedWords: Set<string>;
 }) {
   const { field, random, usedNames, usedWords } = params;
-  const primary = field === 'game' ? GAME_PRIMARY : SEMICONDUCTOR_PRIMARY;
-  const secondary = field === 'game' ? GAME_SECONDARY : SEMICONDUCTOR_SECONDARY;
+  const primary = field === 'game'
+    ? GAME_PRIMARY
+    : field === 'software'
+      ? SOFTWARE_PRIMARY
+      : SEMICONDUCTOR_PRIMARY;
+  const secondary = field === 'game'
+    ? GAME_SECONDARY
+    : field === 'software'
+      ? SOFTWARE_SECONDARY
+      : SEMICONDUCTOR_SECONDARY;
 
   for (let attempt = 0; attempt < 180; attempt += 1) {
     const wordCountRoll = random();

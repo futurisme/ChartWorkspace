@@ -32,8 +32,8 @@ import type {
   SliderStop,
   TradePreview,
   NewsCategory,
-  CompanyAiAction
-  ,
+  CompanyAiAction,
+  SoftwareSpecialization,
   CompanyEstablishmentPlan,
   CommunityCompanyPlan
 } from '@/features/gameplay/simulation-engine';
@@ -180,8 +180,7 @@ const {
   runNpcChiefExecutiveTurn,
   chooseNpcListingMultiplier,
   manageNpcShareListing,
-  runNpcTurn
-  ,
+  runNpcTurn,
   investInCompanyPlan,
   createCommunityCompanyPlan,
   getCompanyFieldLabel,
@@ -204,6 +203,17 @@ type GameCommunityCard = {
   leadership: { owner: string; coOwner: string; admin: string; moderator: string; helper: string };
   messages: string[];
 };
+
+const SOFTWARE_SPECIALIZATIONS: Array<{ key: SoftwareSpecialization; label: string; description: string }> = [
+  { key: 'app-store', label: 'App Store', description: 'Marketplace distribusi aplikasi/game dengan kanal kolaborasi publisher.' },
+  { key: 'operating-system', label: 'Operating System', description: 'Platform inti OS dan runtime ekosistem perangkat.' },
+  { key: 'entertainment-apps', label: 'Entertainment Apps', description: 'Aplikasi video, sosial, dan consumer engagement.' },
+  { key: 'utility-apps', label: 'Utility Apps', description: 'Produktivitas dan utilitas harian untuk pengguna massal.' },
+];
+
+const getSoftwareSpecializationLabel = (value?: SoftwareSpecialization | null) => (
+  SOFTWARE_SPECIALIZATIONS.find((entry) => entry.key === value)?.label ?? 'Utility Apps'
+);
 
 function ReusablePieDiagram({ title, slices }: { title: string; slices: PieSlice[] }) {
   const total = slices.reduce((sum, slice) => sum + slice.value, 0);
@@ -278,7 +288,11 @@ export function CpuFoundrySim() {
   const [isNewsFrameOpen, setIsNewsFrameOpen] = useState(false);
   const [isForbesFrameOpen, setIsForbesFrameOpen] = useState(false);
   const [isCreateCompanyOpen, setIsCreateCompanyOpen] = useState(false);
-  const [createCompanyDraft, setCreateCompanyDraft] = useState({ name: '', percent: 12 });
+  const [createCompanyDraft, setCreateCompanyDraft] = useState<{ name: string; percent: number; softwareSpecialization: SoftwareSpecialization }>({
+    name: '',
+    percent: 12,
+    softwareSpecialization: 'app-store',
+  });
   const [investorFrameCompanyKey, setInvestorFrameCompanyKey] = useState<CompanyKey>('cosmic');
   const [focusedCompanyKey, setFocusedCompanyKey] = useState<CompanyKey | null>(null);
   const [focusedPlanKey, setFocusedPlanKey] = useState<CompanyKey | null>(null);
@@ -308,7 +322,7 @@ export function CpuFoundrySim() {
     });
   }, [game]);
   const activeCompanyType = game?.player.companyType ?? profileDraft.companyType;
-  const productLabel = activeCompanyType === 'game' ? 'Game' : 'CPU';
+  const productLabel = activeCompanyType === 'game' ? 'Game' : activeCompanyType === 'software' ? 'Software' : 'CPU';
   const productLabelLower = productLabel.toLowerCase();
   const simulatorTitle = 'Career Simulator';
   const isGamePaused = isInvestmentMenuOpen || hasPendingPlayerBoardVote;
@@ -369,7 +383,7 @@ export function CpuFoundrySim() {
         ...parsed,
         player: {
           ...parsed.player,
-          companyType: parsed.player.companyType === 'game' ? 'game' : 'cpu',
+          companyType: parsed.player.companyType === 'game' || parsed.player.companyType === 'software' ? parsed.player.companyType : 'cpu',
         },
         companies: COMPANY_KEYS.reduce((acc, key) => {
           const company = parsedCompanies[key] ?? {
@@ -390,11 +404,16 @@ export function CpuFoundrySim() {
             revenuePerDay: 0,
             researchPerDay: 0,
             shareListings: [],
-            field: parsed.player.companyType === 'game' ? 'game' : 'semiconductor',
+            field: parsed.player.companyType === 'game'
+              ? 'game'
+              : parsed.player.companyType === 'software'
+                ? 'software'
+                : 'semiconductor',
           };
           acc[key] = {
             ...company,
-            field: company.field === 'game' ? 'game' : 'semiconductor',
+            field: company.field === 'game' || company.field === 'software' ? company.field : 'semiconductor',
+            softwareSpecialization: company.softwareSpecialization ?? null,
             shareSheetTotal: company.shareSheetTotal ?? company.sharesOutstanding ?? TOTAL_SHARES,
             lastShareSheetChangeDay: company.lastShareSheetChangeDay ?? 0,
             portfolioValue: company.portfolioValue ?? 0,
@@ -428,7 +447,12 @@ export function CpuFoundrySim() {
           const sourcePlan = parsed.plans?.[key];
           acc[key] = {
             companyKey: key,
-            field: sourcePlan?.field === 'game' ? 'game' : (company.field === 'game' ? 'game' : 'semiconductor'),
+            field: sourcePlan?.field === 'game' || sourcePlan?.field === 'software'
+              ? sourcePlan.field
+              : company.field === 'game' || company.field === 'software'
+                ? company.field
+                : 'semiconductor',
+            softwareSpecialization: sourcePlan?.softwareSpecialization ?? (company.softwareSpecialization ?? null),
             companyName: sourcePlan?.companyName ?? company.name,
             founderInvestorId: sourcePlan?.founderInvestorId ?? company.founderInvestorId,
             founderName: sourcePlan?.founderName ?? company.founder,
@@ -447,7 +471,8 @@ export function CpuFoundrySim() {
             .filter((plan): plan is CommunityCompanyPlan => Boolean(plan?.id && plan?.companyName))
             .map((plan) => ({
               ...plan,
-              field: plan.field === 'game' ? 'game' : 'semiconductor',
+              field: plan.field === 'game' || plan.field === 'software' ? plan.field : 'semiconductor',
+              softwareSpecialization: plan.softwareSpecialization ?? null,
               investorIds: Array.isArray(plan.investorIds) ? plan.investorIds : [],
               status: plan.status === 'established' || plan.status === 'expired' ? plan.status : 'funding',
               pledgedCapital: Number.isFinite(plan.pledgedCapital) ? plan.pledgedCapital : 0,
@@ -557,10 +582,11 @@ export function CpuFoundrySim() {
 
     const nextGame = createInitialGameState({ ...profileDraft, name: trimmedName });
     setGame(nextGame);
-    setStatusMessage(`${trimmedName} berhasil login. Kamu mulai sebagai investor independen di jalur ${nextGame.player.companyType === 'game' ? 'Game Company' : 'CPU Company'}.`);
+    const companyPathLabel = nextGame.player.companyType === 'game' ? 'Game Company' : nextGame.player.companyType === 'software' ? 'Software Company' : 'CPU Company';
+    setStatusMessage(`${trimmedName} berhasil login. Kamu mulai sebagai investor independen di jalur ${companyPathLabel}.`);
     setReleaseDraft({
       series: `${nextGame.companies[nextGame.player.selectedCompany].name} Prime`,
-      cpuName: nextGame.player.companyType === 'game' ? 'Launch-01' : 'PX-01',
+      cpuName: nextGame.player.companyType === 'game' ? 'Launch-01' : nextGame.player.companyType === 'software' ? 'SW-01' : 'PX-01',
       priceIndex: 1,
     });
     setInvestmentDraft({ company: profileDraft.selectedCompany, mode: 'buy', route: 'auto', sliderPercent: 50 });
@@ -593,7 +619,30 @@ export function CpuFoundrySim() {
   const activeCompany = game ? game.companies[game.player.selectedCompany] : null;
   const focusedCompany = game && focusedCompanyKey ? game.companies[focusedCompanyKey] : null;
   const focusedGameReleaseCards = useMemo<GameReleaseCard[]>(() => {
-    if (!game || !focusedCompany || focusedCompany.field !== 'game') return [];
+    if (!game || !focusedCompany || (focusedCompany.field !== 'game' && focusedCompany.field !== 'software')) return [];
+    if (focusedCompany.field === 'software') {
+      const partnerNames = Object.values(game.companies)
+        .filter((company) => company.key !== focusedCompany.key && company.isEstablished && (company.field === 'game' || company.field === 'software'))
+        .slice(0, 4)
+        .map((company) => company.name);
+      const softwareProducts = [
+        { kind: 'App Store', name: `${focusedCompany.name} App Store`, communities: [`${focusedCompany.name} Store Partners`, ...partnerNames] },
+        { kind: 'Operating System', name: `${focusedCompany.name} OS`, communities: [`${focusedCompany.name} Kernel Labs`, `${focusedCompany.name} Device Alliance`] },
+        { kind: 'Entertainment App', name: `${focusedCompany.name} Stream`, communities: [`${focusedCompany.name} Creator Hub`, `${focusedCompany.name} Media Community`] },
+        { kind: 'Utility App', name: `${focusedCompany.name} Utility Suite`, communities: [`${focusedCompany.name} Productivity Circle`, `${focusedCompany.name} Automation Builders`] },
+      ];
+      return softwareProducts.map((product, index) => {
+        const seeded = createSeededRandom(`${focusedCompany.key}-software-${product.kind}-${index}`);
+        return {
+          id: `${focusedCompany.key}-software-${index}`,
+          name: product.name,
+          genre: product.kind,
+          releaseDate: formatDateFromDays(Math.max(0, game.elapsedDays - index * 18)),
+          popularity: Math.round(clamp((focusedCompany.reputation / 100) * 70 + seeded() * 30, 10, 99) * 10) / 10,
+          communities: product.communities.slice(0, 3),
+        };
+      });
+    }
     const releaseEntries = game.activityFeed
       .filter((entry) => entry.includes(focusedCompany.name) && entry.includes('merilis'))
       .slice(0, 18);
@@ -976,15 +1025,23 @@ export function CpuFoundrySim() {
     if (!game) return;
     const contribution = clamp(game.player.cash * (createCompanyDraft.percent / 100), 0, game.player.cash);
     const field = mapProfileCompanyTypeToField(game.player.companyType);
-    const next = createCommunityCompanyPlan(game, game.player.id, createCompanyDraft.name, contribution, field);
+    const next = createCommunityCompanyPlan(
+      game,
+      game.player.id,
+      createCompanyDraft.name,
+      contribution,
+      field,
+      field === 'software' ? createCompanyDraft.softwareSpecialization : undefined
+    );
     if (next === game) {
       setStatusMessage(`Plan gagal dibuat. Pastikan nama unik, modal cukup, dan total perusahaan aktif belum mencapai ${MAX_ACTIVE_COMPANIES}.`);
       return;
     }
     setGame(next);
     setIsCreateCompanyOpen(false);
-    setCreateCompanyDraft({ name: '', percent: 12 });
-    setStatusMessage(`Plan ${createCompanyDraft.name.trim()} (${getCompanyFieldLabel(field)}) berhasil dibuat. Dana awal ${formatCurrencyCompact(contribution, 2)} disalurkan.`);
+    setCreateCompanyDraft({ name: '', percent: 12, softwareSpecialization: 'app-store' });
+    const specializationSuffix = field === 'software' ? ` · ${getSoftwareSpecializationLabel(createCompanyDraft.softwareSpecialization)}` : '';
+    setStatusMessage(`Plan ${createCompanyDraft.name.trim()} (${getCompanyFieldLabel(field)}${specializationSuffix}) berhasil dibuat. Dana awal ${formatCurrencyCompact(contribution, 2)} disalurkan.`);
   };
 
   const investInCompany = () => {
@@ -1393,6 +1450,9 @@ export function CpuFoundrySim() {
               <button type="button" className={profileDraft.companyType === 'game' ? styles.quickButtonActive : styles.quickButton} onClick={() => setProfileDraft((current) => ({ ...current, companyType: 'game' }))}>
                 Game Company
               </button>
+              <button type="button" className={profileDraft.companyType === 'software' ? styles.quickButtonActive : styles.quickButton} onClick={() => setProfileDraft((current) => ({ ...current, companyType: 'software' }))}>
+                Software Company
+              </button>
             </div>
           </div>
 
@@ -1607,6 +1667,17 @@ export function CpuFoundrySim() {
                 <span>Personal funds disalurkan (%)</span>
                 <input type="range" min={5} max={45} step={1} value={createCompanyDraft.percent} onChange={(event) => setCreateCompanyDraft((current) => ({ ...current, percent: Number(event.target.value) }))} />
               </label>
+              {game.player.companyType === 'software' ? (
+                <label className={styles.field}>
+                  <span>Software focus</span>
+                  <select value={createCompanyDraft.softwareSpecialization} onChange={(event) => setCreateCompanyDraft((current) => ({ ...current, softwareSpecialization: event.target.value as SoftwareSpecialization }))}>
+                    {SOFTWARE_SPECIALIZATIONS.map((entry) => (
+                      <option key={entry.key} value={entry.key}>{entry.label}</option>
+                    ))}
+                  </select>
+                  <small>{SOFTWARE_SPECIALIZATIONS.find((entry) => entry.key === createCompanyDraft.softwareSpecialization)?.description}</small>
+                </label>
+              ) : null}
               <div className={styles.memoCard}>
                 <p className={styles.panelTag}>Preview</p>
                 <p>
@@ -1645,7 +1716,11 @@ export function CpuFoundrySim() {
                           <p className={styles.itemLabel}>Company Establishment Plan</p>
                           <h3>{plan.companyName}</h3>
                         </div>
-                        <span className={styles.costPill}>{getCompanyFieldLabel(plan.field)} · 1 bulan pendanaan</span>
+                        <span className={styles.costPill}>
+                          {getCompanyFieldLabel(plan.field)}
+                          {plan.field === 'software' ? ` · ${getSoftwareSpecializationLabel(plan.softwareSpecialization)}` : ''}
+                          {' · 1 bulan pendanaan'}
+                        </span>
                       </div>
                       <div className={styles.infoRowCompact}>
                         <div>
@@ -1681,7 +1756,7 @@ export function CpuFoundrySim() {
                     <div className={styles.infoRowCompact}>
                       <div>
                         <span>Field</span>
-                        <strong>{getCompanyFieldLabel(plan.field)}</strong>
+                        <strong>{getCompanyFieldLabel(plan.field)}{plan.field === 'software' ? ` · ${getSoftwareSpecializationLabel(plan.softwareSpecialization)}` : ''}</strong>
                       </div>
                       <div>
                         <span>Capital</span>
@@ -2025,6 +2100,12 @@ export function CpuFoundrySim() {
                   <span>Sisa hari listing plan</span>
                   <strong>{formatNumber(Math.max(0, focusedPlan.dueDay - game.elapsedDays), 0)} hari</strong>
                 </div>
+                {focusedPlan.field === 'software' ? (
+                  <div>
+                    <span>Software focus</span>
+                    <strong>{getSoftwareSpecializationLabel(focusedPlan.softwareSpecialization)}</strong>
+                  </div>
+                ) : null}
               </div>
               <div className={styles.memoCard}>
                 <p className={styles.panelTag}>Tujuan plan</p>
@@ -2086,6 +2167,12 @@ export function CpuFoundrySim() {
                     <span>Payroll eksekutif</span>
                     <strong>$ {formatMoneyCompact(focusedCompany.executivePayrollPerDay, 2)}</strong>
                   </div>
+                  {focusedCompany.field === 'software' ? (
+                    <div>
+                      <span>Software focus</span>
+                      <strong>{getSoftwareSpecializationLabel(focusedCompany.softwareSpecialization)}</strong>
+                    </div>
+                  ) : null}
                 </div>
                 <div className={styles.actionRow}>
                   <button type="button" className={styles.ghostButton} onClick={closeCompanyDetail}>
@@ -2620,12 +2707,12 @@ export function CpuFoundrySim() {
 
       {selectedGameRelease && focusedCompany ? (
         <div className={styles.screenFrameOverlay} role="presentation" onClick={() => setSelectedGameReleaseId(null)}>
-          <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label={`About the Game ${selectedGameRelease.name}`} onClick={(event) => event.stopPropagation()}>
-            <ThinFrameHeader frameName="About the Game" subtitle={selectedGameRelease.name} onBack={() => setSelectedGameReleaseId(null)} backLabel="Back from about the game" />
+          <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label={`About the ${focusedCompany.field === 'software' ? 'Product' : 'Game'} ${selectedGameRelease.name}`} onClick={(event) => event.stopPropagation()}>
+            <ThinFrameHeader frameName={focusedCompany.field === 'software' ? 'About the Product' : 'About the Game'} subtitle={selectedGameRelease.name} onBack={() => setSelectedGameReleaseId(null)} backLabel="Back from about the game" />
             <div className={styles.screenFrameBody}>
               <div className={styles.memoCard}>
                 <p className={styles.panelTag}>Brief Specifications</p>
-                <p>Genre: {selectedGameRelease.genre} · Release Date: {selectedGameRelease.releaseDate} · Popularity: {formatNumber(selectedGameRelease.popularity, 1)}%</p>
+                <p>Type: {selectedGameRelease.genre} · Release Date: {selectedGameRelease.releaseDate} · Popularity: {formatNumber(selectedGameRelease.popularity, 1)}%</p>
               </div>
               <div className={styles.panelList}>
                 {selectedGameCommunities.map((community) => (
@@ -2652,7 +2739,7 @@ export function CpuFoundrySim() {
             <div className={styles.screenFrameBody}>
               <section className={styles.panel}>
                 <button type="button" className={styles.panelToggle} onClick={() => setCommunityPanelOpen((current) => ({ ...current, games: !current.games }))}>
-                  <div><p className={styles.panelTag}>Panel</p><h2>Games the community plays</h2></div>
+                  <div><p className={styles.panelTag}>Panel</p><h2>{focusedCompany?.field === 'software' ? 'Apps and products in this community' : 'Games the community plays'}</h2></div>
                   <span>{communityPanelOpen.games ? 'Tutup' : 'Buka'}</span>
                 </button>
                 {communityPanelOpen.games ? (
@@ -2840,7 +2927,7 @@ export function CpuFoundrySim() {
               </label>
               <label className={styles.field}>
                 <span>Nama {productLabel}</span>
-                <input value={releaseDraft.cpuName} onChange={(event) => setReleaseDraft((current) => ({ ...current, cpuName: event.target.value }))} placeholder={productLabel === 'Game' ? 'Contoh: Launch-02' : 'Contoh: PX-02'} />
+                <input value={releaseDraft.cpuName} onChange={(event) => setReleaseDraft((current) => ({ ...current, cpuName: event.target.value }))} placeholder={productLabel === 'Game' ? 'Contoh: Launch-02' : productLabel === 'Software' ? 'Contoh: SW-02' : 'Contoh: PX-02'} />
               </label>
 
               <div className={styles.sliderCard}>

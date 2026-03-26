@@ -10,7 +10,8 @@ export type StrategyStyle = 'value' | 'growth' | 'dividend' | 'activist' | 'bala
 export type ExecutiveRole = 'coo' | 'cfo' | 'cto' | 'cmo';
 export type ExecutiveDomain = 'operations' | 'finance' | 'technology' | 'marketing';
 export type TradeRoute = 'auto' | 'company' | 'holders';
-export type CompanyField = 'semiconductor' | 'game';
+export type CompanyField = 'semiconductor' | 'game' | 'software';
+export type SoftwareSpecialization = 'app-store' | 'operating-system' | 'entertainment-apps' | 'utility-apps';
 
 export type UpgradeState = {
   label: string;
@@ -81,6 +82,7 @@ export type ShareListing = {
 export type CompanyState = {
   key: CompanyKey;
   field: CompanyField;
+  softwareSpecialization?: SoftwareSpecialization | null;
   name: string;
   founder: string;
   founderInvestorId: string;
@@ -135,7 +137,7 @@ export type PlayerProfile = {
   background: string;
   cash: number;
   selectedCompany: CompanyKey;
-  companyType: 'cpu' | 'game';
+  companyType: 'cpu' | 'game' | 'software';
 };
 
 export type NpcInvestor = {
@@ -170,6 +172,7 @@ export type GameState = {
 export type CommunityCompanyPlan = {
   id: string;
   field: CompanyField;
+  softwareSpecialization?: SoftwareSpecialization | null;
   companyName: string;
   founderId: string;
   founderName: string;
@@ -191,6 +194,7 @@ export type PlanInvestorPledge = {
 export type CompanyEstablishmentPlan = {
   companyKey: CompanyKey;
   field: CompanyField;
+  softwareSpecialization?: SoftwareSpecialization | null;
   companyName: string;
   founderInvestorId: string;
   founderName: string;
@@ -207,7 +211,7 @@ export type ProfileDraft = {
   name: string;
   background: string;
   selectedCompany: CompanyKey;
-  companyType: 'cpu' | 'game';
+  companyType: 'cpu' | 'game' | 'software';
 };
 
 export type ReleaseDraft = {
@@ -1744,6 +1748,7 @@ export function createFounderNpc(
 export function createCompany(config: {
   key: CompanyKey;
   field?: CompanyField;
+  softwareSpecialization?: SoftwareSpecialization | null;
   name: string;
   founder: string;
   focus: string;
@@ -1767,6 +1772,7 @@ export function createCompany(config: {
     company: {
       key: config.key,
       field: config.field ?? 'semiconductor',
+      softwareSpecialization: config.field === 'software' ? (config.softwareSpecialization ?? 'utility-apps') : null,
       name: config.name,
       founder: config.founder,
       founderInvestorId,
@@ -2489,6 +2495,7 @@ export function progressCompanyPlans(game: GameState) {
     const establishedCompany: CompanyState = {
       ...company,
       field: plan.field,
+      softwareSpecialization: plan.field === 'software' ? (plan.softwareSpecialization ?? 'utility-apps') : null,
       isEstablished: true,
       establishedDay: next.elapsedDays,
       cash: Math.max(18, plan.pledgedCapital * 0.78),
@@ -2539,11 +2546,15 @@ function getActiveCompanyCount(game: GameState) {
 }
 
 export function getCompanyFieldLabel(field: CompanyField) {
-  return field === 'game' ? 'Game' : 'Semiconductor';
+  if (field === 'game') return 'Game';
+  if (field === 'software') return 'Software';
+  return 'Semiconductor';
 }
 
-export function mapProfileCompanyTypeToField(companyType: 'cpu' | 'game'): CompanyField {
-  return companyType === 'game' ? 'game' : 'semiconductor';
+export function mapProfileCompanyTypeToField(companyType: 'cpu' | 'game' | 'software'): CompanyField {
+  if (companyType === 'game') return 'game';
+  if (companyType === 'software') return 'software';
+  return 'semiconductor';
 }
 
 export function evaluateCompanyFieldCompetition(game: GameState, field: CompanyField) {
@@ -2554,13 +2565,15 @@ export function evaluateCompanyFieldCompetition(game: GameState, field: CompanyF
   const avgReputation = competitors > 0 ? sameFieldCompanies.reduce((sum, company) => sum + company.reputation, 0) / competitors : 0;
   const avgResearch = competitors > 0 ? sameFieldCompanies.reduce((sum, company) => sum + company.researchPerDay, 0) / competitors : 0;
   const saturation = clamp((avgMarketShare / 22) + (topMarketShare / 40) + (avgReputation / 90) + (avgResearch / 60), 0, 3.8);
-  const opportunity = clamp(1.9 - saturation + (competitors === 0 ? 0.7 : 0) + (field === 'game' ? 0.15 : 0), 0.15, 2.6);
+  const fieldBoost = field === 'game' ? 0.15 : field === 'software' ? 0.2 : 0;
+  const opportunity = clamp(1.9 - saturation + (competitors === 0 ? 0.7 : 0) + fieldBoost, 0.15, 2.6);
   return { competitors, avgMarketShare, topMarketShare, saturation, opportunity };
 }
 
 export function chooseBestCompanyFieldForNpc(game: GameState, npc: NpcInvestor): CompanyField {
   const semiconductor = evaluateCompanyFieldCompetition(game, 'semiconductor');
   const gameField = evaluateCompanyFieldCompetition(game, 'game');
+  const softwareField = evaluateCompanyFieldCompetition(game, 'software');
   const strategyGameBias =
     npc.strategy === 'growth'
       ? 0.18
@@ -2581,10 +2594,23 @@ export function chooseBestCompanyFieldForNpc(game: GameState, npc: NpcInvestor):
     semiconductor.opportunity * (1.04 + npc.patience * 0.26)
     + (1 - semiconductor.saturation / 4) * (0.52 + npc.intelligence * 0.3)
     + strategySemiconductorBias;
+  const softwareScore =
+    softwareField.opportunity * (1.1 + npc.intelligence * 0.32)
+    + (1 - softwareField.saturation / 4) * (0.5 + npc.boldness * 0.3)
+    + (npc.strategy === 'growth' ? 0.14 : 0)
+    + (npc.strategy === 'balanced' ? 0.08 : 0);
+  if (softwareScore >= gameScore && softwareScore >= semiconductorScore) return 'software';
   return gameScore >= semiconductorScore ? 'game' : 'semiconductor';
 }
 
-export function createCommunityCompanyPlan(game: GameState, founderId: string, companyNameRaw: string, founderContribution: number, field: CompanyField = 'semiconductor') {
+export function createCommunityCompanyPlan(
+  game: GameState,
+  founderId: string,
+  companyNameRaw: string,
+  founderContribution: number,
+  field: CompanyField = 'semiconductor',
+  softwareSpecialization?: SoftwareSpecialization
+) {
   const companyName = companyNameRaw.trim().replace(/\s+/g, ' ');
   const words = normalizeCompanyNameWords(companyName);
   if (!companyName || companyName.length < 3) return game;
@@ -2601,9 +2627,15 @@ export function createCommunityCompanyPlan(game: GameState, founderId: string, c
     .filter((company) => company.isEstablished && company.field === field)
     .sort((left, right) => right.marketShare - left.marketShare)[0]?.name ?? 'pasar umum';
   const targetCapital = Math.max(24, contribution * 2.6);
+  const softwareSpecializationPool: SoftwareSpecialization[] = ['app-store', 'operating-system', 'entertainment-apps', 'utility-apps'];
+  const specializationSeed = `${founderId}-${companyName}`.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  const derivedSoftwareSpecialization = field === 'software'
+    ? (softwareSpecialization ?? softwareSpecializationPool[specializationSeed % softwareSpecializationPool.length])
+    : null;
   const plan: CommunityCompanyPlan = {
     id: `community-${Math.floor(game.elapsedDays)}-${companyName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
     field,
+    softwareSpecialization: derivedSoftwareSpecialization,
     companyName,
     founderId,
     founderName: investorDisplayName(game, founderId),
@@ -2671,6 +2703,7 @@ export function progressCommunityPlans(game: GameState) {
         ...company,
         key: availableSlot,
         field: plan.field,
+        softwareSpecialization: plan.field === 'software' ? (plan.softwareSpecialization ?? 'utility-apps') : null,
         name: plan.companyName,
         founder: plan.founderName,
         founderInvestorId: plan.founderId,
@@ -3613,8 +3646,16 @@ export function scoreNpcReleaseAction(game: GameState, npc: NpcInvestor, company
 
   if (score < 0.9 && cashEmergency < 0.45 && cpuDelta < 12 && daysSinceRelease < (company.field === 'game' ? 180 : 70) && !canForceRelease) return null;
   const releaseNumber = company.releaseCount + 1;
-  const releaseSeries = company.field === 'game' ? `${company.name} Live Ops` : `${company.name} G-Series`;
-  const releaseCpuName = company.field === 'game' ? `Game Patch ${releaseNumber}` : `CPU G${releaseNumber}`;
+  const releaseSeries = company.field === 'game'
+    ? `${company.name} Live Ops`
+    : company.field === 'software'
+      ? `${company.name} Suite`
+      : `${company.name} G-Series`;
+  const releaseCpuName = company.field === 'game'
+    ? `Game Patch ${releaseNumber}`
+    : company.field === 'software'
+      ? `Software Build ${releaseNumber}`
+      : `CPU G${releaseNumber}`;
 
   return {
     type: 'release',
@@ -3622,7 +3663,11 @@ export function scoreNpcReleaseAction(game: GameState, npc: NpcInvestor, company
     resource: 'cash',
     cost: 0,
     score,
-    label: company.field === 'game' ? `Release Game ${releaseCpuName}` : `Release CPU ${releaseCpuName}`,
+    label: company.field === 'game'
+      ? `Release Game ${releaseCpuName}`
+      : company.field === 'software'
+        ? `Release Software ${releaseCpuName}`
+        : `Release CPU ${releaseCpuName}`,
     rationale: canForceRelease
       ? 'kas < $10M: rilis darurat mingguan aktif untuk menyelamatkan runway'
       : cashEmergency > 0.6
@@ -3660,9 +3705,21 @@ export function applyNpcCompanyAction(game: GameState, companyKey: CompanyKey, a
       : (nextCash > 10 ? null : company.lastEmergencyReleaseDay);
     const reputationGain = Math.max(0.8, (cpuScore / 240 + company.teams.marketing.count * 0.7 + pricePreset.reputationBonus) * releaseRating.reputationMultiplier);
     const marketShareGain = Math.min(5.5, (cpuScore / 500 + company.teams.fabrication.count * 0.16 + pricePreset.marketBonus) * releaseRating.marketShareMultiplier);
-    const series = action.releaseSeries ?? (company.field === 'game' ? `${company.name} Live Ops` : `${company.name} G-Series`);
-    const cpuName = action.releaseCpuName ?? (company.field === 'game' ? `Game Patch ${company.releaseCount + 1}` : `CPU G${company.releaseCount + 1}`);
-    const productLabel = company.field === 'game' ? 'game' : 'CPU';
+    const series = action.releaseSeries ?? (
+      company.field === 'game'
+        ? `${company.name} Live Ops`
+        : company.field === 'software'
+          ? `${company.name} Suite`
+          : `${company.name} G-Series`
+    );
+    const cpuName = action.releaseCpuName ?? (
+      company.field === 'game'
+        ? `Game Patch ${company.releaseCount + 1}`
+        : company.field === 'software'
+          ? `Software Build ${company.releaseCount + 1}`
+          : `CPU G${company.releaseCount + 1}`
+    );
+    const productLabel = company.field === 'game' ? 'game' : company.field === 'software' ? 'software' : 'CPU';
     return {
       ...game,
       companies: {
