@@ -3281,6 +3281,12 @@ export function scoreCompanyForNpc(npc: NpcInvestor, company: CompanyState) {
   const longTermFit = npc.horizonDays / 365 * 0.35 + npc.patience * 0.6 + npc.intelligence * 0.34;
   const liquidityPenalty = Math.max(0, 0.2 - treasuryLiquidity) * (0.48 + (1 - npc.boldness) * 0.28) - discoverySignal * npc.intelligence * 0.14;
   const crowdConfidence = discoverySignal * (0.4 + npc.intelligence * 0.25) + outsideOwnership * 0.32 + treasuryLiquidity * 0.18;
+  const fieldVolatility = company.field === 'game' ? 1.25 : 0.88;
+  const riskTolerance = clamp(npc.boldness * 0.72 + npc.intelligence * 0.18 - (1 - npc.patience) * 0.2, 0.1, 1.4);
+  const riskPenalty = Math.max(0, fieldVolatility - riskTolerance) * (0.42 + (1 - npc.intelligence) * 0.22);
+  const fieldBenefit = company.field === 'game'
+    ? (company.reputation / 100) * (0.22 + npc.intelligence * 0.18) + discoverySignal * 0.2
+    : (company.researchPerDay / 40) * (0.28 + npc.patience * 0.22) + valueSignal * 0.16;
   const fieldAffinity =
     company.field === 'game'
       ? npc.strategy === 'growth'
@@ -3306,7 +3312,7 @@ export function scoreCompanyForNpc(npc: NpcInvestor, company: CompanyState) {
     founderControl,
     liquidityPenalty,
     managementPenalty,
-    finalScore: strategyBias + longTermFit + crowdConfidence + fieldAffinity - managementPenalty - liquidityPenalty,
+    finalScore: strategyBias + longTermFit + crowdConfidence + fieldAffinity + fieldBenefit - managementPenalty - liquidityPenalty - riskPenalty,
   };
 }
 
@@ -3501,17 +3507,32 @@ export function getNpcReleasePressure(game: GameState, npc: NpcInvestor, company
   const severeCashCrisis = company.cash <= Math.max(2.5, management.cashReserveTarget * 0.08);
   const cashMeltdown = company.cash < 10;
   const nearZeroCash = company.cash <= 2;
-  const baseReleaseWindow = clamp(Math.round(24 - npc.boldness * 6 - npc.intelligence * 3), 14, 30);
+  const gameExecutiveManaged = company.field === 'game'
+    && (
+      !isHumanExecutiveCandidateId(company.ceoId)
+      || Object.values(company.executives).some((executive) => executive && !isHumanExecutiveCandidateId(executive.occupantId))
+    );
+  const baseReleaseWindow = company.field === 'game'
+    ? clamp(Math.round(126 + (1 - npc.boldness) * 34 - npc.intelligence * 12), 90, 180)
+    : clamp(Math.round(24 - npc.boldness * 6 - npc.intelligence * 3), 14, 30);
   const releaseCadenceTarget = cashMeltdown
     ? 7
-    : cpuDelta > 32
+    : company.field === 'game'
+      ? baseReleaseWindow
+      : cpuDelta > 32
       ? 28
       : cpuDelta > 18
         ? 42
         : 56;
   const momentumWindowBias = clamp(Math.round((releaseCadenceTarget - baseReleaseWindow) * 0.8), -10, 10);
-  const tunedReleaseWindow = clamp(baseReleaseWindow + momentumWindowBias, 28, 60);
-  const releaseWindow = cashMeltdown ? 7 : (cashEmergency > 0.7 ? Math.max(28, tunedReleaseWindow - 4) : tunedReleaseWindow);
+  const tunedReleaseWindow = company.field === 'game'
+    ? clamp(baseReleaseWindow + Math.round(momentumWindowBias * 0.2), 90, 180)
+    : clamp(baseReleaseWindow + momentumWindowBias, 28, 60);
+  const releaseWindow = cashMeltdown
+    ? 7
+    : company.field === 'game'
+      ? tunedReleaseWindow
+      : (cashEmergency > 0.7 ? Math.max(28, tunedReleaseWindow - 4) : tunedReleaseWindow);
   const emergencyAnchorDay = company.emergencyReleaseAnchorDay;
   const emergencyReleaseCount = company.emergencyReleaseCount ?? 0;
   const weeksSinceEmergencyAnchor = emergencyAnchorDay === null ? 0 : Math.floor(Math.max(0, game.elapsedDays - emergencyAnchorDay) / 7);
@@ -3537,6 +3558,7 @@ export function getNpcReleasePressure(game: GameState, npc: NpcInvestor, company
     releaseCadenceTarget,
     canForceRelease,
     releaseDistance,
+    gameExecutiveManaged,
   };
 }
 
@@ -3556,13 +3578,16 @@ export function scoreNpcReleaseAction(game: GameState, npc: NpcInvestor, company
     releaseCadenceTarget,
     canForceRelease,
     releaseDistance,
+    gameExecutiveManaged,
   } = pressure;
   const marketNeed = clamp((18 - company.marketShare) / 18, 0, 1.2);
   const reputationNeed = clamp((50 - company.reputation) / 50, 0, 1);
   const priceIndex = chooseNpcReleasePriceIndex(npc, company, cpuDelta, cashEmergency);
   const staleness = clamp(daysSinceRelease / 90, 0, 2.2);
   const inNormalCadenceMode = !cashMeltdown;
-  if (inNormalCadenceMode && daysSinceRelease < 28) return null;
+  if (company.field === 'game' && !gameExecutiveManaged) return null;
+  if (company.field === 'game' && inNormalCadenceMode && daysSinceRelease < 90) return null;
+  if (company.field !== 'game' && inNormalCadenceMode && daysSinceRelease < 28) return null;
   if (cashMeltdown && !emergencyCadenceReady) return null;
   const tooSoonWithNoDistance =
     daysSinceRelease < releaseWindow
@@ -3604,10 +3629,10 @@ export function scoreNpcReleaseAction(game: GameState, npc: NpcInvestor, company
     - repeatedSpecPenalty
   );
 
-  if (score < 0.9 && cashEmergency < 0.45 && cpuDelta < 12 && daysSinceRelease < 70 && !canForceRelease) return null;
+  if (score < 0.9 && cashEmergency < 0.45 && cpuDelta < 12 && daysSinceRelease < (company.field === 'game' ? 180 : 70) && !canForceRelease) return null;
   const releaseNumber = company.releaseCount + 1;
-  const releaseSeries = `${company.name} G-Series`;
-  const releaseCpuName = `CPU G${releaseNumber}`;
+  const releaseSeries = company.field === 'game' ? `${company.name} Live Ops` : `${company.name} G-Series`;
+  const releaseCpuName = company.field === 'game' ? `Game Patch ${releaseNumber}` : `CPU G${releaseNumber}`;
 
   return {
     type: 'release',
@@ -3615,7 +3640,7 @@ export function scoreNpcReleaseAction(game: GameState, npc: NpcInvestor, company
     resource: 'cash',
     cost: 0,
     score,
-    label: `Release CPU ${releaseCpuName}`,
+    label: company.field === 'game' ? `Release Game ${releaseCpuName}` : `Release CPU ${releaseCpuName}`,
     rationale: canForceRelease
       ? 'kas < $10M: rilis darurat mingguan aktif untuk menyelamatkan runway'
       : cashEmergency > 0.6
@@ -3653,8 +3678,9 @@ export function applyNpcCompanyAction(game: GameState, companyKey: CompanyKey, a
       : (nextCash > 10 ? null : company.lastEmergencyReleaseDay);
     const reputationGain = Math.max(0.8, (cpuScore / 240 + company.teams.marketing.count * 0.7 + pricePreset.reputationBonus) * releaseRating.reputationMultiplier);
     const marketShareGain = Math.min(5.5, (cpuScore / 500 + company.teams.fabrication.count * 0.16 + pricePreset.marketBonus) * releaseRating.marketShareMultiplier);
-    const series = action.releaseSeries ?? `${company.name} G-Series`;
-    const cpuName = action.releaseCpuName ?? `CPU G${company.releaseCount + 1}`;
+    const series = action.releaseSeries ?? (company.field === 'game' ? `${company.name} Live Ops` : `${company.name} G-Series`);
+    const cpuName = action.releaseCpuName ?? (company.field === 'game' ? `Game Patch ${company.releaseCount + 1}` : `CPU G${company.releaseCount + 1}`);
+    const productLabel = company.field === 'game' ? 'game' : 'CPU';
     return {
       ...game,
       companies: {
@@ -3677,7 +3703,7 @@ export function applyNpcCompanyAction(game: GameState, companyKey: CompanyKey, a
       },
       activityFeed: addFeedEntry(
         game.activityFeed,
-        `${formatDateFromDays(game.elapsedDays)}: ${wasCashCritical ? '🚨 RILIS DARURAT' : 'Update produk'} — ${company.name} merilis ${series} ${cpuName} (rating ${formatNumber(releaseRating.rating, 1)}) dan membukukan $${formatMoneyCompact(launchRevenue)}.`
+        `${formatDateFromDays(game.elapsedDays)}: ${wasCashCritical ? '🚨 RILIS DARURAT' : 'Update produk'} — ${company.name} merilis ${productLabel} ${series} ${cpuName} (rating ${formatNumber(releaseRating.rating, 1)}) dan membukukan $${formatMoneyCompact(launchRevenue)}.`
       ),
     };
   }

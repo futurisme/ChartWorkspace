@@ -694,12 +694,7 @@ export function CpuFoundrySim() {
         field: company.field,
         investorsCount: Object.values(company.investors).filter((shares) => shares > 0.01).length,
       }))
-      .sort((left, right) => (
-        (left.field === right.field
-          ? right.valuation - left.valuation
-          : left.field === 'game' ? -1 : 1)
-        || left.name.localeCompare(right.name)
-      ));
+      .sort((left, right) => right.valuation - left.valuation || left.name.localeCompare(right.name));
   }, [game]);
   const activePlayerBoardVote = useMemo(() => {
     if (!game) return null;
@@ -1138,7 +1133,12 @@ export function CpuFoundrySim() {
 
     setGame(next);
     setStatusMessage(`${series} ${cpuName} sukses dirilis (rating ${formatNumber(releaseRating.rating, 1)}).`);
-    setReleaseDraft({ ...releaseDraft, cpuName: `PX-${String(activeCompany.releaseCount + 1).padStart(2, '0')}` });
+    setReleaseDraft({
+      ...releaseDraft,
+      cpuName: activeCompany.field === 'game'
+        ? `Launch-${String(activeCompany.releaseCount + 1).padStart(2, '0')}`
+        : `PX-${String(activeCompany.releaseCount + 1).padStart(2, '0')}`,
+    });
     setIsReleaseMenuOpen(false);
   };
 
@@ -2701,7 +2701,7 @@ export function CpuFoundrySim() {
               </label>
               <label className={styles.field}>
                 <span>Nama {productLabel}</span>
-                <input value={releaseDraft.cpuName} onChange={(event) => setReleaseDraft((current) => ({ ...current, cpuName: event.target.value }))} placeholder="Contoh: PX-02" />
+                <input value={releaseDraft.cpuName} onChange={(event) => setReleaseDraft((current) => ({ ...current, cpuName: event.target.value }))} placeholder={productLabel === 'Game' ? 'Contoh: Launch-02' : 'Contoh: PX-02'} />
               </label>
 
               <div className={styles.sliderCard}>
