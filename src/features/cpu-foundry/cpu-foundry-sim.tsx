@@ -238,6 +238,30 @@ function ReusablePieDiagram({ title, slices }: { title: string; slices: PieSlice
   );
 }
 
+function ThinFrameHeader({
+  frameName,
+  subtitle,
+  onBack,
+  backLabel,
+}: {
+  frameName: string;
+  subtitle: string;
+  onBack: () => void;
+  backLabel: string;
+}) {
+  return (
+    <div className={styles.screenFrameHeader}>
+      <div className={styles.frameHeading}>
+        <strong className={styles.frameName}>{frameName}</strong>
+        <p className={styles.frameSubName}>{subtitle}</p>
+      </div>
+      <button type="button" className={styles.closeButton} onClick={onBack} aria-label={backLabel}>
+        ←
+      </button>
+    </div>
+  );
+}
+
 export function CpuFoundrySim() {
   const [game, setGame] = useState<GameState | null>(null);
   const [profileDraft, setProfileDraft] = useState<ProfileDraft>(DEFAULT_PROFILE_DRAFT);
@@ -1601,15 +1625,7 @@ export function CpuFoundrySim() {
       {isCompaniesFrameOpen ? (
         <div className={styles.screenFrameOverlay} role="presentation" onClick={() => setIsCompaniesFrameOpen(false)}>
           <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label="Daftar perusahaan" onClick={(event) => event.stopPropagation()}>
-            <div className={styles.screenFrameHeader}>
-              <div>
-                <p className={styles.panelTag}>Companies</p>
-                <h2>Plans & perusahaan {productLabel}</h2>
-              </div>
-              <button type="button" className={styles.closeButton} onClick={() => setIsCompaniesFrameOpen(false)} aria-label="Tutup daftar perusahaan">
-                ✕
-              </button>
-            </div>
+            <ThinFrameHeader frameName="Companies" subtitle={`Plans & perusahaan ${productLabel}`} onBack={() => setIsCompaniesFrameOpen(false)} backLabel="Tutup daftar perusahaan" />
 
             <div className={styles.screenFrameBody}>
               <div className={styles.memoCard}>
@@ -1735,15 +1751,7 @@ export function CpuFoundrySim() {
       {isInvestorFrameOpen ? (
         <div className={styles.screenFrameOverlay} role="presentation" onClick={() => setIsInvestorFrameOpen(false)}>
           <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label="Daftar investor" onClick={(event) => event.stopPropagation()}>
-            <div className={styles.screenFrameHeader}>
-              <div>
-                <p className={styles.panelTag}>Investor list</p>
-                <h2>{game.companies[investorFrameCompanyKey].name} ownership board</h2>
-              </div>
-              <button type="button" className={styles.closeButton} onClick={() => setIsInvestorFrameOpen(false)} aria-label="Kembali ke halaman utama">
-                ←
-              </button>
-            </div>
+            <ThinFrameHeader frameName="Investor list" subtitle={`${game.companies[investorFrameCompanyKey].name} ownership board`} onBack={() => setIsInvestorFrameOpen(false)} backLabel="Kembali ke halaman utama" />
 
             <div className={styles.screenFrameBody}>
               <div className={styles.quickGrid}>
@@ -1790,15 +1798,7 @@ export function CpuFoundrySim() {
       {isNewsFrameOpen ? (
         <div className={styles.screenFrameOverlay} role="presentation" onClick={() => setIsNewsFrameOpen(false)}>
           <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label="News frame" onClick={(event) => event.stopPropagation()}>
-            <div className={styles.screenFrameHeader}>
-              <div>
-                <p className={styles.panelTag}>News</p>
-                <h2>5 berita terbaru pasar {productLabel}</h2>
-              </div>
-              <button type="button" className={styles.closeButton} onClick={() => setIsNewsFrameOpen(false)} aria-label="Kembali dari news">
-                ←
-              </button>
-            </div>
+            <ThinFrameHeader frameName="News" subtitle={`5 berita terbaru pasar ${productLabel}`} onBack={() => setIsNewsFrameOpen(false)} backLabel="Kembali dari news" />
             <div className={styles.screenFrameBody}>
               <div className={styles.quickGrid}>
                 <button type="button" className={newsCompanyFilter === 'all' ? styles.quickButtonActive : styles.quickButton} onClick={() => setNewsCompanyFilter('all')}>
@@ -1834,15 +1834,7 @@ export function CpuFoundrySim() {
       {isForbesFrameOpen ? (
         <div className={styles.screenFrameOverlay} role="presentation" onClick={() => setIsForbesFrameOpen(false)}>
           <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label="Forbes ranking frame" onClick={(event) => event.stopPropagation()}>
-            <div className={styles.screenFrameHeader}>
-              <div>
-                <p className={styles.panelTag}>Forbes Ranking</p>
-                <h2>Nama · Wealth · Company name</h2>
-              </div>
-              <button type="button" className={styles.closeButton} onClick={() => setIsForbesFrameOpen(false)} aria-label="Kembali dari forbes">
-                ←
-              </button>
-            </div>
+            <ThinFrameHeader frameName="Forbes Ranking" subtitle="Nama · Wealth · Company name" onBack={() => setIsForbesFrameOpen(false)} backLabel="Kembali dari forbes" />
             <div className={styles.screenFrameBody}>
               <div className={styles.rankingFilterRow}>
                 <button
@@ -1896,15 +1888,7 @@ export function CpuFoundrySim() {
       {isStatisticsFrameOpen && focusedCompany ? (
         <div className={`${styles.screenFrameOverlay} ${styles.statisticsOverlay}`} role="presentation" onClick={() => setIsStatisticsFrameOpen(false)}>
           <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label={`Statistik ${focusedCompany.name}`} onClick={(event) => event.stopPropagation()}>
-            <div className={styles.screenFrameHeader}>
-              <div>
-                <p className={styles.panelTag}>Company statistics</p>
-                <h2>{focusedCompany.name}</h2>
-              </div>
-              <button type="button" className={styles.closeButton} onClick={() => setIsStatisticsFrameOpen(false)} aria-label="Tutup statistik">
-                ✕
-              </button>
-            </div>
+            <ThinFrameHeader frameName="Company statistics" subtitle={focusedCompany.name} onBack={() => setIsStatisticsFrameOpen(false)} backLabel="Tutup statistik" />
             <div className={styles.screenFrameBody}>
               <div className={styles.statisticsSwitchRow}>
                 {statisticsTabConfig.map((option) => (
@@ -2019,15 +2003,7 @@ export function CpuFoundrySim() {
       {focusedPlan && game ? (
         <div className={styles.screenFrameOverlay} role="presentation" onClick={() => setFocusedPlanKey(null)}>
           <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label={`Detail plan pendirian ${focusedPlan.companyName}`} onClick={(event) => event.stopPropagation()}>
-            <div className={styles.screenFrameHeader}>
-              <div>
-                <p className={styles.panelTag}>Company Establishment Plan</p>
-                <h2>{focusedPlan.companyName} full frame</h2>
-              </div>
-              <button type="button" className={styles.closeButton} onClick={() => setFocusedPlanKey(null)} aria-label="Tutup detail plan">
-                ✕
-              </button>
-            </div>
+            <ThinFrameHeader frameName="Company Establishment Plan" subtitle={`${focusedPlan.companyName} full frame`} onBack={() => setFocusedPlanKey(null)} backLabel="Tutup detail plan" />
             <div className={styles.screenFrameBody}>
               <div className={styles.infoRow}>
                 <div>
@@ -2074,15 +2050,7 @@ export function CpuFoundrySim() {
       {focusedCompany && game ? (
         <div className={styles.screenFrameOverlay} role="presentation" onClick={closeCompanyDetail}>
           <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label={`Detail perusahaan ${focusedCompany.name}`} onClick={(event) => event.stopPropagation()}>
-            <div className={styles.screenFrameHeader}>
-              <div>
-                <p className={styles.panelTag}>Company detail</p>
-                <h2>{focusedCompany.name} full frame</h2>
-              </div>
-              <button type="button" className={styles.closeButton} onClick={closeCompanyDetail} aria-label="Kembali ke daftar perusahaan">
-                ←
-              </button>
-            </div>
+            <ThinFrameHeader frameName="Company detail" subtitle={`${focusedCompany.name} full frame`} onBack={closeCompanyDetail} backLabel="Kembali ke daftar perusahaan" />
 
             <div className={styles.screenFrameBody}>
               <div className={styles.heroMiniCard}>
@@ -2654,15 +2622,7 @@ export function CpuFoundrySim() {
       {selectedGameRelease && focusedCompany ? (
         <div className={styles.screenFrameOverlay} role="presentation" onClick={() => setSelectedGameReleaseId(null)}>
           <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label={`About the Game ${selectedGameRelease.name}`} onClick={(event) => event.stopPropagation()}>
-            <div className={styles.screenFrameHeader}>
-              <div>
-                <p className={styles.panelTag}>About the Game</p>
-                <h2>{selectedGameRelease.name}</h2>
-              </div>
-              <button type="button" className={styles.closeButton} onClick={() => setSelectedGameReleaseId(null)} aria-label="Back from about the game">
-                ←
-              </button>
-            </div>
+            <ThinFrameHeader frameName="About the Game" subtitle={selectedGameRelease.name} onBack={() => setSelectedGameReleaseId(null)} backLabel="Back from about the game" />
             <div className={styles.screenFrameBody}>
               <div className={styles.memoCard}>
                 <p className={styles.panelTag}>Brief Specifications</p>
@@ -2689,15 +2649,7 @@ export function CpuFoundrySim() {
       {selectedGameCommunity ? (
         <div className={styles.screenFrameOverlay} role="presentation" onClick={() => setSelectedGameCommunityId(null)}>
           <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label={`About the Community ${selectedGameCommunity.name}`} onClick={(event) => event.stopPropagation()}>
-            <div className={styles.screenFrameHeader}>
-              <div>
-                <p className={styles.panelTag}>About the Community</p>
-                <h2>{selectedGameCommunity.name}</h2>
-              </div>
-              <button type="button" className={styles.closeButton} onClick={() => setSelectedGameCommunityId(null)} aria-label="Back from community">
-                ←
-              </button>
-            </div>
+            <ThinFrameHeader frameName="About the Community" subtitle={selectedGameCommunity.name} onBack={() => setSelectedGameCommunityId(null)} backLabel="Back from community" />
             <div className={styles.screenFrameBody}>
               <section className={styles.panel}>
                 <button type="button" className={styles.panelToggle} onClick={() => setCommunityPanelOpen((current) => ({ ...current, games: !current.games }))}>
