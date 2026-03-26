@@ -2588,16 +2588,18 @@ export function chooseBestCompanyFieldForNpc(game: GameState, npc: NpcInvestor):
           ? -0.08
           : 0;
   const strategySemiconductorBias = npc.strategy === 'value' || npc.strategy === 'dividend' ? 0.1 : 0;
+  const gamePriorityBoost = 0.22 + npc.intelligence * 0.08 + npc.boldness * 0.06;
   const gameScore =
     gameField.opportunity * (1.08 + npc.intelligence * 0.38)
     + (1 - gameField.saturation / 4) * (0.45 + npc.boldness * 0.32)
     + strategyGameBias
-    + clamp((semiconductor.topMarketShare - gameField.topMarketShare) / 100, -0.2, 0.25);
+    + clamp((semiconductor.topMarketShare - gameField.topMarketShare) / 100, -0.2, 0.25)
+    + gamePriorityBoost;
   const semiconductorScore =
     semiconductor.opportunity * (1.04 + npc.patience * 0.26)
     + (1 - semiconductor.saturation / 4) * (0.52 + npc.intelligence * 0.3)
     + strategySemiconductorBias;
-  return gameScore > semiconductorScore ? 'game' : 'semiconductor';
+  return gameScore >= semiconductorScore ? 'game' : 'semiconductor';
 }
 
 export function createCommunityCompanyPlan(game: GameState, founderId: string, companyNameRaw: string, founderContribution: number, field: CompanyField = 'semiconductor') {
@@ -3094,17 +3096,16 @@ export function runNpcCommunityPlanning(current: GameState) {
   }
 
   next.npcs.forEach((npc) => {
-    const founderChance = npc.boldness * 0.08 + npc.intelligence * 0.07 + (marketNeedsCompetition ? 0.03 : 0);
+    const preferredField = chooseBestCompanyFieldForNpc(next, npc);
+    const founderChance = npc.boldness * 0.08 + npc.intelligence * 0.07 + (marketNeedsCompetition ? 0.03 : 0) + (preferredField === 'game' ? 0.045 : 0);
     const seed = createSeededRandom(`${npc.id}-${Math.floor(next.elapsedDays)}-community`);
     if (seed() < founderChance && getActiveCompanyCount(next) < MAX_ACTIVE_COMPANIES && openFundingPlans < 2) {
       const contribution = clamp(npc.cash * (0.06 + npc.boldness * 0.1), 0, 18);
       if (contribution >= 8) {
         const candidateName = generateUniqueCompanyName(next, seed);
-        const field = chooseBestCompanyFieldForNpc(next, npc);
-        next = createCommunityCompanyPlan(next, npc.id, candidateName, contribution, field);
+        next = createCommunityCompanyPlan(next, npc.id, candidateName, contribution, preferredField);
       }
     }
-    const preferredField = chooseBestCompanyFieldForNpc(next, npc);
     const openFundingByField = next.communityPlans.filter((plan) => plan.status === 'funding' && plan.founderId !== npc.id && plan.field === preferredField);
     const openFunding = openFundingByField.length > 0
       ? openFundingByField

@@ -682,10 +682,16 @@ export function CpuFoundrySim() {
         companyKey: company.key,
         name: company.name,
         valuation: getCompanyValuation(company),
-        category: 'Semiconductor',
+        category: getCompanyFieldLabel(company.field),
+        field: company.field,
         investorsCount: Object.values(company.investors).filter((shares) => shares > 0.01).length,
       }))
-      .sort((left, right) => right.valuation - left.valuation || left.name.localeCompare(right.name));
+      .sort((left, right) => (
+        (left.field === right.field
+          ? right.valuation - left.valuation
+          : left.field === 'game' ? -1 : 1)
+        || left.name.localeCompare(right.name)
+      ));
   }, [game]);
   const activePlayerBoardVote = useMemo(() => {
     if (!game) return null;
@@ -719,6 +725,7 @@ export function CpuFoundrySim() {
   const activePricePreset = PRICE_PRESETS[releaseDraft.priceIndex];
   const isPlayerCeo = Boolean(game && activeCompany && activeCompany.ceoId === game.player.id);
   const focusedPlayerIsCeo = Boolean(game && focusedCompany && focusedCompany.ceoId === game.player.id);
+  const focusedIsGameField = focusedCompany?.field === 'game';
   const activePlayerExecutiveRoles = activeCompany && game ? getExecutiveRolesForInvestor(activeCompany, game.player.id) : [];
   const focusedPlayerExecutiveRoles = focusedCompany && game ? getExecutiveRolesForInvestor(focusedCompany, game.player.id) : [];
   const focusedPlayerIsBoardMember = Boolean(focusedCompany && game && focusedCompany.boardMembers.some((member) => member.id === game.player.id));
@@ -2361,7 +2368,7 @@ export function CpuFoundrySim() {
                 <button type="button" className={styles.panelToggle} onClick={() => toggleCompanyDetailPanel('operations')}>
                   <div>
                     <p className={styles.panelTag}>Operations</p>
-                    <h2>Upgrade {productLabel} & tim</h2>
+                    <h2>{focusedIsGameField ? 'Game Studio Pipeline & tim' : `Upgrade ${productLabel} & tim`}</h2>
                   </div>
                   <span>{companyDetailPanels.operations ? 'Tutup' : 'Buka'}</span>
                 </button>
@@ -2369,18 +2376,19 @@ export function CpuFoundrySim() {
                   <div className={styles.panelList}>
                     {(Object.entries(focusedCompany.upgrades) as [UpgradeKey, UpgradeState][]).map(([key, upgrade]) => {
                       const cost = getUpgradeCost(key, upgrade, focusedCompany);
+                      const actionLabel = focusedIsGameField ? 'Develop Feature' : 'Upgrade';
                       return (
                         <article key={key} className={styles.itemCard}>
                           <div className={styles.itemTop}>
                             <div>
-                              <p className={styles.itemLabel}>{upgrade.label}</p>
+                              <p className={styles.itemLabel}>{focusedIsGameField ? `Game Tech · ${upgrade.label}` : upgrade.label}</p>
                               <h3>{getDisplayedUpgradeValue(key, upgrade)}</h3>
                             </div>
                             <span className={styles.costPill}>{formatNumber(cost)} RP</span>
                           </div>
-                          <p className={styles.itemDescription}>{upgrade.description}</p>
+                          <p className={styles.itemDescription}>{focusedIsGameField ? `${upgrade.description} (format studio-gameplay)` : upgrade.description}</p>
                           <button type="button" className={styles.secondaryButton} onClick={() => improveUpgrade(key, focusedCompany.key)} disabled={!focusedCanManageTechnology || focusedCompany.research < cost}>
-                            {!focusedCanManageTechnology ? 'CEO/CTO only' : focusedCompany.research >= cost ? 'Upgrade' : 'RP kurang'}
+                            {!focusedCanManageTechnology ? 'CEO/CTO only' : focusedCompany.research >= cost ? actionLabel : 'RP kurang'}
                           </button>
                         </article>
                       );
@@ -2388,41 +2396,37 @@ export function CpuFoundrySim() {
 
                     {(Object.entries(focusedCompany.teams) as [TeamKey, TeamState][]).map(([key, team]) => {
                       const cost = getTeamCost(team);
+                      const isAllowed =
+                        (
+                          key === 'researchers'
+                            ? focusedCanManageTechnology
+                            : key === 'marketing'
+                              ? Boolean(focusedCompany && game && hasCompanyAuthority(focusedCompany, game.player.id, 'marketing'))
+                              : Boolean(focusedCompany && game && hasCompanyAuthority(focusedCompany, game.player.id, 'operations'))
+                        )
+                        && focusedCompany.cash >= cost;
+                      const actionLabel = focusedIsGameField ? 'Scale Studio' : 'Expand';
                       return (
                         <article key={key} className={styles.itemCard}>
                           <div className={styles.itemTop}>
                             <div>
-                              <p className={styles.itemLabel}>{team.label}</p>
+                              <p className={styles.itemLabel}>{focusedIsGameField ? `Studio Team · ${team.label}` : team.label}</p>
                               <h3>{formatNumber(team.count)} aktif</h3>
                             </div>
                             <span className={styles.costPill}>{formatCurrencyCompact(cost, 2)}</span>
                           </div>
-                          <p className={styles.itemDescription}>{team.description}</p>
-                          <button
-                            type="button"
-                            className={styles.secondaryButton}
-                            onClick={() => hireTeam(key, focusedCompany.key)}
-                            disabled={
-                              !(
-                                (key === 'researchers'
-                                  ? focusedCanManageTechnology
-                                  : key === 'marketing'
-                                    ? Boolean(focusedCompany && game && hasCompanyAuthority(focusedCompany, game.player.id, 'marketing'))
-                                    : Boolean(focusedCompany && game && hasCompanyAuthority(focusedCompany, game.player.id, 'operations')))
-                                && focusedCompany.cash >= cost
-                              )
-                            }
-                          >
+                          <p className={styles.itemDescription}>{focusedIsGameField ? `${team.description} (format studio-gameplay)` : team.description}</p>
+                          <button type="button" className={styles.secondaryButton} onClick={() => hireTeam(key, focusedCompany.key)} disabled={!isAllowed}>
                             {key === 'researchers'
                               ? focusedCanManageTechnology
-                                ? focusedCompany.cash >= cost ? 'Expand' : 'Dana kurang'
+                                ? focusedCompany.cash >= cost ? actionLabel : 'Dana kurang'
                                 : 'CEO/CTO only'
                               : key === 'marketing'
                                 ? (focusedCompany && game && hasCompanyAuthority(focusedCompany, game.player.id, 'marketing'))
-                                  ? focusedCompany.cash >= cost ? 'Expand' : 'Dana kurang'
+                                  ? focusedCompany.cash >= cost ? actionLabel : 'Dana kurang'
                                   : 'CEO/CMO only'
                                 : (focusedCompany && game && hasCompanyAuthority(focusedCompany, game.player.id, 'operations'))
-                                  ? focusedCompany.cash >= cost ? 'Expand' : 'Dana kurang'
+                                  ? focusedCompany.cash >= cost ? actionLabel : 'Dana kurang'
                                   : 'CEO/COO only'}
                           </button>
                         </article>
