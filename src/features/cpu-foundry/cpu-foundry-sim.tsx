@@ -553,6 +553,14 @@ export function CpuFoundrySim() {
 
   const activeCompany = game ? game.companies[game.player.selectedCompany] : null;
   const focusedCompany = game && focusedCompanyKey ? game.companies[focusedCompanyKey] : null;
+  const focusedGameReleaseCards = useMemo(() => {
+    if (!game || !focusedCompany || focusedCompany.field !== 'game') return [];
+    const releaseEntries = game.activityFeed
+      .filter((entry) => entry.includes(focusedCompany.name) && entry.includes('merilis'))
+      .slice(0, 14);
+    if (releaseEntries.length > 0) return releaseEntries;
+    return [focusedCompany.lastRelease].filter(Boolean);
+  }, [focusedCompany, game]);
   const focusedPlan = game && focusedPlanKey ? game.plans[focusedPlanKey] : null;
   const companyStatisticsSlices = useMemo(() => {
     if (!game || !focusedCompany) {
@@ -2058,7 +2066,7 @@ export function CpuFoundrySim() {
                 <button type="button" className={styles.panelToggle} onClick={() => toggleCompanyDetailPanel('overview')}>
                   <div>
                     <p className={styles.panelTag}>Overview</p>
-                    <h2>Kondisi perusahaan</h2>
+                    <h2>{focusedIsGameField ? 'Company Overview' : 'Kondisi perusahaan'}</h2>
                   </div>
                   <span>{companyDetailPanels.overview ? 'Tutup' : 'Buka'}</span>
                 </button>
@@ -2127,7 +2135,7 @@ export function CpuFoundrySim() {
                 <button type="button" className={styles.panelToggle} onClick={() => toggleCompanyDetailPanel('management')}>
                   <div>
                     <p className={styles.panelTag}>Management</p>
-                    <h2>CEO & jabatan eksekutif opsional</h2>
+                    <h2>{focusedIsGameField ? 'Executive Management' : 'CEO & jabatan eksekutif opsional'}</h2>
                   </div>
                   <span>{companyDetailPanels.management ? 'Tutup' : 'Buka'}</span>
                 </button>
@@ -2204,7 +2212,7 @@ export function CpuFoundrySim() {
                 <button type="button" className={styles.panelToggle} onClick={() => toggleCompanyDetailPanel('governance')}>
                   <div>
                     <p className={styles.panelTag}>Governance</p>
-                    <h2>Dewan direksi ala dunia nyata</h2>
+                    <h2>{focusedIsGameField ? 'Board of Directors' : 'Dewan direksi ala dunia nyata'}</h2>
                   </div>
                   <span>{companyDetailPanels.governance ? 'Tutup' : 'Buka'}</span>
                 </button>
@@ -2247,7 +2255,7 @@ export function CpuFoundrySim() {
                 <button type="button" className={styles.panelToggle} onClick={() => toggleCompanyDetailPanel('ownership')}>
                   <div>
                     <p className={styles.panelTag}>Ownership</p>
-                    <h2>Investor & kendali CEO</h2>
+                    <h2>{focusedIsGameField ? 'Ownership & CEO Control' : 'Investor & kendali CEO'}</h2>
                   </div>
                   <span>{companyDetailPanels.ownership ? 'Tutup' : 'Buka'}</span>
                 </button>
@@ -2373,106 +2381,193 @@ export function CpuFoundrySim() {
                   <span>{companyDetailPanels.operations ? 'Tutup' : 'Buka'}</span>
                 </button>
                 {companyDetailPanels.operations ? (
-                  <div className={styles.panelList}>
-                    {(Object.entries(focusedCompany.upgrades) as [UpgradeKey, UpgradeState][]).map(([key, upgrade]) => {
-                      const cost = getUpgradeCost(key, upgrade, focusedCompany);
-                      const actionLabel = focusedIsGameField ? 'Develop Feature' : 'Upgrade';
-                      return (
-                        <article key={key} className={styles.itemCard}>
-                          <div className={styles.itemTop}>
-                            <div>
-                              <p className={styles.itemLabel}>{focusedIsGameField ? `Game Tech · ${upgrade.label}` : upgrade.label}</p>
-                              <h3>{getDisplayedUpgradeValue(key, upgrade)}</h3>
-                            </div>
-                            <span className={styles.costPill}>{formatNumber(cost)} RP</span>
-                          </div>
-                          <p className={styles.itemDescription}>{focusedIsGameField ? `${upgrade.description} (format studio-gameplay)` : upgrade.description}</p>
-                          <button type="button" className={styles.secondaryButton} onClick={() => improveUpgrade(key, focusedCompany.key)} disabled={!focusedCanManageTechnology || focusedCompany.research < cost}>
-                            {!focusedCanManageTechnology ? 'CEO/CTO only' : focusedCompany.research >= cost ? actionLabel : 'RP kurang'}
-                          </button>
-                        </article>
-                      );
-                    })}
+                  focusedIsGameField ? (
+                    <div className={styles.panelList}>
+                      <article className={styles.memoCard}>
+                        <p className={styles.panelTag}>Game Engine Upgrades</p>
+                        <p>Arsitektur engine inti, optimasi render, dan cache performa untuk stabilitas gameplay live.</p>
+                      </article>
+                      {(Object.entries(focusedCompany.upgrades) as [UpgradeKey, UpgradeState][])
+                        .filter(([key]) => key === 'architecture' || key === 'coreDesign' || key === 'cacheStack')
+                        .map(([key, upgrade]) => {
+                          const cost = getUpgradeCost(key, upgrade, focusedCompany);
+                          return (
+                            <article key={key} className={styles.itemCard}>
+                              <div className={styles.itemTop}><strong>{upgrade.label}</strong><span className={styles.costPill}>{formatNumber(cost)} RP</span></div>
+                              <p className={styles.itemDescription}>{upgrade.description}</p>
+                              <button type="button" className={styles.secondaryButton} onClick={() => improveUpgrade(key, focusedCompany.key)} disabled={!focusedCanManageTechnology || focusedCompany.research < cost}>
+                                {!focusedCanManageTechnology ? 'CEO/CTO only' : focusedCompany.research >= cost ? 'Develop Feature' : 'RP kurang'}
+                              </button>
+                            </article>
+                          );
+                        })}
 
-                    {(Object.entries(focusedCompany.teams) as [TeamKey, TeamState][]).map(([key, team]) => {
-                      const cost = getTeamCost(team);
-                      const isAllowed =
-                        (
-                          key === 'researchers'
-                            ? focusedCanManageTechnology
-                            : key === 'marketing'
-                              ? Boolean(focusedCompany && game && hasCompanyAuthority(focusedCompany, game.player.id, 'marketing'))
-                              : Boolean(focusedCompany && game && hasCompanyAuthority(focusedCompany, game.player.id, 'operations'))
-                        )
-                        && focusedCompany.cash >= cost;
-                      const actionLabel = focusedIsGameField ? 'Scale Studio' : 'Expand';
-                      return (
-                        <article key={key} className={styles.itemCard}>
-                          <div className={styles.itemTop}>
-                            <div>
-                              <p className={styles.itemLabel}>{focusedIsGameField ? `Studio Team · ${team.label}` : team.label}</p>
-                              <h3>{formatNumber(team.count)} aktif</h3>
-                            </div>
-                            <span className={styles.costPill}>{formatCurrencyCompact(cost, 2)}</span>
-                          </div>
-                          <p className={styles.itemDescription}>{focusedIsGameField ? `${team.description} (format studio-gameplay)` : team.description}</p>
-                          <button type="button" className={styles.secondaryButton} onClick={() => hireTeam(key, focusedCompany.key)} disabled={!isAllowed}>
-                            {key === 'researchers'
+                      <article className={styles.memoCard}>
+                        <p className={styles.panelTag}>Game Technology Upgrades</p>
+                        <p>Pipeline build, respons input, dan efisiensi runtime untuk kualitas experience pemain.</p>
+                      </article>
+                      {(Object.entries(focusedCompany.upgrades) as [UpgradeKey, UpgradeState][])
+                        .filter(([key]) => key === 'lithography' || key === 'clockSpeed' || key === 'powerEfficiency')
+                        .map(([key, upgrade]) => {
+                          const cost = getUpgradeCost(key, upgrade, focusedCompany);
+                          return (
+                            <article key={key} className={styles.itemCard}>
+                              <div className={styles.itemTop}><strong>{upgrade.label}</strong><span className={styles.costPill}>{formatNumber(cost)} RP</span></div>
+                              <p className={styles.itemDescription}>{upgrade.description}</p>
+                              <button type="button" className={styles.secondaryButton} onClick={() => improveUpgrade(key, focusedCompany.key)} disabled={!focusedCanManageTechnology || focusedCompany.research < cost}>
+                                {!focusedCanManageTechnology ? 'CEO/CTO only' : focusedCompany.research >= cost ? 'Develop Tech' : 'RP kurang'}
+                              </button>
+                            </article>
+                          );
+                        })}
+
+                      <article className={styles.memoCard}>
+                        <p className={styles.panelTag}>Studio Building Management</p>
+                        <p>Kelola kapasitas studio melalui perekrutan tim riset, marketing, dan operasi produksi.</p>
+                      </article>
+                      {(Object.entries(focusedCompany.teams) as [TeamKey, TeamState][]).map(([key, team]) => {
+                        const cost = getTeamCost(team);
+                        const isAllowed =
+                          (
+                            key === 'researchers'
                               ? focusedCanManageTechnology
-                                ? focusedCompany.cash >= cost ? actionLabel : 'Dana kurang'
-                                : 'CEO/CTO only'
                               : key === 'marketing'
-                                ? (focusedCompany && game && hasCompanyAuthority(focusedCompany, game.player.id, 'marketing'))
-                                  ? focusedCompany.cash >= cost ? actionLabel : 'Dana kurang'
-                                  : 'CEO/CMO only'
-                                : (focusedCompany && game && hasCompanyAuthority(focusedCompany, game.player.id, 'operations'))
-                                  ? focusedCompany.cash >= cost ? actionLabel : 'Dana kurang'
-                                  : 'CEO/COO only'}
+                                ? Boolean(focusedCompany && game && hasCompanyAuthority(focusedCompany, game.player.id, 'marketing'))
+                                : Boolean(focusedCompany && game && hasCompanyAuthority(focusedCompany, game.player.id, 'operations'))
+                          )
+                          && focusedCompany.cash >= cost;
+                        return (
+                          <article key={key} className={styles.itemCard}>
+                            <div className={styles.itemTop}><strong>{team.label}</strong><span className={styles.costPill}>{formatCurrencyCompact(cost, 2)}</span></div>
+                            <p className={styles.itemDescription}>{team.description}</p>
+                            <button type="button" className={styles.secondaryButton} onClick={() => hireTeam(key, focusedCompany.key)} disabled={!isAllowed}>
+                              {isAllowed ? 'Scale Studio' : 'Syarat belum terpenuhi'}
+                            </button>
+                          </article>
+                        );
+                      })}
+
+                      <article className={styles.memoCard}>
+                        <p className={styles.panelTag}>Monthly Marketing Fund Management</p>
+                        <p>Kelola agresivitas belanja marketing bulanan melalui payout policy (lebih rendah payout = alokasi marketing lebih tinggi).</p>
+                        <div className={styles.actionRow}>
+                          <button type="button" className={styles.secondaryButton} onClick={() => adjustPayoutBias('down', focusedCompany.key)} disabled={!focusedCanManageFinance}>
+                            Naikkan Marketing Fund
                           </button>
-                        </article>
-                      );
-                    })}
-                  </div>
+                          <button type="button" className={styles.ghostButton} onClick={() => adjustPayoutBias('up', focusedCompany.key)} disabled={!focusedCanManageFinance}>
+                            Turunkan Marketing Fund
+                          </button>
+                        </div>
+                      </article>
+                    </div>
+                  ) : (
+                    <div className={styles.panelList}>
+                      <article className={styles.memoCard}>
+                        <p className={styles.panelTag}>Semiconductor R&D Matrix</p>
+                        <p>Mekanisme semiconductor: upgrade hanya bisa dieksekusi jika target RP tercapai, lalu tim fab/operations mengonversi riset menjadi output pasar.</p>
+                      </article>
+                      {(Object.entries(focusedCompany.upgrades) as [UpgradeKey, UpgradeState][]).map(([key, upgrade]) => {
+                        const cost = getUpgradeCost(key, upgrade, focusedCompany);
+                        return (
+                          <article key={key} className={styles.itemCard}>
+                            <div className={styles.itemTop}>
+                              <div>
+                                <p className={styles.itemLabel}>{upgrade.label}</p>
+                                <h3>{getDisplayedUpgradeValue(key, upgrade)}</h3>
+                              </div>
+                              <span className={styles.costPill}>{formatNumber(cost)} RP</span>
+                            </div>
+                            <p className={styles.itemDescription}>{upgrade.description}</p>
+                            <button type="button" className={styles.secondaryButton} onClick={() => improveUpgrade(key, focusedCompany.key)} disabled={!focusedCanManageTechnology || focusedCompany.research < cost}>
+                              {!focusedCanManageTechnology ? 'CEO/CTO only' : focusedCompany.research >= cost ? 'Upgrade' : 'RP kurang'}
+                            </button>
+                          </article>
+                        );
+                      })}
+
+                      {(Object.entries(focusedCompany.teams) as [TeamKey, TeamState][]).map(([key, team]) => {
+                        const cost = getTeamCost(team);
+                        const isAllowed =
+                          (
+                            key === 'researchers'
+                              ? focusedCanManageTechnology
+                              : key === 'marketing'
+                                ? Boolean(focusedCompany && game && hasCompanyAuthority(focusedCompany, game.player.id, 'marketing'))
+                                : Boolean(focusedCompany && game && hasCompanyAuthority(focusedCompany, game.player.id, 'operations'))
+                          )
+                          && focusedCompany.cash >= cost;
+                        return (
+                          <article key={key} className={styles.itemCard}>
+                            <div className={styles.itemTop}>
+                              <div>
+                                <p className={styles.itemLabel}>{team.label}</p>
+                                <h3>{formatNumber(team.count)} aktif</h3>
+                              </div>
+                              <span className={styles.costPill}>{formatCurrencyCompact(cost, 2)}</span>
+                            </div>
+                            <p className={styles.itemDescription}>{team.description}</p>
+                            <button type="button" className={styles.secondaryButton} onClick={() => hireTeam(key, focusedCompany.key)} disabled={!isAllowed}>
+                              {isAllowed ? 'Expand' : 'Syarat belum terpenuhi'}
+                            </button>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  )
                 ) : null}
               </section>
 
               <section className={styles.panel}>
                 <button type="button" className={styles.panelToggle} onClick={() => toggleCompanyDetailPanel('intel')}>
                   <div>
-                    <p className={styles.panelTag}>Intel</p>
-                    <h2>Release & tekanan pasar</h2>
+                    <p className={styles.panelTag}>{focusedIsGameField ? 'Games' : 'Intel'}</p>
+                    <h2>{focusedIsGameField ? 'Games' : 'Release & tekanan pasar'}</h2>
                   </div>
                   <span>{companyDetailPanels.intel ? 'Tutup' : 'Buka'}</span>
                 </button>
                 {companyDetailPanels.intel ? (
-                  <div className={styles.panelBody}>
-                    <div className={styles.infoRow}>
-                      <div>
-                        <span>Release count</span>
-                        <strong>{formatNumber(focusedCompany.releaseCount)}</strong>
-                      </div>
-                      <div>
-                        <span>Best score</span>
-                        <strong>{formatNumber(focusedCompany.bestCpuScore, 0)}</strong>
-                      </div>
-                      <div>
-                        <span>Total investasi</span>
-                        <strong>{formatCurrencyCompact(getCompanyInvestmentTotal(focusedCompany), 2)}</strong>
-                      </div>
-                      <div>
-                        <span>Payout ratio</span>
-                        <strong>{formatNumber(focusedCompany.payoutRatio * 100, 1)}%</strong>
-                      </div>
-                      <div>
-                        <span>Board mood</span>
-                        <strong>{formatNumber(focusedCompany.boardMood, 2)}</strong>
-                      </div>
-                      <div>
-                        <span>CEO sekarang</span>
-                        <strong>{focusedCompany.ceoName}</strong>
+                  focusedIsGameField ? (
+                    <div className={styles.panelList}>
+                      {focusedGameReleaseCards.map((entry, index) => (
+                        <article key={`${entry}-${index}`} className={styles.itemCard}>
+                          <div className={styles.itemTop}>
+                            <p className={styles.itemLabel}>Game Card #{index + 1}</p>
+                            <span className={styles.costPill}>Released</span>
+                          </div>
+                          <p className={styles.itemDescription}>{entry}</p>
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className={styles.panelBody}>
+                      <div className={styles.infoRow}>
+                        <div>
+                          <span>Release count</span>
+                          <strong>{formatNumber(focusedCompany.releaseCount)}</strong>
+                        </div>
+                        <div>
+                          <span>Best score</span>
+                          <strong>{formatNumber(focusedCompany.bestCpuScore, 0)}</strong>
+                        </div>
+                        <div>
+                          <span>Total investasi</span>
+                          <strong>{formatCurrencyCompact(getCompanyInvestmentTotal(focusedCompany), 2)}</strong>
+                        </div>
+                        <div>
+                          <span>Payout ratio</span>
+                          <strong>{formatNumber(focusedCompany.payoutRatio * 100, 1)}%</strong>
+                        </div>
+                        <div>
+                          <span>Board mood</span>
+                          <strong>{formatNumber(focusedCompany.boardMood, 2)}</strong>
+                        </div>
+                        <div>
+                          <span>CEO sekarang</span>
+                          <strong>{focusedCompany.ceoName}</strong>
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  )
                 ) : null}
               </section>
             </div>
