@@ -222,6 +222,7 @@
 
 .panel {
   overflow: hidden;
+  contain: layout paint;
 }
 
 .panelToggle {
@@ -260,6 +261,20 @@
 .feedList,
 .npcList {
   padding: 0 10px 10px;
+  view-transition-name: panel-content;
+}
+
+::view-transition-old(panel-content),
+::view-transition-new(panel-content) {
+  animation-duration: 180ms;
+  animation-timing-function: ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(panel-content),
+  ::view-transition-new(panel-content) {
+    animation-duration: 1ms;
+  }
 }
 
 .overviewCompactBody {

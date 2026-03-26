@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import styles from './cpu-foundry-sim.module.css';
 import * as Engine from '@/features/gameplay/simulation-engine';
 import type {
@@ -196,6 +196,11 @@ const STATISTICS_COLORS = ['#0ea5e9', '#38bdf8', '#6366f1', '#8b5cf6', '#ec4899'
 type StatisticsTab = 'wealth' | 'investments' | 'ownership';
 type PieSlice = { label: string; value: number; color: string };
 type GameReleaseCard = { id: string; name: string; genre: string; releaseDate: string; popularity: number; communities: string[] };
+type LocalUiState = {
+  openPanels: Record<PanelKey, boolean>;
+  companyDetailPanels: Record<CompanyDetailPanelKey, boolean>;
+  communityPanelOpen: { games: boolean; leadership: boolean; social: boolean };
+};
 type GameCommunityCard = {
   id: string;
   name: string;
@@ -214,6 +219,39 @@ const SOFTWARE_SPECIALIZATIONS: Array<{ key: SoftwareSpecialization; label: stri
 const getSoftwareSpecializationLabel = (value?: SoftwareSpecialization | null) => (
   SOFTWARE_SPECIALIZATIONS.find((entry) => entry.key === value)?.label ?? 'Utility Apps'
 );
+
+const createUiSignalStore = (initialState: LocalUiState) => {
+  let state = initialState;
+  const listeners = new Set<() => void>();
+  return {
+    getSnapshot: () => state,
+    subscribe: (listener: () => void) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    update: (recipe: (prev: LocalUiState) => LocalUiState) => {
+      const next = recipe(state);
+      if (next === state) return;
+      state = next;
+      listeners.forEach((listener) => listener());
+    },
+  };
+};
+
+const runViewTransition = (callback: () => void) => {
+  if (typeof document === 'undefined') {
+    callback();
+    return;
+  }
+  const transitionCapableDocument = document as Document & {
+    startViewTransition?: (updateCallback: () => void) => { finished: Promise<void> };
+  };
+  if (!transitionCapableDocument.startViewTransition) {
+    callback();
+    return;
+  }
+  transitionCapableDocument.startViewTransition(callback);
+};
 
 function ReusablePieDiagram({ title, slices }: { title: string; slices: PieSlice[] }) {
   const total = slices.reduce((sum, slice) => sum + slice.value, 0);
@@ -275,8 +313,17 @@ function ThinFrameHeader({
 export function CpuFoundrySim() {
   const [game, setGame] = useState<GameState | null>(null);
   const [profileDraft, setProfileDraft] = useState<ProfileDraft>(DEFAULT_PROFILE_DRAFT);
-  const [openPanels, setOpenPanels] = useState<Record<PanelKey, boolean>>(DEFAULT_OPEN_PANELS);
-  const [companyDetailPanels, setCompanyDetailPanels] = useState<Record<CompanyDetailPanelKey, boolean>>(DEFAULT_COMPANY_DETAIL_PANELS);
+  const uiSignalStoreRef = useRef(createUiSignalStore({
+    openPanels: DEFAULT_OPEN_PANELS,
+    companyDetailPanels: DEFAULT_COMPANY_DETAIL_PANELS,
+    communityPanelOpen: { games: true, leadership: true, social: true },
+  }));
+  const uiSignals = useSyncExternalStore(
+    uiSignalStoreRef.current.subscribe,
+    uiSignalStoreRef.current.getSnapshot,
+    uiSignalStoreRef.current.getSnapshot
+  );
+  const { openPanels, companyDetailPanels, communityPanelOpen } = uiSignals;
   const [releaseDraft, setReleaseDraft] = useState<ReleaseDraft>(DEFAULT_RELEASE_DRAFT);
   const [investmentDraft, setInvestmentDraft] = useState<InvestmentDraft>({ company: 'cosmic', mode: 'buy', route: 'auto', sliderPercent: 50 });
   const [shareListingDraft, setShareListingDraft] = useState<ShareListingDraft>(DEFAULT_SHARE_LISTING_DRAFT);
@@ -304,7 +351,6 @@ export function CpuFoundrySim() {
   const [companyDetailBackTarget, setCompanyDetailBackTarget] = useState<'game' | 'companies' | 'investor' | 'news' | 'forbes'>('companies');
   const [selectedGameReleaseId, setSelectedGameReleaseId] = useState<string | null>(null);
   const [selectedGameCommunityId, setSelectedGameCommunityId] = useState<string | null>(null);
-  const [communityPanelOpen, setCommunityPanelOpen] = useState({ games: true, leadership: true, social: true });
   const [communityChatDraft, setCommunityChatDraft] = useState('');
   const [communityChatMessages, setCommunityChatMessages] = useState<Record<string, string[]>>({});
   const pausedRef = useRef(false);
@@ -325,6 +371,10 @@ export function CpuFoundrySim() {
   const activeCompanyType = game?.player.companyType ?? profileDraft.companyType;
   const productLabel = activeCompanyType === 'game' ? 'Game' : activeCompanyType === 'software' ? 'Software' : 'CPU';
   const productLabelLower = productLabel.toLowerCase();
+  const rendererMode = useMemo(() => {
+    if (typeof navigator === 'undefined') return 'SSR';
+    return 'gpu' in navigator ? 'WebGPU-ready' : 'CPU fallback';
+  }, []);
 
   useEffect(() => {
     setCreateCompanyDraft((current) => ({ ...current, companyType: activeCompanyType }));
@@ -571,11 +621,21 @@ export function CpuFoundrySim() {
 
 
   const togglePanel = (panel: PanelKey) => {
-    setOpenPanels((current) => ({ ...current, [panel]: !current[panel] }));
+    runViewTransition(() => {
+      uiSignalStoreRef.current.update((current) => ({
+        ...current,
+        openPanels: { ...current.openPanels, [panel]: !current.openPanels[panel] },
+      }));
+    });
   };
 
   const toggleCompanyDetailPanel = (panel: CompanyDetailPanelKey) => {
-    setCompanyDetailPanels((current) => ({ ...current, [panel]: !current[panel] }));
+    runViewTransition(() => {
+      uiSignalStoreRef.current.update((current) => ({
+        ...current,
+        companyDetailPanels: { ...current.companyDetailPanels, [panel]: !current.companyDetailPanels[panel] },
+      }));
+    });
   };
 
   const createProfile = () => {
@@ -995,7 +1055,10 @@ export function CpuFoundrySim() {
   const openCompanyDetail = (company: CompanyKey, backTarget: 'game' | 'companies' | 'investor' | 'news' | 'forbes' = 'companies') => {
     switchCompany(company);
     closeTransientLayers();
-    setCompanyDetailPanels(DEFAULT_COMPANY_DETAIL_PANELS);
+    uiSignalStoreRef.current.update((current) => ({
+      ...current,
+      companyDetailPanels: DEFAULT_COMPANY_DETAIL_PANELS,
+    }));
     setCompanyDetailBackTarget(backTarget);
     setStatisticsTab('wealth');
     setFocusedCompanyKey(company);
@@ -2265,6 +2328,10 @@ export function CpuFoundrySim() {
                         <span>Capital strain</span>
                         <strong>$ {formatMoneyCompact(focusedCompany.capitalStrain, 2)}</strong>
                       </div>
+                      <div>
+                        <span>Renderer path</span>
+                        <strong>{rendererMode}</strong>
+                      </div>
                     </div>
                     <div className={styles.actionRow}>
                       <button type="button" className={styles.slimActionButton} onClick={() => setIsStatisticsFrameOpen(true)}>
@@ -2272,8 +2339,12 @@ export function CpuFoundrySim() {
                       </button>
                     </div>
                     <div className={styles.memoCard}>
-                      <p className={styles.panelTag}>Memo terbaru</p>
-                      <p>{focusedCompany.lastRelease}</p>
+                      <p className={styles.panelTag}>{focusedIsSoftwareField ? 'Company vision & tech stack' : 'Memo terbaru'}</p>
+                      <p>
+                        {focusedIsSoftwareField
+                          ? `${focusedCompany.name} fokus membangun platform ${getSoftwareSpecializationLabel(focusedCompany.softwareSpecialization)} dengan stack cloud-native, observability real-time, dan delivery pipeline yang berorientasi zero-downtime release.`
+                          : focusedCompany.lastRelease}
+                      </p>
                     </div>
                   </div>
                 ) : null}
@@ -2293,6 +2364,12 @@ export function CpuFoundrySim() {
                       <p className={styles.panelTag}>Board system</p>
                       <p>7 kursi dewan memilih CEO dari performa dan ownership, lalu ikut menekan/usul struktur COO, CFO, CTO, dan CMO bila perusahaan membutuhkannya.</p>
                     </div>
+                    {focusedIsSoftwareField ? (
+                      <div className={styles.memoCard}>
+                        <p className={styles.panelTag}>Interactive leadership profiles</p>
+                        <p>Profil direksi software memperlihatkan fokus keputusan: platform scale, product reliability, dan governance terhadap siklus release mingguan.</p>
+                      </div>
+                    ) : null}
                     {focusedPlayerIsBoardMember ? (
                       <div className={styles.memoCard}>
                         <p className={styles.panelTag}>Mandat dewan player</p>
@@ -2305,10 +2382,10 @@ export function CpuFoundrySim() {
                       <article key={member.id} className={styles.itemCard}>
                         <div className={styles.itemTop}>
                           <div>
-                            <p className={styles.itemLabel}>{member.seatType}</p>
-                            <h3>{member.name}</h3>
-                          </div>
-                          <span className={styles.costPill}>Vote {formatNumber(member.voteWeight, 1)}</span>
+                              <p className={styles.itemLabel}>{member.seatType}</p>
+                              <h3>{member.name}</h3>
+                            </div>
+                          <span className={styles.costPill}>{focusedIsSoftwareField ? 'Leadership Profile' : 'Vote'} {formatNumber(member.voteWeight, 1)}</span>
                         </div>
                         <p className={styles.itemDescription}>{member.agenda}</p>
                         <div className={styles.optionList}>
@@ -2611,8 +2688,8 @@ export function CpuFoundrySim() {
                   ) : focusedIsSoftwareField ? (
                     <div className={styles.panelList}>
                       <article className={styles.memoCard}>
-                        <p className={styles.panelTag}>Software Product R&D</p>
-                        <p>Roadmap software difokuskan ke arsitektur aplikasi, reliability cloud sync, keamanan data, dan pengalaman rilis lintas platform.</p>
+                        <p className={styles.panelTag}>CI/CD Optimization Research</p>
+                        <p>Research digunakan untuk mempercepat test automation, release cadence, rollback safety, dan deployment confidence pada aplikasi production.</p>
                       </article>
                       {(Object.entries(focusedCompany.upgrades) as [UpgradeKey, UpgradeState][])
                         .filter(([key]) => key === 'architecture' || key === 'coreDesign' || key === 'cacheStack')
@@ -2629,15 +2706,15 @@ export function CpuFoundrySim() {
                               </div>
                               <p className={styles.itemDescription}>{upgrade.description}</p>
                               <button type="button" className={styles.secondaryButton} onClick={() => improveUpgrade(key, focusedCompany.key)} disabled={!focusedCanManageTechnology || focusedCompany.research < cost}>
-                                {!focusedCanManageTechnology ? 'CEO/CTO only' : focusedCompany.research >= cost ? 'Ship Improvement' : 'RP kurang'}
+                                {!focusedCanManageTechnology ? 'CEO/CTO only' : focusedCompany.research >= cost ? 'Optimize Pipeline' : 'RP kurang'}
                               </button>
                             </article>
                           );
                         })}
 
                       <article className={styles.memoCard}>
-                        <p className={styles.panelTag}>Platform & Delivery Upgrades</p>
-                        <p>Optimasi deployment pipeline, performa runtime, serta efisiensi perangkat untuk meningkatkan retensi pengguna aplikasi.</p>
+                        <p className={styles.panelTag}>Scalability Research</p>
+                        <p>Fokus scaling workload, edge delivery, caching, dan latency budget agar aplikasi tetap responsif saat traffic spike dan ekspansi global.</p>
                       </article>
                       {(Object.entries(focusedCompany.upgrades) as [UpgradeKey, UpgradeState][])
                         .filter(([key]) => key === 'lithography' || key === 'clockSpeed' || key === 'powerEfficiency')
@@ -2654,15 +2731,15 @@ export function CpuFoundrySim() {
                               </div>
                               <p className={styles.itemDescription}>{upgrade.description}</p>
                               <button type="button" className={styles.secondaryButton} onClick={() => improveUpgrade(key, focusedCompany.key)} disabled={!focusedCanManageTechnology || focusedCompany.research < cost}>
-                                {!focusedCanManageTechnology ? 'CEO/CTO only' : focusedCompany.research >= cost ? 'Deploy Upgrade' : 'RP kurang'}
+                                {!focusedCanManageTechnology ? 'CEO/CTO only' : focusedCompany.research >= cost ? 'Scale Platform' : 'RP kurang'}
                               </button>
                             </article>
                           );
                         })}
 
                       <article className={styles.memoCard}>
-                        <p className={styles.panelTag}>Product Team Operations</p>
-                        <p>Skalakan tim engineering, growth, dan live-ops untuk menjaga roadmap software tetap stabil dari build sampai distribusi.</p>
+                        <p className={styles.panelTag}>UI/UX Refinement Operations</p>
+                        <p>Operasi tim produk mempertahankan quality bar antarmuka, design system consistency, dan feedback loop pengguna tanpa mengubah core mechanic ekonomi.</p>
                       </article>
                       {(Object.entries(focusedCompany.teams) as [TeamKey, TeamState][]).map(([key, team]) => {
                         const cost = getTeamCost(team);
@@ -2753,7 +2830,7 @@ export function CpuFoundrySim() {
                 <button type="button" className={styles.panelToggle} onClick={() => toggleCompanyDetailPanel('intel')}>
                   <div>
                     <p className={styles.panelTag}>{focusedIsGameField ? 'Games' : focusedIsSoftwareField ? 'Software' : 'Intel'}</p>
-                    <h2>{focusedIsGameField ? 'Games' : focusedIsSoftwareField ? 'Software' : 'Release & tekanan pasar'}</h2>
+                    <h2>{focusedIsGameField ? 'Games' : focusedIsSoftwareField ? 'Released Apps/Software' : 'Release & tekanan pasar'}</h2>
                   </div>
                   <span>{companyDetailPanels.intel ? 'Tutup' : 'Buka'}</span>
                 </button>
@@ -2764,7 +2841,7 @@ export function CpuFoundrySim() {
                         <button key={entry.id} type="button" className={styles.companyCardButton} onClick={() => { setSelectedGameReleaseId(entry.id); setSelectedGameCommunityId(null); }}>
                           <article className={styles.itemCard}>
                             <div className={styles.itemTop}>
-                              <p className={styles.itemLabel}>{focusedIsSoftwareField ? `Software/Application Card #${index + 1}` : `Game Name Card #${index + 1}`}</p>
+                              <p className={styles.itemLabel}>{focusedIsSoftwareField ? `Released App/Software Card #${index + 1}` : `Game Name Card #${index + 1}`}</p>
                               <span className={styles.costPill}>{entry.releaseDate}</span>
                             </div>
                             <p className={styles.itemDescription}><strong>{entry.name}</strong> · {entry.genre} · Popularity {formatNumber(entry.popularity, 1)}%</p>
@@ -2842,7 +2919,14 @@ export function CpuFoundrySim() {
             <ThinFrameHeader frameName="About the Community" subtitle={selectedGameCommunity.name} onBack={() => setSelectedGameCommunityId(null)} backLabel="Back from community" />
             <div className={styles.screenFrameBody}>
               <section className={styles.panel}>
-                <button type="button" className={styles.panelToggle} onClick={() => setCommunityPanelOpen((current) => ({ ...current, games: !current.games }))}>
+                <button
+                  type="button"
+                  className={styles.panelToggle}
+                  onClick={() => runViewTransition(() => uiSignalStoreRef.current.update((current) => ({
+                    ...current,
+                    communityPanelOpen: { ...current.communityPanelOpen, games: !current.communityPanelOpen.games },
+                  })))}
+                >
                   <div><p className={styles.panelTag}>Panel</p><h2>{focusedCompany?.field === 'software' ? 'Apps and products in this community' : 'Games the community plays'}</h2></div>
                   <span>{communityPanelOpen.games ? 'Tutup' : 'Buka'}</span>
                 </button>
@@ -2853,7 +2937,14 @@ export function CpuFoundrySim() {
                 ) : null}
               </section>
               <section className={styles.panel}>
-                <button type="button" className={styles.panelToggle} onClick={() => setCommunityPanelOpen((current) => ({ ...current, leadership: !current.leadership }))}>
+                <button
+                  type="button"
+                  className={styles.panelToggle}
+                  onClick={() => runViewTransition(() => uiSignalStoreRef.current.update((current) => ({
+                    ...current,
+                    communityPanelOpen: { ...current.communityPanelOpen, leadership: !current.communityPanelOpen.leadership },
+                  })))}
+                >
                   <div><p className={styles.panelTag}>Panel</p><h2>Leadership</h2></div>
                   <span>{communityPanelOpen.leadership ? 'Tutup' : 'Buka'}</span>
                 </button>
@@ -2868,7 +2959,14 @@ export function CpuFoundrySim() {
                 ) : null}
               </section>
               <section className={styles.panel}>
-                <button type="button" className={styles.panelToggle} onClick={() => setCommunityPanelOpen((current) => ({ ...current, social: !current.social }))}>
+                <button
+                  type="button"
+                  className={styles.panelToggle}
+                  onClick={() => runViewTransition(() => uiSignalStoreRef.current.update((current) => ({
+                    ...current,
+                    communityPanelOpen: { ...current.communityPanelOpen, social: !current.communityPanelOpen.social },
+                  })))}
+                >
                   <div><p className={styles.panelTag}>Panel</p><h2>Community Interface (#general)</h2></div>
                   <span>{communityPanelOpen.social ? 'Tutup' : 'Buka'}</span>
                 </button>
