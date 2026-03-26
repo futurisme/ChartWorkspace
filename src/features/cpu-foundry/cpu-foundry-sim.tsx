@@ -880,6 +880,7 @@ export function CpuFoundrySim() {
   const isPlayerCeo = Boolean(game && activeCompany && activeCompany.ceoId === game.player.id);
   const focusedPlayerIsCeo = Boolean(game && focusedCompany && focusedCompany.ceoId === game.player.id);
   const focusedIsGameField = focusedCompany?.field === 'game';
+  const focusedIsSoftwareField = focusedCompany?.field === 'software';
   const activePlayerExecutiveRoles = activeCompany && game ? getExecutiveRolesForInvestor(activeCompany, game.player.id) : [];
   const focusedPlayerExecutiveRoles = focusedCompany && game ? getExecutiveRolesForInvestor(focusedCompany, game.player.id) : [];
   const focusedPlayerIsBoardMember = Boolean(focusedCompany && game && focusedCompany.boardMembers.some((member) => member.id === game.player.id));
@@ -2213,7 +2214,7 @@ export function CpuFoundrySim() {
                 <button type="button" className={styles.panelToggle} onClick={() => toggleCompanyDetailPanel('overview')}>
                   <div>
                     <p className={styles.panelTag}>Overview</p>
-                    <h2>{focusedIsGameField ? 'Company Overview' : 'Kondisi perusahaan'}</h2>
+                    <h2>{(focusedIsGameField || focusedIsSoftwareField) ? 'Company Overview' : 'Kondisi perusahaan'}</h2>
                   </div>
                   <span>{companyDetailPanels.overview ? 'Tutup' : 'Buka'}</span>
                 </button>
@@ -2279,10 +2280,53 @@ export function CpuFoundrySim() {
               </section>
 
               <section className={styles.panel}>
+                <button type="button" className={styles.panelToggle} onClick={() => toggleCompanyDetailPanel('governance')}>
+                  <div>
+                    <p className={styles.panelTag}>{focusedIsSoftwareField ? 'Board' : 'Governance'}</p>
+                    <h2>{(focusedIsGameField || focusedIsSoftwareField) ? 'Board of Directors' : 'Dewan direksi ala dunia nyata'}</h2>
+                  </div>
+                  <span>{companyDetailPanels.governance ? 'Tutup' : 'Buka'}</span>
+                </button>
+                {companyDetailPanels.governance ? (
+                  <div className={styles.panelList}>
+                    <div className={styles.memoCard}>
+                      <p className={styles.panelTag}>Board system</p>
+                      <p>7 kursi dewan memilih CEO dari performa dan ownership, lalu ikut menekan/usul struktur COO, CFO, CTO, dan CMO bila perusahaan membutuhkannya.</p>
+                    </div>
+                    {focusedPlayerIsBoardMember ? (
+                      <div className={styles.memoCard}>
+                        <p className={styles.panelTag}>Mandat dewan player</p>
+                        <p>
+                          Kamu sedang duduk sebagai anggota Dewan Direksi {focusedCompany.name}. Proposal aktif akan muncul sebagai pop-up voting sampai 7 hari berakhir.
+                        </p>
+                      </div>
+                    ) : null}
+                    {focusedCompany.boardMembers.map((member) => (
+                      <article key={member.id} className={styles.itemCard}>
+                        <div className={styles.itemTop}>
+                          <div>
+                            <p className={styles.itemLabel}>{member.seatType}</p>
+                            <h3>{member.name}</h3>
+                          </div>
+                          <span className={styles.costPill}>Vote {formatNumber(member.voteWeight, 1)}</span>
+                        </div>
+                        <p className={styles.itemDescription}>{member.agenda}</p>
+                        <div className={styles.optionList}>
+                          {getBoardMemberOptions(member, focusedCompany).map((option) => (
+                            <span key={`${member.id}-${option}`} className={styles.optionPill}>{option}</span>
+                          ))}
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                ) : null}
+              </section>
+
+              <section className={styles.panel}>
                 <button type="button" className={styles.panelToggle} onClick={() => toggleCompanyDetailPanel('management')}>
                   <div>
                     <p className={styles.panelTag}>Management</p>
-                    <h2>{focusedIsGameField ? 'Executive Management' : 'CEO & jabatan eksekutif opsional'}</h2>
+                    <h2>{(focusedIsGameField || focusedIsSoftwareField) ? 'Executive Management' : 'CEO & jabatan eksekutif opsional'}</h2>
                   </div>
                   <span>{companyDetailPanels.management ? 'Tutup' : 'Buka'}</span>
                 </button>
@@ -2356,53 +2400,10 @@ export function CpuFoundrySim() {
               </section>
 
               <section className={styles.panel}>
-                <button type="button" className={styles.panelToggle} onClick={() => toggleCompanyDetailPanel('governance')}>
-                  <div>
-                    <p className={styles.panelTag}>Governance</p>
-                    <h2>{focusedIsGameField ? 'Board of Directors' : 'Dewan direksi ala dunia nyata'}</h2>
-                  </div>
-                  <span>{companyDetailPanels.governance ? 'Tutup' : 'Buka'}</span>
-                </button>
-                {companyDetailPanels.governance ? (
-                  <div className={styles.panelList}>
-                    <div className={styles.memoCard}>
-                      <p className={styles.panelTag}>Board system</p>
-                      <p>7 kursi dewan memilih CEO dari performa dan ownership, lalu ikut menekan/usul struktur COO, CFO, CTO, dan CMO bila perusahaan membutuhkannya.</p>
-                    </div>
-                    {focusedPlayerIsBoardMember ? (
-                      <div className={styles.memoCard}>
-                        <p className={styles.panelTag}>Mandat dewan player</p>
-                        <p>
-                          Kamu sedang duduk sebagai anggota Dewan Direksi {focusedCompany.name}. Proposal aktif akan muncul sebagai pop-up voting sampai 7 hari berakhir.
-                        </p>
-                      </div>
-                    ) : null}
-                    {focusedCompany.boardMembers.map((member) => (
-                      <article key={member.id} className={styles.itemCard}>
-                        <div className={styles.itemTop}>
-                          <div>
-                            <p className={styles.itemLabel}>{member.seatType}</p>
-                            <h3>{member.name}</h3>
-                          </div>
-                          <span className={styles.costPill}>Vote {formatNumber(member.voteWeight, 1)}</span>
-                        </div>
-                        <p className={styles.itemDescription}>{member.agenda}</p>
-                        <div className={styles.optionList}>
-                          {getBoardMemberOptions(member, focusedCompany).map((option) => (
-                            <span key={`${member.id}-${option}`} className={styles.optionPill}>{option}</span>
-                          ))}
-                        </div>
-                      </article>
-                    ))}
-                  </div>
-                ) : null}
-              </section>
-
-              <section className={styles.panel}>
                 <button type="button" className={styles.panelToggle} onClick={() => toggleCompanyDetailPanel('ownership')}>
                   <div>
                     <p className={styles.panelTag}>Ownership</p>
-                    <h2>{focusedIsGameField ? 'Ownership & CEO Control' : 'Investor & kendali CEO'}</h2>
+                    <h2>{(focusedIsGameField || focusedIsSoftwareField) ? 'Ownership & CEO Control' : 'Investor & kendali CEO'}</h2>
                   </div>
                   <span>{companyDetailPanels.ownership ? 'Tutup' : 'Buka'}</span>
                 </button>
@@ -2523,7 +2524,7 @@ export function CpuFoundrySim() {
                 <button type="button" className={styles.panelToggle} onClick={() => toggleCompanyDetailPanel('operations')}>
                   <div>
                     <p className={styles.panelTag}>Operations</p>
-                    <h2>{focusedIsGameField ? 'Game Studio Pipeline & tim' : `Upgrade ${productLabel} & tim`}</h2>
+                    <h2>{focusedIsGameField ? 'Game Studio Pipeline & tim' : focusedIsSoftwareField ? 'Company Operations' : `Upgrade ${productLabel} & tim`}</h2>
                   </div>
                   <span>{companyDetailPanels.operations ? 'Tutup' : 'Buka'}</span>
                 </button>
@@ -2607,6 +2608,90 @@ export function CpuFoundrySim() {
                         </div>
                       </article>
                     </div>
+                  ) : focusedIsSoftwareField ? (
+                    <div className={styles.panelList}>
+                      <article className={styles.memoCard}>
+                        <p className={styles.panelTag}>Software Product R&D</p>
+                        <p>Roadmap software difokuskan ke arsitektur aplikasi, reliability cloud sync, keamanan data, dan pengalaman rilis lintas platform.</p>
+                      </article>
+                      {(Object.entries(focusedCompany.upgrades) as [UpgradeKey, UpgradeState][])
+                        .filter(([key]) => key === 'architecture' || key === 'coreDesign' || key === 'cacheStack')
+                        .map(([key, upgrade]) => {
+                          const cost = getUpgradeCost(key, upgrade, focusedCompany);
+                          return (
+                            <article key={key} className={styles.itemCard}>
+                              <div className={styles.itemTop}>
+                                <div>
+                                  <p className={styles.itemLabel}>{upgrade.label}</p>
+                                  <h3>{getDisplayedUpgradeValue(key, upgrade)}</h3>
+                                </div>
+                                <span className={styles.costPill}>{formatNumber(cost)} RP</span>
+                              </div>
+                              <p className={styles.itemDescription}>{upgrade.description}</p>
+                              <button type="button" className={styles.secondaryButton} onClick={() => improveUpgrade(key, focusedCompany.key)} disabled={!focusedCanManageTechnology || focusedCompany.research < cost}>
+                                {!focusedCanManageTechnology ? 'CEO/CTO only' : focusedCompany.research >= cost ? 'Ship Improvement' : 'RP kurang'}
+                              </button>
+                            </article>
+                          );
+                        })}
+
+                      <article className={styles.memoCard}>
+                        <p className={styles.panelTag}>Platform & Delivery Upgrades</p>
+                        <p>Optimasi deployment pipeline, performa runtime, serta efisiensi perangkat untuk meningkatkan retensi pengguna aplikasi.</p>
+                      </article>
+                      {(Object.entries(focusedCompany.upgrades) as [UpgradeKey, UpgradeState][])
+                        .filter(([key]) => key === 'lithography' || key === 'clockSpeed' || key === 'powerEfficiency')
+                        .map(([key, upgrade]) => {
+                          const cost = getUpgradeCost(key, upgrade, focusedCompany);
+                          return (
+                            <article key={key} className={styles.itemCard}>
+                              <div className={styles.itemTop}>
+                                <div>
+                                  <p className={styles.itemLabel}>{upgrade.label}</p>
+                                  <h3>{getDisplayedUpgradeValue(key, upgrade)}</h3>
+                                </div>
+                                <span className={styles.costPill}>{formatNumber(cost)} RP</span>
+                              </div>
+                              <p className={styles.itemDescription}>{upgrade.description}</p>
+                              <button type="button" className={styles.secondaryButton} onClick={() => improveUpgrade(key, focusedCompany.key)} disabled={!focusedCanManageTechnology || focusedCompany.research < cost}>
+                                {!focusedCanManageTechnology ? 'CEO/CTO only' : focusedCompany.research >= cost ? 'Deploy Upgrade' : 'RP kurang'}
+                              </button>
+                            </article>
+                          );
+                        })}
+
+                      <article className={styles.memoCard}>
+                        <p className={styles.panelTag}>Product Team Operations</p>
+                        <p>Skalakan tim engineering, growth, dan live-ops untuk menjaga roadmap software tetap stabil dari build sampai distribusi.</p>
+                      </article>
+                      {(Object.entries(focusedCompany.teams) as [TeamKey, TeamState][]).map(([key, team]) => {
+                        const cost = getTeamCost(team);
+                        const isAllowed =
+                          (
+                            key === 'researchers'
+                              ? focusedCanManageTechnology
+                              : key === 'marketing'
+                                ? Boolean(focusedCompany && game && hasCompanyAuthority(focusedCompany, game.player.id, 'marketing'))
+                                : Boolean(focusedCompany && game && hasCompanyAuthority(focusedCompany, game.player.id, 'operations'))
+                          )
+                          && focusedCompany.cash >= cost;
+                        return (
+                          <article key={key} className={styles.itemCard}>
+                            <div className={styles.itemTop}>
+                              <div>
+                                <p className={styles.itemLabel}>{team.label}</p>
+                                <h3>{formatNumber(team.count)} aktif</h3>
+                              </div>
+                              <span className={styles.costPill}>{formatCurrencyCompact(cost, 2)}</span>
+                            </div>
+                            <p className={styles.itemDescription}>{team.description}</p>
+                            <button type="button" className={styles.secondaryButton} onClick={() => hireTeam(key, focusedCompany.key)} disabled={!isAllowed}>
+                              {isAllowed ? 'Scale Software Team' : 'Syarat belum terpenuhi'}
+                            </button>
+                          </article>
+                        );
+                      })}
+                    </div>
                   ) : (
                     <div className={styles.panelList}>
                       <article className={styles.memoCard}>
@@ -2667,19 +2752,19 @@ export function CpuFoundrySim() {
               <section className={styles.panel}>
                 <button type="button" className={styles.panelToggle} onClick={() => toggleCompanyDetailPanel('intel')}>
                   <div>
-                    <p className={styles.panelTag}>{focusedIsGameField ? 'Games' : 'Intel'}</p>
-                    <h2>{focusedIsGameField ? 'Games' : 'Release & tekanan pasar'}</h2>
+                    <p className={styles.panelTag}>{focusedIsGameField ? 'Games' : focusedIsSoftwareField ? 'Software' : 'Intel'}</p>
+                    <h2>{focusedIsGameField ? 'Games' : focusedIsSoftwareField ? 'Software' : 'Release & tekanan pasar'}</h2>
                   </div>
                   <span>{companyDetailPanels.intel ? 'Tutup' : 'Buka'}</span>
                 </button>
                 {companyDetailPanels.intel ? (
-                  focusedIsGameField ? (
+                  (focusedIsGameField || focusedIsSoftwareField) ? (
                     <div className={styles.panelList}>
                       {focusedGameReleaseCards.map((entry, index) => (
                         <button key={entry.id} type="button" className={styles.companyCardButton} onClick={() => { setSelectedGameReleaseId(entry.id); setSelectedGameCommunityId(null); }}>
                           <article className={styles.itemCard}>
                             <div className={styles.itemTop}>
-                              <p className={styles.itemLabel}>Game Name Card #{index + 1}</p>
+                              <p className={styles.itemLabel}>{focusedIsSoftwareField ? `Software/Application Card #${index + 1}` : `Game Name Card #${index + 1}`}</p>
                               <span className={styles.costPill}>{entry.releaseDate}</span>
                             </div>
                             <p className={styles.itemDescription}><strong>{entry.name}</strong> · {entry.genre} · Popularity {formatNumber(entry.popularity, 1)}%</p>
