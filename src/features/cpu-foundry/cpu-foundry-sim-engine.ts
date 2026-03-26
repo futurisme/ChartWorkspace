@@ -1,3 +1,5 @@
+import { generateCatalogCompanyName } from './company-name-catalog';
+
 export type UpgradeKey = 'architecture' | 'lithography' | 'clockSpeed' | 'coreDesign' | 'cacheStack' | 'powerEfficiency';
 export type TeamKey = 'researchers' | 'marketing' | 'fabrication';
 export type PanelKey = 'profile' | 'intel';
@@ -421,19 +423,6 @@ export const NPC_PERSONAS = [
   'direktur family office',
   'portfolio architect jangka panjang',
 ] as const;
-export const COMPANY_NAME_WORDS_PRIMARY = [
-  'Northline', 'Blueforge', 'Corewell', 'Novatek', 'Skyline', 'Pinnacle', 'Brighton', 'Auralis', 'Westbridge', 'Redwood',
-  'Ironclad', 'Suncrest', 'Primevia', 'Eastbay', 'Stonegate', 'Silverline', 'Greenfield', 'Oakridge', 'Moonlake', 'Starline',
-  'Clearpath', 'Bridgepoint', 'Windmark', 'Highland', 'Riverstone', 'Cloudpeak', 'Trailhead', 'Valora', 'Truepoint', 'Nextwave',
-] as const;
-export const COMPANY_NAME_WORDS_SECONDARY = [
-  'Micro', 'Circuits', 'Systems', 'Semicon', 'Logic', 'Compute', 'Devices', 'Works', 'Dynamics', 'Labs',
-  'Networks', 'Fabric', 'Core', 'Modules', 'Engines', 'Platforms', 'Pulse', 'Matrix', 'Foundry', 'Signals',
-] as const;
-export const COMPANY_NAME_WORDS_TERTIARY = [
-  'Group', 'Collective', 'Labs', 'Works', 'Technologies', 'Studio', 'Center', 'Hub', 'Division', 'Factory',
-] as const;
-
 export function createSeededRandom(seed: string) {
   let state = 2166136261;
   for (let index = 0; index < seed.length; index += 1) {
@@ -462,7 +451,7 @@ export function randomFrom<T>(random: () => number, items: readonly T[]) {
   return items[Math.floor(random() * items.length)] as T;
 }
 
-export function generateUniqueCompanyName(game: GameState, random: () => number) {
+export function generateUniqueCompanyName(game: GameState, random: () => number, field: CompanyField = 'semiconductor') {
   const usedNames = new Set<string>([
     ...Object.values(game.companies).map((company) => company.name.toLowerCase()),
     ...game.communityPlans.map((plan) => plan.companyName.toLowerCase()),
@@ -472,20 +461,12 @@ export function generateUniqueCompanyName(game: GameState, random: () => number)
       .flatMap((name) => name.split(/\s+/g).map((part) => part.trim()).filter(Boolean))
   );
 
-  for (let attempt = 0; attempt < 150; attempt += 1) {
-    const wordCountRoll = random();
-    const wordCount = wordCountRoll < 0.44 ? 1 : (wordCountRoll < 0.92 ? 2 : 3);
-    const first = randomFrom(random, COMPANY_NAME_WORDS_PRIMARY);
-    const second = randomFrom(random, COMPANY_NAME_WORDS_SECONDARY);
-    const third = randomFrom(random, COMPANY_NAME_WORDS_TERTIARY);
-    const tokens = wordCount === 1 ? [first] : wordCount === 2 ? [first, second] : [first, second, third];
-    const normalizedTokens = tokens.map((token) => token.toLowerCase());
-    if (normalizedTokens.some((token) => usedWords.has(token))) continue;
-    const candidate = tokens.join(' ').replace(/\s+/g, ' ').trim();
-    if (usedNames.has(candidate.toLowerCase())) continue;
-    return candidate;
-  }
-  return `${randomFrom(random, COMPANY_NAME_WORDS_PRIMARY)} ${Math.floor(random() * 900 + 100)}`;
+  return generateCatalogCompanyName({
+    field,
+    random,
+    usedNames,
+    usedWords,
+  });
 }
 
 export function formatNumber(value: number, decimals = 0) {
@@ -2105,7 +2086,7 @@ export function createInitialGameState(profile: ProfileDraft): GameState {
       companies: Object.fromEntries(Array.from(generatedCoreNames).map((name, index) => [`tmp_${index}`, { name }])) as Record<string, { name: string }>,
       communityPlans: [],
     } as unknown as GameState;
-    const name = generateUniqueCompanyName(pseudoGame, random);
+    const name = generateUniqueCompanyName(pseudoGame, random, 'semiconductor');
     generatedCoreNames.add(name);
     return name;
   };
@@ -3088,8 +3069,8 @@ export function runNpcCommunityPlanning(current: GameState) {
       const seed = createSeededRandom(`${founder.id}-${Math.floor(next.elapsedDays)}-forced-community`);
       const contribution = clamp(founder.cash * (0.11 + founder.boldness * 0.12), 0, 28);
       if (contribution >= 8) {
-        const candidateName = generateUniqueCompanyName(next, seed);
         const field = chooseBestCompanyFieldForNpc(next, founder);
+        const candidateName = generateUniqueCompanyName(next, seed, field);
         next = createCommunityCompanyPlan(next, founder.id, candidateName, contribution, field);
       }
     }
@@ -3102,7 +3083,7 @@ export function runNpcCommunityPlanning(current: GameState) {
     if (seed() < founderChance && getActiveCompanyCount(next) < MAX_ACTIVE_COMPANIES && openFundingPlans < 2) {
       const contribution = clamp(npc.cash * (0.06 + npc.boldness * 0.1), 0, 18);
       if (contribution >= 8) {
-        const candidateName = generateUniqueCompanyName(next, seed);
+        const candidateName = generateUniqueCompanyName(next, seed, preferredField);
         next = createCommunityCompanyPlan(next, npc.id, candidateName, contribution, preferredField);
       }
     }
