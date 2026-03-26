@@ -545,31 +545,35 @@
   position: sticky;
   top: 0;
   z-index: 2;
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  align-items: center;
-  padding: 4px 8px 4px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 6px;
+  align-items: end;
+  padding: 3px 8px;
   background: rgba(255, 255, 255, 0.98);
   border-bottom: 1px solid rgba(148, 163, 184, 0.14);
 }
 
 .frameHeading {
   display: grid;
-  gap: 1px;
+  gap: 0;
+  min-width: 0;
 }
 
 .frameName {
-  font-size: 0.78rem;
+  font-size: 0.74rem;
   color: #0f172a;
   line-height: 1.1;
 }
 
 .frameSubName {
   margin: 0;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   color: #475569;
   line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .screenFrameBody {
@@ -608,16 +612,17 @@
 }
 
 .closeButton {
-  width: 26px;
-  height: 26px;
+  width: 22px;
+  height: 22px;
   border-radius: 999px;
   background: rgba(148, 163, 184, 0.14);
   color: #0f172a;
-  font-size: 0.82rem;
+  font-size: 0.76rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: 0;
+  align-self: end;
 }
 
 .modalBody {
@@ -807,7 +812,6 @@
   .heroHeader,
   .sliderHeader,
   .itemTop,
-  .screenFrameHeader,
   .modalHeader {
     flex-direction: column;
     align-items: stretch;
@@ -844,9 +848,12 @@
   }
 
   .panelToggle,
-  .modalHeader,
-  .screenFrameHeader {
+  .modalHeader {
     padding: 10px;
+  }
+
+  .screenFrameHeader {
+    padding: 3px 6px;
   }
 
   .panelBody,
@@ -949,9 +956,12 @@
   }
 
   .panelToggle,
-  .modalHeader,
-  .screenFrameHeader {
+  .modalHeader {
     padding: 6px;
+  }
+
+  .screenFrameHeader {
+    padding: 2px 5px;
   }
 
   .infoRow,
