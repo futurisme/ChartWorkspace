@@ -290,7 +290,7 @@ export const TICK_MS = 200;
 export const START_DATE_UTC = Date.UTC(2000, 0, 1);
 export const NPC_ACTION_EVERY_TICKS = 10;
 export const PLAYER_STARTING_CASH = 140;
-export const INITIAL_NPC_COUNT = 20;
+export const INITIAL_NPC_COUNT = 75;
 export const MAX_ACTIVE_NPCS = 75;
 export const NPC_GROWTH_START_DAY = 180;
 export const NPC_GROWTH_INTERVAL_DAYS = 60;
@@ -2221,7 +2221,8 @@ export function createInitialGameState(profile: ProfileDraft): GameState {
   } satisfies Record<CompanyKey, CompanyEstablishmentPlan>;
 
   const npcSeed = `${worldSeed}-market`;
-  const generatedNpcs = createGenerativeNpcs(npcSeed, INITIAL_NPC_COUNT);
+  const generatedNpcCount = Math.min(INITIAL_NPC_COUNT, Math.max(0, MAX_ACTIVE_NPCS - CORE_COMPANY_KEYS.length));
+  const generatedNpcs = createGenerativeNpcs(npcSeed, generatedNpcCount);
   const founderRandom = createSeededRandom(`${worldSeed}-founders`);
   const existingNpcIds = new Set<string>(generatedNpcs.map((npc) => npc.id));
   const founderNpcs = CORE_COMPANY_KEYS.map((key) => createFounderNpc(

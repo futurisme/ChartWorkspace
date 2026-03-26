@@ -772,7 +772,6 @@ export function CpuFoundrySim() {
           companyNames: uniqueCompanyNames,
         };
       })
-      .filter((entry) => entry.wealth > 0.01)
       .sort((left, right) => (
         right.wealth - left.wealth
         || right.companyNames.length - left.companyNames.length
