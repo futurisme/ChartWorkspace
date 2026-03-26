@@ -1,4 +1,4 @@
-import { generateCatalogCompanyName } from './company-name-catalog';
+import { generateCatalogCompanyName } from '@/features/cpu-foundry/company-name-catalog';
 
 export type UpgradeKey = 'architecture' | 'lithography' | 'clockSpeed' | 'coreDesign' | 'cacheStack' | 'powerEfficiency';
 export type TeamKey = 'researchers' | 'marketing' | 'fabrication';

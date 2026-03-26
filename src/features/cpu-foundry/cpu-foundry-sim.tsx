@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import styles from './cpu-foundry-sim.module.css';
-import * as Engine from './cpu-foundry-sim-engine';
+import * as Engine from '@/features/Gameplay/simulation-engine';
 import type {
   UpgradeKey,
   TeamKey,
@@ -36,7 +36,7 @@ import type {
   ,
   CompanyEstablishmentPlan,
   CommunityCompanyPlan
-} from './cpu-foundry-sim-engine';
+} from '@/features/Gameplay/simulation-engine';
 
 const {
   STORAGE_KEY,
