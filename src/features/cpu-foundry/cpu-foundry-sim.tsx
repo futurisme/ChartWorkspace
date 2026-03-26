@@ -560,6 +560,8 @@ export function CpuFoundrySim() {
     setIsForbesFrameOpen(false);
     setIsCreateCompanyOpen(false);
     setIsStatisticsFrameOpen(false);
+    setSelectedGameReleaseId(null);
+    setSelectedGameCommunityId(null);
     setFocusedCompanyKey(null);
     setFocusedPlanKey(null);
   };
@@ -593,9 +595,9 @@ export function CpuFoundrySim() {
     () => focusedGameReleaseCards.find((entry) => entry.id === selectedGameReleaseId) ?? null,
     [focusedGameReleaseCards, selectedGameReleaseId]
   );
-  const selectedGameCommunities = useMemo<GameCommunityCard[]>(() => {
-    if (!selectedGameRelease || !game) return [];
-    const nonEntrepreneurNpcs = game.npcs.filter((npc) => {
+  const nonEntrepreneurNpcPool = useMemo(() => {
+    if (!game) return [];
+    return game.npcs.filter((npc) => {
       const hasCorporateIdentity = Object.values(game.companies).some((company) => (
         company.founderInvestorId === npc.id
         || company.ceoId === npc.id
@@ -603,9 +605,12 @@ export function CpuFoundrySim() {
       ));
       return !hasCorporateIdentity;
     });
+  }, [game]);
+  const selectedGameCommunities = useMemo<GameCommunityCard[]>(() => {
+    if (!selectedGameRelease || !game) return [];
     return selectedGameRelease.communities.slice(0, 3).map((name, index) => {
       const seeded = createSeededRandom(`${selectedGameRelease.id}-${name}`);
-      const getNpcName = (offset: number) => nonEntrepreneurNpcs[(index * 7 + offset) % Math.max(1, nonEntrepreneurNpcs.length)]?.name ?? `Gamer-${index + 1}-${offset}`;
+      const getNpcName = (offset: number) => nonEntrepreneurNpcPool[(index * 7 + offset) % Math.max(1, nonEntrepreneurNpcPool.length)]?.name ?? `Gamer-${index + 1}-${offset}`;
       return {
         id: `${selectedGameRelease.id}-community-${index}`,
         name,
@@ -620,11 +625,16 @@ export function CpuFoundrySim() {
         messages: [`[${name}] Selamat datang di #general!`, 'Patch baru sudah live, share feedback kalian.', 'Scrim night jam 20:00 UTC.'],
       };
     });
-  }, [selectedGameRelease, game, focusedCompany]);
+  }, [selectedGameRelease, game, focusedCompany, nonEntrepreneurNpcPool]);
   const selectedGameCommunity = useMemo(
     () => selectedGameCommunities.find((entry) => entry.id === selectedGameCommunityId) ?? null,
     [selectedGameCommunities, selectedGameCommunityId]
   );
+  useEffect(() => {
+    setSelectedGameReleaseId(null);
+    setSelectedGameCommunityId(null);
+    setCommunityChatDraft('');
+  }, [focusedCompanyKey]);
   const focusedPlan = game && focusedPlanKey ? game.plans[focusedPlanKey] : null;
   const companyStatisticsSlices = useMemo(() => {
     if (!game || !focusedCompany) {
@@ -2593,13 +2603,15 @@ export function CpuFoundrySim() {
                   focusedIsGameField ? (
                     <div className={styles.panelList}>
                       {focusedGameReleaseCards.map((entry, index) => (
-                        <article key={entry.id} className={styles.itemCard} onClick={() => { setSelectedGameReleaseId(entry.id); setSelectedGameCommunityId(null); }}>
-                          <div className={styles.itemTop}>
-                            <p className={styles.itemLabel}>Game Name Card #{index + 1}</p>
-                            <span className={styles.costPill}>{entry.releaseDate}</span>
-                          </div>
-                          <p className={styles.itemDescription}><strong>{entry.name}</strong> · {entry.genre} · Popularity {formatNumber(entry.popularity, 1)}%</p>
-                        </article>
+                        <button key={entry.id} type="button" className={styles.companyCardButton} onClick={() => { setSelectedGameReleaseId(entry.id); setSelectedGameCommunityId(null); }}>
+                          <article className={styles.itemCard}>
+                            <div className={styles.itemTop}>
+                              <p className={styles.itemLabel}>Game Name Card #{index + 1}</p>
+                              <span className={styles.costPill}>{entry.releaseDate}</span>
+                            </div>
+                            <p className={styles.itemDescription}><strong>{entry.name}</strong> · {entry.genre} · Popularity {formatNumber(entry.popularity, 1)}%</p>
+                          </article>
+                        </button>
                       ))}
                     </div>
                   ) : (
@@ -2658,13 +2670,15 @@ export function CpuFoundrySim() {
               </div>
               <div className={styles.panelList}>
                 {selectedGameCommunities.map((community) => (
-                  <article key={community.id} className={styles.itemCard} onClick={() => setSelectedGameCommunityId(community.id)}>
-                    <div className={styles.itemTop}>
-                      <p className={styles.itemLabel}>Community</p>
-                      <span className={styles.costPill}>Active</span>
-                    </div>
-                    <h3>{community.name}</h3>
-                  </article>
+                  <button key={community.id} type="button" className={styles.companyCardButton} onClick={() => setSelectedGameCommunityId(community.id)}>
+                    <article className={styles.itemCard}>
+                      <div className={styles.itemTop}>
+                        <p className={styles.itemLabel}>Community</p>
+                        <span className={styles.costPill}>Active</span>
+                      </div>
+                      <h3>{community.name}</h3>
+                    </article>
+                  </button>
                 ))}
               </div>
             </div>
