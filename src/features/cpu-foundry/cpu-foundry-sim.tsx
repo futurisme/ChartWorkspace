@@ -221,6 +221,25 @@ const SOFTWARE_SPECIALIZATIONS: Array<{ key: SoftwareSpecialization; label: stri
   { key: 'utility-apps', label: 'Utility Apps', description: 'Produktivitas dan utilitas harian untuk pengguna massal.' },
 ];
 
+const GAME_NAME_DATASET: Array<{ name: string; genre: string; era: string; theme: string }> = [
+  { name: 'Neon Drift 2088', genre: 'Cyberpunk Racing', era: 'Future', theme: 'Urban Neon' },
+  { name: 'Kingdoms of Emberfall', genre: 'Strategy RPG', era: 'Medieval', theme: 'High Fantasy' },
+  { name: 'Project Tundra Zero', genre: 'Survival Shooter', era: 'Modern', theme: 'Arctic Conflict' },
+  { name: 'Lotus Blade Chronicle', genre: 'Action Adventure', era: 'Feudal', theme: 'Mythic East' },
+  { name: 'Astrolane Command', genre: '4X Grand Strategy', era: 'Space Age', theme: 'Galactic Empire' },
+  { name: 'Pixel Harbor Stories', genre: 'Life Simulation', era: 'Retro', theme: 'Coastal Town' },
+  { name: 'Eclipse Protocol', genre: 'Stealth Thriller', era: 'Near Future', theme: 'Corporate Espionage' },
+  { name: 'Runes of Asteria', genre: 'MMO RPG', era: 'Ancient', theme: 'Arcane Civilizations' },
+  { name: 'Velocity Kart Legends', genre: 'Arcade Racing', era: 'Contemporary', theme: 'Global Circuits' },
+  { name: 'Ghostline Frontier', genre: 'Open World', era: 'Post-Apocalypse', theme: 'Wasteland Rebuild' },
+  { name: 'Verdant Colony', genre: 'City Builder', era: 'Solarpunk', theme: 'Eco Megacity' },
+  { name: 'Iron Arena Genesis', genre: 'Competitive Arena', era: 'Sci-Fi', theme: 'Mech Combat' },
+  { name: 'Saffron Detective Files', genre: 'Narrative Mystery', era: '1990s', theme: 'Noir Metropolis' },
+  { name: 'Crimson Tide Armada', genre: 'Naval Strategy', era: 'Industrial', theme: 'Ocean Warfare' },
+  { name: 'Fable Circuit', genre: 'Co-op Puzzle', era: 'Timeless', theme: 'Whimsical Tech' },
+  { name: 'Orbital Cricket League', genre: 'Sports Sim', era: 'Future', theme: 'Interplanetary Tournament' },
+];
+
 const getSoftwareSpecializationLabel = (value?: SoftwareSpecialization | null) => (
   SOFTWARE_SPECIALIZATIONS.find((entry) => entry.key === value)?.label ?? 'Utility Apps'
 );
@@ -334,6 +353,7 @@ export function CpuFoundrySim() {
   const [shareListingDraft, setShareListingDraft] = useState<ShareListingDraft>(DEFAULT_SHARE_LISTING_DRAFT);
   const [statusMessage, setStatusMessage] = useState('Buat profil dulu untuk masuk ke Career Simulator.');
   const [isReleaseMenuOpen, setIsReleaseMenuOpen] = useState(false);
+  const [releaseStoreCompanyKey, setReleaseStoreCompanyKey] = useState<CompanyKey | null>(null);
   const [isInvestmentMenuOpen, setIsInvestmentMenuOpen] = useState(false);
   const [isCompaniesFrameOpen, setIsCompaniesFrameOpen] = useState(false);
   const [isInvestorFrameOpen, setIsInvestorFrameOpen] = useState(false);
@@ -735,21 +755,18 @@ export function CpuFoundrySim() {
         };
       });
     }
-    const releaseEntries = game.activityFeed
-      .filter((entry) => entry.includes(focusedCompany.name) && entry.includes('merilis'))
-      .slice(0, 18);
-    const source = releaseEntries.length > 0 ? releaseEntries : [focusedCompany.lastRelease];
-    return source.map((entry, index) => {
-      const seeded = createSeededRandom(`${focusedCompany.key}-release-${index}-${entry}`);
-      const releaseDate = entry.match(/\d{2}\/\d{2}\/\d{2}/)?.[0] ?? formatDateFromDays(game.elapsedDays - index * 12);
-      const nameMatch = entry.match(/merilis (?:game )?(.+?) \(rating/i);
-      const name = nameMatch?.[1]?.trim() || `Game Release ${index + 1}`;
-      const genres = ['Action RPG', 'MMO Strategy', 'Simulation', 'Co-op Survival', 'Competitive Arena'];
-      const communities = [`${name} HQ`, `${name} Guild`, `${name} Indonesia`];
+    const releaseCount = Math.max(1, Math.min(18, focusedCompany.releaseCount));
+    return Array.from({ length: releaseCount }).map((_, index) => {
+      const releaseNo = releaseCount - index;
+      const seeded = createSeededRandom(`${focusedCompany.key}-release-${releaseNo}-${focusedCompany.lastReleaseDay}`);
+      const datasetEntry = GAME_NAME_DATASET[Math.floor(seeded() * GAME_NAME_DATASET.length)] ?? GAME_NAME_DATASET[0];
+      const releaseDate = formatDateFromDays(Math.max(0, focusedCompany.lastReleaseDay - index * 16));
+      const name = `${datasetEntry.name} ${releaseNo > 1 ? `S${String(releaseNo).padStart(2, '0')}` : ''}`.trim();
+      const communities = [`${name} ${datasetEntry.theme} Hub`, `${name} ${datasetEntry.era} Society`, `${name} Global Guild`];
       return {
-        id: `${focusedCompany.key}-game-${index}`,
+        id: `${focusedCompany.key}-game-${releaseNo}`,
         name,
-        genre: genres[Math.floor(seeded() * genres.length)],
+        genre: datasetEntry.genre,
         releaseDate,
         popularity: Math.round(clamp((focusedCompany.reputation / 100) * 72 + seeded() * 28, 12, 99) * 10) / 10,
         communities,
@@ -1069,6 +1086,14 @@ export function CpuFoundrySim() {
       : []),
     [game]
   );
+  const activeApprovedReleaseStores = useMemo(() => {
+    if (!game || !activeCompany || activeCompany.field !== 'game') return [];
+    return availableAppStoreCompanies.filter((store) => game.appStoreLicenseRequests.some((request) => (
+      request.gameCompanyKey === activeCompany.key
+      && request.softwareCompanyKey === store.key
+      && request.status === 'approved'
+    )));
+  }, [activeCompany, availableAppStoreCompanies, game]);
   const focusedPlayerIsGameExecutive = Boolean(
     focusedCompany
     && focusedCompany.field === 'game'
@@ -1101,6 +1126,15 @@ export function CpuFoundrySim() {
       setIsLicenseDeskOpen(true);
     }
   }, [isMonthlyLicenseWindow, pendingPlayerLicenseRequests.length]);
+
+  useEffect(() => {
+    if (!activeCompany || activeCompany.field !== 'game') {
+      setReleaseStoreCompanyKey(null);
+      return;
+    }
+    const preferred = activeApprovedReleaseStores[0]?.key ?? null;
+    setReleaseStoreCompanyKey((current) => (current && activeApprovedReleaseStores.some((store) => store.key === current) ? current : preferred));
+  }, [activeApprovedReleaseStores, activeCompany]);
 
   const switchCompany = (company: CompanyKey) => {
     if (!game) return;
@@ -1411,13 +1445,22 @@ export function CpuFoundrySim() {
     }
 
     const releaseRating = evaluateCpuReleaseRating(game, activeCompany, releaseDraft.priceIndex, activeCpuScore);
-    const launchRevenue = calculateLaunchRevenue(
+    const baseLaunchRevenue = calculateLaunchRevenue(
       activeCpuScore,
       activeCompany.teams,
       activeCompany.marketShare,
       activeCompany.reputation,
       activePricePreset.factor
     ) * releaseRating.salesMultiplier;
+    const selectedReleaseStore = activeCompany.field === 'game'
+      ? activeApprovedReleaseStores.find((store) => store.key === releaseStoreCompanyKey) ?? activeApprovedReleaseStores[0] ?? null
+      : null;
+    if (activeCompany.field === 'game' && !selectedReleaseStore) {
+      setStatusMessage('Game harus punya lisensi AppStore aktif sebelum release.');
+      return;
+    }
+    const launchRevenue = activeCompany.field === 'game' ? baseLaunchRevenue * 0.22 : baseLaunchRevenue;
+    const storeLaunchFee = activeCompany.field === 'game' ? launchRevenue * 0.2 : 0;
     const reputationGain = Math.max(0.8, (activeCpuScore / 240 + activeCompany.teams.marketing.count * 0.7 + activePricePreset.reputationBonus) * releaseRating.reputationMultiplier);
     const marketShareGain = Math.min(5.5, (activeCpuScore / 500 + activeCompany.teams.fabrication.count * 0.16 + activePricePreset.marketBonus) * releaseRating.marketShareMultiplier);
 
@@ -1427,7 +1470,7 @@ export function CpuFoundrySim() {
         ...game.companies,
         [activeCompany.key]: {
           ...activeCompany,
-          cash: activeCompany.cash + launchRevenue,
+          cash: activeCompany.cash + launchRevenue - storeLaunchFee,
           reputation: clamp(activeCompany.reputation + reputationGain, 10, 100),
           marketShare: clamp(activeCompany.marketShare + marketShareGain, 3, 75),
           releaseCount: activeCompany.releaseCount + 1,
@@ -1435,12 +1478,20 @@ export function CpuFoundrySim() {
           lastReleaseDay: game.elapsedDays,
           lastReleaseCpuScore: activeCpuScore,
           lastReleasePriceIndex: releaseDraft.priceIndex,
-          lastRelease: `${series} ${cpuName} rilis ${formatDateFromDays(game.elapsedDays)} (${activePricePreset.label.toLowerCase()}) · ${releaseRating.summary}`,
+          lastRelease: `${series} ${cpuName} rilis ${formatDateFromDays(game.elapsedDays)} (${activePricePreset.label.toLowerCase()})${selectedReleaseStore ? ` via ${selectedReleaseStore.name}` : ''} · ${releaseRating.summary}`,
         },
+        ...(selectedReleaseStore
+          ? {
+            [selectedReleaseStore.key]: {
+              ...game.companies[selectedReleaseStore.key],
+              cash: game.companies[selectedReleaseStore.key].cash + storeLaunchFee,
+            },
+          }
+          : {}),
       },
       activityFeed: addFeedEntry(
         game.activityFeed,
-        `${formatDateFromDays(game.elapsedDays)}: ${activeCompany.name} merilis ${series} ${cpuName} (rating ${formatNumber(releaseRating.rating, 1)}) dan membukukan $${formatMoneyCompact(launchRevenue)}.`
+        `${formatDateFromDays(game.elapsedDays)}: ${activeCompany.name} merilis ${series} ${cpuName} (rating ${formatNumber(releaseRating.rating, 1)})${selectedReleaseStore ? ` via ${selectedReleaseStore.name}` : ''} dan membukukan $${formatMoneyCompact(launchRevenue - storeLaunchFee)}.`
       ),
     });
 
@@ -2470,7 +2521,7 @@ export function CpuFoundrySim() {
       ) : null}
 
       {isGameLicenseFrameOpen && focusedCompany && focusedPlayerIsGameExecutive ? (
-        <div className={styles.screenFrameOverlay} role="presentation" onClick={() => setIsGameLicenseFrameOpen(false)}>
+        <div className={`${styles.screenFrameOverlay} ${styles.statisticsOverlay}`} role="presentation" onClick={() => setIsGameLicenseFrameOpen(false)}>
           <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label="Game license frame" onClick={(event) => event.stopPropagation()}>
             <ThinFrameHeader frameName="License" subtitle={`${focusedCompany.name} · AppStore contracts`} onBack={() => setIsGameLicenseFrameOpen(false)} backLabel="Tutup lisensi" />
             <div className={styles.screenFrameBody}>
@@ -3648,6 +3699,20 @@ export function CpuFoundrySim() {
                 <span>Nama {productLabel}</span>
                 <input value={releaseDraft.cpuName} onChange={(event) => setReleaseDraft((current) => ({ ...current, cpuName: event.target.value }))} placeholder={productLabel === 'Game' ? 'Contoh: Launch-02' : productLabel === 'Software' ? 'Contoh: SW-02' : 'Contoh: PX-02'} />
               </label>
+              {activeCompany.field === 'game' ? (
+                <div className={styles.field}>
+                  <span>Release via AppStore</span>
+                  <div className={styles.quickGrid}>
+                    {activeApprovedReleaseStores.length > 0 ? activeApprovedReleaseStores.map((store) => (
+                      <button key={store.key} type="button" className={releaseStoreCompanyKey === store.key ? styles.quickButtonActive : styles.quickButton} onClick={() => setReleaseStoreCompanyKey(store.key)}>
+                        {store.name}
+                      </button>
+                    )) : (
+                      <p className={styles.itemDescription}>Belum ada lisensi AppStore aktif. Gunakan tombol License lebih dulu.</p>
+                    )}
+                  </div>
+                </div>
+              ) : null}
 
               <div className={styles.sliderCard}>
                 <div className={styles.sliderHeader}>
@@ -3671,11 +3736,12 @@ export function CpuFoundrySim() {
                   <strong>{releaseDraft.series.trim() || 'Seri'} {releaseDraft.cpuName.trim() || `Nama ${productLabel}`}</strong>
                 </div>
                 <div>
-                  <span>Estimasi laba</span>
+                  <span>{activeCompany.field === 'game' ? 'Estimasi kas bersih (via AppStore)' : 'Estimasi laba'}</span>
                   <strong>
                     {formatCurrencyCompact(
-                      calculateLaunchRevenue(activeCpuScore, activeCompany.teams, activeCompany.marketShare, activeCompany.reputation, activePricePreset.factor)
-                      * (activeReleaseRating?.salesMultiplier ?? 1),
+                      (calculateLaunchRevenue(activeCpuScore, activeCompany.teams, activeCompany.marketShare, activeCompany.reputation, activePricePreset.factor)
+                      * (activeReleaseRating?.salesMultiplier ?? 1))
+                      * (activeCompany.field === 'game' ? 0.176 : 1),
                       2
                     )}
                   </strong>
@@ -3686,7 +3752,7 @@ export function CpuFoundrySim() {
                 </div>
               </div>
 
-              <button type="button" className={styles.primaryButton} onClick={launchCpu}>
+              <button type="button" className={styles.primaryButton} onClick={launchCpu} disabled={activeCompany.field === 'game' && activeApprovedReleaseStores.length === 0}>
                 Release {productLabel} sekarang
               </button>
             </div>
