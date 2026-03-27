@@ -360,6 +360,7 @@ export function CpuFoundrySim() {
   const [decisionNomineeId, setDecisionNomineeId] = useState('');
   const [decisionAmountPercent, setDecisionAmountPercent] = useState(8);
   const [isLicenseDeskOpen, setIsLicenseDeskOpen] = useState(true);
+  const [isGameLicenseFrameOpen, setIsGameLicenseFrameOpen] = useState(false);
   const [companyDetailBackTarget, setCompanyDetailBackTarget] = useState<'game' | 'companies' | 'investor' | 'news' | 'forbes'>('companies');
   const [selectedGameReleaseId, setSelectedGameReleaseId] = useState<string | null>(null);
   const [selectedGameCommunityId, setSelectedGameCommunityId] = useState<string | null>(null);
@@ -1068,6 +1069,26 @@ export function CpuFoundrySim() {
       : []),
     [game]
   );
+  const focusedPlayerIsGameExecutive = Boolean(
+    focusedCompany
+    && focusedCompany.field === 'game'
+    && (focusedPlayerIsCeo || focusedPlayerExecutiveRoles.length > 0)
+  );
+  const focusedGameLicenseMatrix = useMemo(() => {
+    if (!game || !focusedCompany || focusedCompany.field !== 'game') return [];
+    return availableAppStoreCompanies.map((store) => {
+      const pairRequests = game.appStoreLicenseRequests
+        .filter((request) => request.gameCompanyKey === focusedCompany.key && request.softwareCompanyKey === store.key)
+        .sort((left, right) => right.requestedDay - left.requestedDay);
+      const latest = pairRequests[0] ?? null;
+      const daysSinceDecision = latest?.decisionDay !== null && latest?.decisionDay !== undefined
+        ? game.elapsedDays - latest.decisionDay
+        : null;
+      const canApply = !latest || (latest.status === 'rejected' && (daysSinceDecision ?? 0) >= 30);
+      return { store, latest, canApply, cooldownDaysLeft: latest?.status === 'rejected' && daysSinceDecision !== null ? Math.max(0, 30 - daysSinceDecision) : 0 };
+    });
+  }, [availableAppStoreCompanies, focusedCompany, game]);
+  const isMonthlyLicenseWindow = Boolean(game && Math.floor(game.elapsedDays) % 30 <= 1);
 
   useEffect(() => {
     if (!focusedCompany) return;
@@ -1076,10 +1097,10 @@ export function CpuFoundrySim() {
   }, [focusedCompany, game]);
 
   useEffect(() => {
-    if (pendingPlayerLicenseRequests.length > 0) {
+    if (isMonthlyLicenseWindow && pendingPlayerLicenseRequests.length > 0) {
       setIsLicenseDeskOpen(true);
     }
-  }, [pendingPlayerLicenseRequests.length]);
+  }, [isMonthlyLicenseWindow, pendingPlayerLicenseRequests.length]);
 
   const switchCompany = (company: CompanyKey) => {
     if (!game) return;
@@ -1105,6 +1126,7 @@ export function CpuFoundrySim() {
     setIsCreateCompanyOpen(false);
     setIsStatisticsFrameOpen(false);
     setIsDecisionFrameOpen(false);
+    setIsGameLicenseFrameOpen(false);
     setFocusedCompanyKey(null);
     setFocusedPlanKey(null);
   };
@@ -2447,7 +2469,53 @@ export function CpuFoundrySim() {
         </div>
       ) : null}
 
-      {isLicenseDeskOpen && pendingPlayerLicenseRequests.length > 0 && game ? (
+      {isGameLicenseFrameOpen && focusedCompany && focusedPlayerIsGameExecutive ? (
+        <div className={styles.screenFrameOverlay} role="presentation" onClick={() => setIsGameLicenseFrameOpen(false)}>
+          <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label="Game license frame" onClick={(event) => event.stopPropagation()}>
+            <ThinFrameHeader frameName="License" subtitle={`${focusedCompany.name} · AppStore contracts`} onBack={() => setIsGameLicenseFrameOpen(false)} backLabel="Tutup lisensi" />
+            <div className={styles.screenFrameBody}>
+              <div className={styles.memoCard}>
+                <p className={styles.panelTag}>Policy</p>
+                <p>Bisa apply ke AppStore yang belum melisensikan game kamu kapan saja. Jika ditolak, apply ulang tersedia setelah 30 hari.</p>
+              </div>
+              <div className={styles.panelList}>
+                {focusedGameLicenseMatrix.map((entry) => (
+                  <article key={entry.store.key} className={styles.itemCard}>
+                    <div className={styles.itemTop}>
+                      <div>
+                        <p className={styles.itemLabel}>AppStore</p>
+                        <h3>{entry.store.name}</h3>
+                      </div>
+                      <span className={styles.costPill}>
+                        {entry.latest ? entry.latest.status.toUpperCase() : 'NEW'}
+                      </span>
+                    </div>
+                    <p className={styles.itemDescription}>
+                      {entry.latest?.status === 'approved'
+                        ? `Sudah licensed · rev share ${formatNumber(entry.latest.revenueShare * 100, 1)}%`
+                        : entry.latest?.status === 'pending'
+                          ? 'Menunggu keputusan CEO AppStore.'
+                          : entry.latest?.status === 'rejected'
+                            ? `Rejected · bisa apply lagi ${formatNumber(entry.cooldownDaysLeft, 0)} hari lagi.`
+                            : 'Belum pernah apply.'}
+                    </p>
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={() => submitGameLicenseRequest(focusedCompany.key, entry.store.key)}
+                      disabled={!entry.canApply}
+                    >
+                      {entry.canApply ? 'Apply License' : 'Cooldown aktif'}
+                    </button>
+                  </article>
+                ))}
+              </div>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {isLicenseDeskOpen && isMonthlyLicenseWindow && pendingPlayerLicenseRequests.length > 0 && game ? (
         <div className={styles.modalOverlay} role="presentation">
           <section className={styles.modalCard} role="dialog" aria-modal="true" aria-label="AppStore license desk" onClick={(event) => event.stopPropagation()}>
             <div className={styles.modalHeader}>
@@ -2460,6 +2528,7 @@ export function CpuFoundrySim() {
               <div className={styles.memoCard}>
                 <p className={styles.panelTag}>Pemohon</p>
                 <p>{game.companies[pendingPlayerLicenseRequests[0].gameCompanyKey].name} meminta izin distribusi game di AppStore kamu.</p>
+                <p className={styles.itemDescription}>Batch ini muncul pada jendela submission bulanan.</p>
               </div>
               <div className={styles.infoRow}>
                 <div>
@@ -2766,13 +2835,9 @@ export function CpuFoundrySim() {
                           Decision
                         </button>
                       ) : null}
-                      {focusedCompany.field === 'game' && focusedPlayerIsCeo && availableAppStoreCompanies.length > 0 ? (
-                        <button
-                          type="button"
-                          className={styles.slimActionButton}
-                          onClick={() => submitGameLicenseRequest(focusedCompany.key, availableAppStoreCompanies[0].key)}
-                        >
-                          Request AppStore License
+                      {focusedPlayerIsGameExecutive && availableAppStoreCompanies.length > 0 ? (
+                        <button type="button" className={styles.slimActionButton} onClick={() => setIsGameLicenseFrameOpen(true)}>
+                          License
                         </button>
                       ) : null}
                     </div>
@@ -3283,6 +3348,20 @@ export function CpuFoundrySim() {
                               <span className={styles.costPill}>{entry.releaseDate}</span>
                             </div>
                             <p className={styles.itemDescription}><strong>{entry.name}</strong> · {entry.genre} · Popularity {formatNumber(entry.popularity, 1)}%</p>
+                            {focusedPlayerIsGameExecutive && availableAppStoreCompanies.length > 0 ? (
+                              <div className={styles.actionRow}>
+                                <button
+                                  type="button"
+                                  className={styles.slimActionButton}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setIsGameLicenseFrameOpen(true);
+                                  }}
+                                >
+                                  License
+                                </button>
+                              </div>
+                            ) : null}
                           </article>
                         </button>
                       ))}

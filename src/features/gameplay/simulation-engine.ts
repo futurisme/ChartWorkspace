@@ -2617,12 +2617,15 @@ export function requestAppStoreLicense(
   if (!gameCompany.isEstablished || !softwareCompany.isEstablished) return game;
   if (gameCompany.field !== 'game') return game;
   if (softwareCompany.field !== 'software' || softwareCompany.softwareSpecialization !== 'app-store') return game;
-  const hasOpenRequest = game.appStoreLicenseRequests.some((request) => (
-    request.gameCompanyKey === gameCompanyKey
-    && request.softwareCompanyKey === softwareCompanyKey
-    && request.status === 'pending'
-  ));
-  if (hasOpenRequest) return game;
+  const pairRequests = game.appStoreLicenseRequests
+    .filter((request) => request.gameCompanyKey === gameCompanyKey && request.softwareCompanyKey === softwareCompanyKey)
+    .sort((left, right) => right.requestedDay - left.requestedDay);
+  const latestRequest = pairRequests[0];
+  if (latestRequest?.status === 'pending' || latestRequest?.status === 'approved') return game;
+  if (latestRequest?.status === 'rejected' && latestRequest.decisionDay !== null) {
+    const daysSinceRejection = game.elapsedDays - latestRequest.decisionDay;
+    if (daysSinceRejection < 30) return game;
+  }
 
   const request: AppStoreLicenseRequest = {
     id: `license-${gameCompanyKey}-${softwareCompanyKey}-${Math.floor(game.elapsedDays)}-${Math.floor(game.tickCount)}`,
@@ -4125,25 +4128,33 @@ function runNpcAppStoreLicensing(game: GameState, company: CompanyState, ceoNpc:
   if (!company.isEstablished) return next;
 
   if (company.field === 'game') {
-    const approvedOrPending = next.appStoreLicenseRequests.filter((request) => (
-      request.gameCompanyKey === company.key
-      && (request.status === 'approved' || request.status === 'pending')
-    ));
-    if (approvedOrPending.length === 0) {
-      const appStores = getActiveAppStoreCompanies(next);
-      if (appStores.length > 0) {
-        const target = [...appStores].sort((left, right) => (
-          (right.reputation + right.marketShare * 0.8 + right.cash * 0.015)
-          - (left.reputation + left.marketShare * 0.8 + left.cash * 0.015)
-        ))[0];
-        next = requestAppStoreLicense(
-          next,
-          company.ceoId,
-          company.key,
-          target.key,
-          `${company.name} menawarkan portofolio game dengan roadmap stabil dan live-ops aktif.`
-        );
-      }
+    const appStores = getActiveAppStoreCompanies(next);
+    const candidates = appStores
+      .filter((store) => {
+        const pairRequests = next.appStoreLicenseRequests
+          .filter((request) => request.gameCompanyKey === company.key && request.softwareCompanyKey === store.key)
+          .sort((left, right) => right.requestedDay - left.requestedDay);
+        const latestRequest = pairRequests[0];
+        if (!latestRequest) return true;
+        if (latestRequest.status === 'approved' || latestRequest.status === 'pending') return false;
+        if (latestRequest.status === 'rejected' && latestRequest.decisionDay !== null) {
+          return next.elapsedDays - latestRequest.decisionDay >= 30;
+        }
+        return true;
+      })
+      .sort((left, right) => (
+        (right.reputation + right.marketShare * 0.8 + right.cash * 0.015)
+        - (left.reputation + left.marketShare * 0.8 + left.cash * 0.015)
+      ));
+    const target = candidates[0];
+    if (target) {
+      next = requestAppStoreLicense(
+        next,
+        company.ceoId,
+        company.key,
+        target.key,
+        `${company.name} menawarkan portofolio game dengan roadmap stabil dan live-ops aktif.`
+      );
     }
   }
 
