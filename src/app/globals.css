@@ -28,3 +28,16 @@ body {
     @apply transition-all duration-250 ease-in-out;
   }
 }
+
+::view-transition-old(panel-content),
+::view-transition-new(panel-content) {
+  animation-duration: 180ms;
+  animation-timing-function: ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(panel-content),
+  ::view-transition-new(panel-content) {
+    animation-duration: 1ms;
+  }
+}
