@@ -42,6 +42,12 @@ export type BoardMember = {
 
 export type BoardVoteKind = 'pengangkatan' | 'penggantian' | 'pemecatan' | 'investasi';
 
+export type BoardDecisionAction =
+  | { type: 'invest'; sourceCompanyKey: CompanyKey; targetCompanyKey: CompanyKey; amount: number }
+  | { type: 'withdraw'; sourceCompanyKey: CompanyKey; targetCompanyKey: CompanyKey; amount: number }
+  | { type: 'appoint'; companyKey: CompanyKey; role: ExecutiveRole; candidateId: string }
+  | { type: 'dismiss'; companyKey: CompanyKey; role: ExecutiveRole };
+
 export type BoardVoteState = {
   id: string;
   kind: BoardVoteKind;
@@ -51,6 +57,7 @@ export type BoardVoteState = {
   memberVotes: Record<string, 'yes' | 'no'>;
   investmentValue?: number;
   withdrawalValue?: number;
+  decisionAction?: BoardDecisionAction;
   yesWeight: number;
   noWeight: number;
   startDay: number;
@@ -3418,6 +3425,37 @@ export function getCompanyCompetitiveContext(game: GameState, company: CompanySt
   };
 }
 
+export function getUpgradeBalancePressure(game: GameState, company: CompanyState) {
+  const competitors = (Object.values(game.companies) as CompanyState[])
+    .filter((entry) => entry.key !== company.key && entry.field === company.field && entry.isEstablished);
+  const scopedCompetitors = competitors.length > 0
+    ? competitors
+    : (Object.values(game.companies) as CompanyState[]).filter((entry) => entry.key !== company.key && entry.isEstablished);
+
+  const gaps = (Object.keys(company.upgrades) as UpgradeKey[]).reduce((acc, key) => {
+    const currentValue = company.upgrades[key].value;
+    const bestValue = Math.max(
+      currentValue,
+      ...scopedCompetitors.map((entry) => entry.upgrades[key].value)
+    );
+    const lag = clamp((bestValue - currentValue) / Math.max(1, bestValue), 0, 1.2);
+    acc[key] = lag;
+    return acc;
+  }, {} as Record<UpgradeKey, number>);
+
+  const lagValues = Object.values(gaps);
+  const averageGap = lagValues.reduce((sum, value) => sum + value, 0) / Math.max(1, lagValues.length);
+  const strongestGap = lagValues.length > 0 ? Math.max(...lagValues) : 0;
+  const variance = lagValues.reduce((sum, value) => sum + Math.pow(value - averageGap, 2), 0) / Math.max(1, lagValues.length);
+
+  return {
+    gaps,
+    averageGap,
+    strongestGap,
+    imbalanceRisk: clamp(Math.sqrt(variance) * 2.6 + strongestGap * 0.45, 0, 2.4),
+  };
+}
+
 export function getManagementResourceContext(company: CompanyState) {
   const maxUpgradeCost = Math.max(...(Object.entries(company.upgrades) as [UpgradeKey, UpgradeState][]).map(([key, upgrade]) => getUpgradeCost(key, upgrade, company)));
   const maxTeamCost = Math.max(...(Object.values(company.teams) as TeamState[]).map((team) => getTeamCost(team)));
@@ -3482,6 +3520,7 @@ export function previewTeamCompany(company: CompanyState, key: TeamKey) {
 export function scoreNpcUpgradeAction(game: GameState, npc: NpcInvestor, company: CompanyState, key: UpgradeKey): CompanyAiAction {
   const profile = getNpcStrategyProfile(npc.strategy);
   const context = getCompanyCompetitiveContext(game, company);
+  const balancePressure = getUpgradeBalancePressure(game, company);
   const management = getManagementResourceContext(company);
   const preview = previewUpgradeCompany(company, key);
   const currentCpuScore = calculateCpuScore(company.upgrades);
@@ -3495,12 +3534,19 @@ export function scoreNpcUpgradeAction(game: GameState, npc: NpcInvestor, company
   const efficiencyBias = key === 'lithography' || key === 'powerEfficiency' ? profile.efficiency * (0.7 + context.marketGap * 0.35) : 0;
   const architectureBias = key === 'architecture' ? profile.tech * (0.55 + context.cpuGap * 0.6) : 0;
   const backlogBias = management.researchOverflow * (0.75 + npc.intelligence * 0.4) + management.researchUrgency * 0.18;
+  const upgradeGap = balancePressure.gaps[key];
+  const catchUpBias = upgradeGap * (2.2 + npc.intelligence * 0.9) + balancePressure.imbalanceRisk * 0.45;
+  const leapBias = upgradeGap < 0.08
+    ? (1 - upgradeGap) * (0.12 + profile.tech * 0.18 + context.cpuGap * 0.08)
+    : 0;
   const score = (
     cpuDelta * (0.0088 + profile.tech * 0.0046)
     + researchDelta * (1.1 + profile.tech * 0.45)
     + revenueDelta * (0.18 + profile.operations * 0.06)
     + context.cpuGap * 2.4
     + context.researchGap * 1.8
+    + catchUpBias
+    + leapBias
     + longTermBias
     + backlogBias
     + efficiencyBias

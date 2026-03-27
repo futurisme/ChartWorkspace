@@ -19,6 +19,7 @@ import type {
   BoardMember,
   BoardVoteKind,
   BoardVoteState,
+  BoardDecisionAction,
   CompanyExecutive,
   ShareListing,
   CompanyState,
@@ -208,6 +209,7 @@ type GameCommunityCard = {
   leadership: { owner: string; coOwner: string; admin: string; moderator: string; helper: string };
   messages: string[];
 };
+type DecisionMode = 'invest' | 'withdraw' | 'appoint' | 'dismiss' | 'payout-up' | 'payout-down';
 
 const SOFTWARE_SPECIALIZATIONS: Array<{ key: SoftwareSpecialization; label: string; description: string }> = [
   { key: 'app-store', label: 'App Store', description: 'Marketplace distribusi aplikasi/game dengan kanal kolaborasi publisher.' },
@@ -348,6 +350,12 @@ export function CpuFoundrySim() {
   const [forbesCategory, setForbesCategory] = useState<'individual' | 'business'>('individual');
   const [statisticsTab, setStatisticsTab] = useState<StatisticsTab>('wealth');
   const [isStatisticsFrameOpen, setIsStatisticsFrameOpen] = useState(false);
+  const [isDecisionFrameOpen, setIsDecisionFrameOpen] = useState(false);
+  const [decisionMode, setDecisionMode] = useState<DecisionMode>('invest');
+  const [decisionTargetCompanyKey, setDecisionTargetCompanyKey] = useState<CompanyKey>('cosmic');
+  const [decisionRole, setDecisionRole] = useState<ExecutiveRole>('cto');
+  const [decisionNomineeId, setDecisionNomineeId] = useState('');
+  const [decisionAmountPercent, setDecisionAmountPercent] = useState(8);
   const [companyDetailBackTarget, setCompanyDetailBackTarget] = useState<'game' | 'companies' | 'investor' | 'news' | 'forbes'>('companies');
   const [selectedGameReleaseId, setSelectedGameReleaseId] = useState<string | null>(null);
   const [selectedGameCommunityId, setSelectedGameCommunityId] = useState<string | null>(null);
@@ -944,6 +952,7 @@ export function CpuFoundrySim() {
   const activePlayerExecutiveRoles = activeCompany && game ? getExecutiveRolesForInvestor(activeCompany, game.player.id) : [];
   const focusedPlayerExecutiveRoles = focusedCompany && game ? getExecutiveRolesForInvestor(focusedCompany, game.player.id) : [];
   const focusedPlayerIsBoardMember = Boolean(focusedCompany && game && focusedCompany.boardMembers.some((member) => member.id === game.player.id));
+  const focusedPlayerCanUseDecision = Boolean(focusedCompany && (focusedPlayerIsBoardMember || focusedPlayerExecutiveRoles.length > 0));
   const focusedCanManageTechnology = Boolean(focusedCompany && game && hasCompanyAuthority(focusedCompany, game.player.id, 'technology'));
   const focusedCanManageFinance = Boolean(focusedCompany && game && hasCompanyAuthority(focusedCompany, game.player.id, 'finance'));
   const focusedCanReleaseCpu = Boolean(focusedCompany && game && hasCompanyAuthority(focusedCompany, game.player.id, 'release'));
@@ -1014,6 +1023,12 @@ export function CpuFoundrySim() {
     [focusedCompany, game]
   );
 
+  useEffect(() => {
+    if (!focusedCompany) return;
+    const fallbackTarget = COMPANY_KEYS.find((key) => key !== focusedCompany.key && game?.companies[key].isEstablished) ?? focusedCompany.key;
+    setDecisionTargetCompanyKey(fallbackTarget);
+  }, [focusedCompany, game]);
+
   const switchCompany = (company: CompanyKey) => {
     if (!game) return;
     setGame({
@@ -1037,6 +1052,7 @@ export function CpuFoundrySim() {
     setIsForbesFrameOpen(false);
     setIsCreateCompanyOpen(false);
     setIsStatisticsFrameOpen(false);
+    setIsDecisionFrameOpen(false);
     setFocusedCompanyKey(null);
     setFocusedPlanKey(null);
   };
@@ -1450,6 +1466,139 @@ export function CpuFoundrySim() {
     setStatusMessage(direction === 'up' ? 'Payout policy dinaikkan sedikit.' : 'Payout policy dibuat lebih defensif.');
   };
 
+  const queueDecisionBoardVote = (
+    companyKey: CompanyKey,
+    kind: BoardVoteKind,
+    subject: string,
+    reason: string,
+    payload: {
+      investmentValue?: number;
+      withdrawalValue?: number;
+      decisionAction?: BoardDecisionAction;
+    }
+  ) => {
+    setGame((current) => {
+      if (!current) return current;
+      const company = current.companies[companyKey];
+      if (company.activeBoardVote && current.elapsedDays <= company.activeBoardVote.endDay) return current;
+      const vote: BoardVoteState = {
+        id: `${companyKey}-decision-${Math.floor(current.elapsedDays)}-${Math.floor(current.tickCount)}`,
+        kind,
+        proposerId: current.player.id,
+        subject,
+        reason,
+        memberVotes: {},
+        investmentValue: payload.investmentValue,
+        withdrawalValue: payload.withdrawalValue,
+        decisionAction: payload.decisionAction,
+        yesWeight: 0,
+        noWeight: 0,
+        startDay: current.elapsedDays,
+        endDay: current.elapsedDays + 3,
+      };
+      return {
+        ...current,
+        companies: {
+          ...current.companies,
+          [companyKey]: {
+            ...company,
+            activeBoardVote: vote,
+          },
+        },
+      };
+    });
+  };
+
+  const submitDecision = () => {
+    if (!game || !focusedCompany) return;
+    if (!focusedPlayerCanUseDecision) {
+      setStatusMessage('Menu Decision hanya untuk eksekutif atau Board of Directors.');
+      return;
+    }
+    if (focusedCompany.activeBoardVote && game.elapsedDays <= focusedCompany.activeBoardVote.endDay) {
+      setStatusMessage('Masih ada voting dewan aktif di perusahaan ini.');
+      return;
+    }
+
+    if (decisionMode === 'invest') {
+      const target = game.companies[decisionTargetCompanyKey];
+      const rawAmount = focusedCompany.cash * (decisionAmountPercent / 100);
+      const amount = clamp(rawAmount, MIN_TRADE_AMOUNT, Math.max(MIN_TRADE_AMOUNT, focusedCompany.cash * 0.8));
+      queueDecisionBoardVote(
+        focusedCompany.key,
+        'investasi',
+        `${focusedCompany.name} → ${target.name}`,
+        `${game.player.name} meminta persetujuan Board untuk investasi strategis ke ${target.name}.`,
+        {
+          investmentValue: amount,
+          decisionAction: { type: 'invest', sourceCompanyKey: focusedCompany.key, targetCompanyKey: target.key, amount },
+        }
+      );
+      setStatusMessage(`Proposal investasi $${formatMoneyCompact(amount, 2)} dikirim ke Board.`);
+      return;
+    }
+
+    if (decisionMode === 'withdraw') {
+      const amount = clamp(focusedCompany.portfolioValue * (decisionAmountPercent / 100), MIN_TRADE_AMOUNT, Math.max(MIN_TRADE_AMOUNT, focusedCompany.portfolioValue));
+      queueDecisionBoardVote(
+        focusedCompany.key,
+        'investasi',
+        `${focusedCompany.name} treasury withdrawal`,
+        `${game.player.name} meminta Board menarik sebagian portofolio investasi untuk menjaga likuiditas.`,
+        {
+          withdrawalValue: amount,
+          decisionAction: { type: 'withdraw', sourceCompanyKey: focusedCompany.key, targetCompanyKey: decisionTargetCompanyKey, amount },
+        }
+      );
+      setStatusMessage(`Proposal withdrawal $${formatMoneyCompact(amount, 2)} dikirim ke Board.`);
+      return;
+    }
+
+    if (decisionMode === 'appoint') {
+      if (!decisionNomineeId) {
+        setStatusMessage('Pilih kandidat eksekutif terlebih dahulu.');
+        return;
+      }
+      const kind: BoardVoteKind = focusedCompany.executives[decisionRole] ? 'penggantian' : 'pengangkatan';
+      queueDecisionBoardVote(
+        focusedCompany.key,
+        kind,
+        `${EXECUTIVE_ROLE_META[decisionRole].title} · ${investorDisplayName(game, decisionNomineeId)}`,
+        `${game.player.name} menominasikan ${investorDisplayName(game, decisionNomineeId)} sebagai ${EXECUTIVE_ROLE_META[decisionRole].title}.`,
+        { decisionAction: { type: 'appoint', companyKey: focusedCompany.key, role: decisionRole, candidateId: decisionNomineeId } }
+      );
+      setStatusMessage('Nomination proposal dikirim ke Board.');
+      return;
+    }
+
+    if (decisionMode === 'dismiss') {
+      if (!focusedCompany.executives[decisionRole]) {
+        setStatusMessage(`Kursi ${EXECUTIVE_ROLE_META[decisionRole].title} saat ini kosong.`);
+        return;
+      }
+      queueDecisionBoardVote(
+        focusedCompany.key,
+        'pemecatan',
+        `Vacate ${EXECUTIVE_ROLE_META[decisionRole].title}`,
+        `${game.player.name} mengusulkan pengosongan kursi ${EXECUTIVE_ROLE_META[decisionRole].title} untuk restrukturisasi.`,
+        { decisionAction: { type: 'dismiss', companyKey: focusedCompany.key, role: decisionRole } }
+      );
+      setStatusMessage('Proposal pemecatan eksekutif dikirim ke Board.');
+      return;
+    }
+
+    if (decisionMode === 'payout-up' || decisionMode === 'payout-down') {
+      queueDecisionBoardVote(
+        focusedCompany.key,
+        'investasi',
+        `${focusedCompany.name} payout policy`,
+        `${game.player.name} mengusulkan perubahan payout policy (${decisionMode === 'payout-up' ? 'lebih agresif' : 'lebih defensif'}).`,
+        {}
+      );
+      setStatusMessage('Proposal perubahan payout policy dikirim ke Board.');
+    }
+  };
+
   const castPlayerBoardVote = (companyKey: CompanyKey, choice: 'yes' | 'no') => {
     if (!game) return;
     const company = game.companies[companyKey];
@@ -1473,7 +1622,7 @@ export function CpuFoundrySim() {
         [current.player.id]: choice,
       };
       const tally = tallyBoardVoteWeights(currentCompany.boardMembers, memberVotes);
-      return {
+      let nextState: GameState = {
         ...current,
         companies: {
           ...current.companies,
@@ -1488,6 +1637,67 @@ export function CpuFoundrySim() {
           },
         },
       };
+      const everyoneVoted = currentCompany.boardMembers.every((member) => Boolean(memberVotes[member.id]));
+      const approved = tally.yesWeight >= tally.noWeight;
+      const decisionAction = currentVote.decisionAction;
+      if (everyoneVoted && approved && decisionAction) {
+        if (decisionAction.type === 'invest') {
+          const corporateInvestorId = getCorporateInvestorId(decisionAction.sourceCompanyKey);
+          const trade = transactShares(nextState, corporateInvestorId, decisionAction.targetCompanyKey, 'buy', decisionAction.amount, 'company');
+          nextState = trade.next;
+        } else if (decisionAction.type === 'withdraw') {
+          const source = nextState.companies[decisionAction.sourceCompanyKey];
+          const holdings = COMPANY_KEYS
+            .filter((key) => key !== decisionAction.sourceCompanyKey)
+            .map((key) => ({ key, shares: source.investors[getCorporateInvestorId(key)] ?? 0 }))
+            .filter((entry) => entry.shares > 0.001)
+            .sort((left, right) => right.shares - left.shares);
+          const highestHolding = holdings[0];
+          if (highestHolding) {
+            const corporateInvestorId = getCorporateInvestorId(decisionAction.sourceCompanyKey);
+            const trade = transactShares(nextState, corporateInvestorId, highestHolding.key, 'sell', decisionAction.amount, 'company');
+            nextState = trade.next;
+          }
+        } else if (decisionAction.type === 'appoint') {
+          const company = nextState.companies[decisionAction.companyKey];
+          nextState = resolveGovernance({
+            ...nextState,
+            companies: {
+              ...nextState.companies,
+              [decisionAction.companyKey]: {
+                ...company,
+                executives: {
+                  ...company.executives,
+                  [decisionAction.role]: createExecutiveRecord(
+                    nextState,
+                    company,
+                    decisionAction.role,
+                    decisionAction.candidateId,
+                    nextState.player.id,
+                    `${nextState.player.name} mengeksekusi hasil voting Board untuk posisi ${EXECUTIVE_ROLE_META[decisionAction.role].title}.`
+                  ),
+                },
+              },
+            },
+          });
+        } else if (decisionAction.type === 'dismiss') {
+          const company = nextState.companies[decisionAction.companyKey];
+          nextState = resolveGovernance({
+            ...nextState,
+            companies: {
+              ...nextState.companies,
+              [decisionAction.companyKey]: {
+                ...company,
+                executives: {
+                  ...company.executives,
+                  [decisionAction.role]: null,
+                },
+              },
+            },
+          });
+        }
+      }
+      return nextState;
     });
     setStatusMessage(choice === 'yes' ? 'Kamu memilih SETUJU.' : 'Kamu memilih TOLAK.');
   };
@@ -2069,6 +2279,89 @@ export function CpuFoundrySim() {
         </div>
       ) : null}
 
+      {isDecisionFrameOpen && focusedCompany && focusedPlayerCanUseDecision ? (
+        <div className={`${styles.screenFrameOverlay} ${styles.statisticsOverlay}`} role="presentation" onClick={() => setIsDecisionFrameOpen(false)}>
+          <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label={`Decision ${focusedCompany.name}`} onClick={(event) => event.stopPropagation()}>
+            <ThinFrameHeader frameName="Decision" subtitle={`${focusedCompany.name} board actions`} onBack={() => setIsDecisionFrameOpen(false)} backLabel="Tutup decision" />
+            <div className={styles.screenFrameBody}>
+              <div className={styles.quickGrid}>
+                {([
+                  { key: 'invest', label: 'Invest' },
+                  { key: 'withdraw', label: 'Withdraw' },
+                  { key: 'appoint', label: 'Nominate Exec' },
+                  { key: 'dismiss', label: 'Dismiss Exec' },
+                  { key: 'payout-up', label: 'Raise Payout' },
+                  { key: 'payout-down', label: 'Lower Payout' },
+                ] as Array<{ key: DecisionMode; label: string }>).map((entry) => (
+                  <button key={entry.key} type="button" className={decisionMode === entry.key ? styles.quickButtonActive : styles.quickButton} onClick={() => setDecisionMode(entry.key)}>
+                    {entry.label}
+                  </button>
+                ))}
+              </div>
+
+              {(decisionMode === 'invest' || decisionMode === 'withdraw') ? (
+                <article className={styles.sliderCard}>
+                  <div className={styles.itemTop}>
+                    <div>
+                      <p className={styles.itemLabel}>Options bar</p>
+                      <h3>{decisionMode === 'invest' ? 'Invest in specific company' : 'Withdraw investment exposure'}</h3>
+                    </div>
+                  </div>
+                  <div className={styles.quickGrid}>
+                    {COMPANY_KEYS.filter((key) => key !== focusedCompany.key && game.companies[key].isEstablished).map((key) => (
+                      <button key={key} type="button" className={decisionTargetCompanyKey === key ? styles.quickButtonActive : styles.quickButton} onClick={() => setDecisionTargetCompanyKey(key)}>
+                        {game.companies[key].name}
+                      </button>
+                    ))}
+                  </div>
+                  <div className={styles.sliderLabels}>
+                    <span>Alokasi proposal {formatNumber(decisionAmountPercent)}%</span>
+                    <span>{decisionMode === 'invest' ? `$${formatMoneyCompact(focusedCompany.cash * decisionAmountPercent / 100, 2)}` : `$${formatMoneyCompact(focusedCompany.portfolioValue * decisionAmountPercent / 100, 2)}`}</span>
+                  </div>
+                  <input className={styles.slider} type="range" min={4} max={40} step={1} value={decisionAmountPercent} onChange={(event) => setDecisionAmountPercent(Number(event.target.value))} aria-label="Persentase nominal decision" />
+                </article>
+              ) : null}
+
+              {(decisionMode === 'appoint' || decisionMode === 'dismiss') ? (
+                <article className={styles.panel}>
+                  <div className={styles.panelBody}>
+                    <div className={styles.quickGrid}>
+                      {EXECUTIVE_ROLES.map((role) => (
+                        <button key={role} type="button" className={decisionRole === role ? styles.quickButtonActive : styles.quickButton} onClick={() => setDecisionRole(role)}>
+                          {EXECUTIVE_ROLE_META[role].title}
+                        </button>
+                      ))}
+                    </div>
+                    {decisionMode === 'appoint' ? (
+                      <div className={styles.quickGrid}>
+                        {focusedExecutiveCandidatePool.map((candidateId) => (
+                          <button key={candidateId} type="button" className={decisionNomineeId === candidateId ? styles.quickButtonActive : styles.quickButton} onClick={() => setDecisionNomineeId(candidateId)}>
+                            {investorDisplayName(game, candidateId)}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className={styles.memoCard}>
+                        <p className={styles.panelTag}>Executive seat</p>
+                        <p>{focusedCompany.executives[decisionRole]?.occupantName ?? `Kursi ${EXECUTIVE_ROLE_META[decisionRole].title} masih kosong.`}</p>
+                      </div>
+                    )}
+                  </div>
+                </article>
+              ) : null}
+
+              <div className={styles.memoCard}>
+                <p className={styles.panelTag}>Policy</p>
+                <p>Semua proposal dari panel Decision langsung memicu Board voting popup dan dikecualikan dari limit voting bulanan.</p>
+              </div>
+              <button type="button" className={styles.primaryButton} onClick={submitDecision}>
+                Submit to Board Voting
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
       {activePlayerBoardVote ? (
         <div className={styles.modalOverlay} role="presentation" onClick={() => {}}>
           <section className={styles.modalCard} role="dialog" aria-modal="true" aria-label="Voting dewan direksi" onClick={(event) => event.stopPropagation()}>
@@ -2337,6 +2630,11 @@ export function CpuFoundrySim() {
                       <button type="button" className={styles.slimActionButton} onClick={() => setIsStatisticsFrameOpen(true)}>
                         Open Statistics
                       </button>
+                      {focusedPlayerCanUseDecision ? (
+                        <button type="button" className={styles.slimActionButton} onClick={() => setIsDecisionFrameOpen(true)}>
+                          Decision
+                        </button>
+                      ) : null}
                     </div>
                     <div className={styles.memoCard}>
                       <p className={styles.panelTag}>{focusedIsSoftwareField ? 'Company vision & tech stack' : 'Memo terbaru'}</p>
