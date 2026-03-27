@@ -388,6 +388,7 @@ export function CpuFoundrySim() {
   const [communityChatDraft, setCommunityChatDraft] = useState('');
   const [communityChatMessages, setCommunityChatMessages] = useState<Record<string, string[]>>({});
   const [appStoreShelf, setAppStoreShelf] = useState<'featured' | 'new' | 'trending'>('featured');
+  const [softwareUpgradeCategory, setSoftwareUpgradeCategory] = useState<'core' | 'scale' | 'appstore'>('core');
   const pausedRef = useRef(false);
   const latestGameRef = useRef<GameState | null>(null);
   const pendingPersistTimeoutRef = useRef<number | null>(null);
@@ -531,6 +532,11 @@ export function CpuFoundrySim() {
             establishedDay: company.establishedDay ?? null,
             appStorePassiveIncomePerDay: company.appStorePassiveIncomePerDay ?? 0,
             appStoreDownloadsPerDay: company.appStoreDownloadsPerDay ?? 0,
+            appStoreProfile: {
+              discovery: company.appStoreProfile?.discovery ?? (company.softwareSpecialization === 'app-store' ? 1.2 : 0.8),
+              infrastructure: company.appStoreProfile?.infrastructure ?? (company.softwareSpecialization === 'app-store' ? 1.25 : 0.85),
+              trust: company.appStoreProfile?.trust ?? (company.softwareSpecialization === 'app-store' ? 1.15 : 0.82),
+            },
           };
           return acc;
         }, {} as Record<CompanyKey, CompanyState>),
@@ -827,14 +833,14 @@ export function CpuFoundrySim() {
       return {
         id: request.id,
         icon,
-        gameName: focusedGameReleaseCards[index % Math.max(1, focusedGameReleaseCards.length)]?.name ?? `${gameCompany.name} Signature`,
+        gameName: `${GAME_NAME_DATASET[Math.floor(seeded() * GAME_NAME_DATASET.length)]?.name ?? 'Partner Game'} ${Math.max(1, gameCompany.releaseCount)}`,
         studioName: gameCompany.name,
-        genre: focusedGameReleaseCards[index % Math.max(1, focusedGameReleaseCards.length)]?.genre ?? 'Game',
+        genre: GAME_NAME_DATASET[Math.floor(seeded() * GAME_NAME_DATASET.length)]?.genre ?? 'Game',
         monthlyDownloads: estimatedDownloads,
         quality: clamp(gameCompany.reputation + gameCompany.marketShare * 0.6, 10, 100),
       };
     });
-  }, [focusedCompany, focusedGameReleaseCards, game]);
+  }, [focusedCompany, game]);
   const visibleAppStoreListings = useMemo(() => {
     if (focusedAppStoreListings.length === 0) return [];
     if (appStoreShelf === 'new') return [...focusedAppStoreListings].sort((left, right) => right.quality - left.quality).slice(0, 6);
@@ -1413,6 +1419,41 @@ export function CpuFoundrySim() {
       });
     });
     setStatusMessage(`${targetCompany.name}: ${upgrade.label} berhasil ditingkatkan.`);
+  };
+
+  const improveAppStoreProfile = (profileKey: 'discovery' | 'infrastructure' | 'trust', companyKey?: CompanyKey) => {
+    const targetCompany = game ? game.companies[companyKey ?? game.player.selectedCompany] : null;
+    if (!game || !targetCompany || targetCompany.field !== 'software' || targetCompany.softwareSpecialization !== 'app-store' || !hasCompanyAuthority(targetCompany, game.player.id, 'technology')) {
+      setStatusMessage('Hanya eksekutif teknologi AppStore yang dapat meningkatkan AppStore specs.');
+      return;
+    }
+    const currentValue = targetCompany.appStoreProfile[profileKey];
+    const cost = Math.round(22 + currentValue * 18);
+    if (targetCompany.research < cost) {
+      setStatusMessage('Research point belum cukup untuk upgrade AppStore specs.');
+      return;
+    }
+    setGame((current) => {
+      if (!current) return current;
+      const resolvedKey = companyKey ?? current.player.selectedCompany;
+      const company = current.companies[resolvedKey];
+      return resolveGovernance({
+        ...current,
+        companies: {
+          ...current.companies,
+          [resolvedKey]: {
+            ...company,
+            research: company.research - cost,
+            appStoreProfile: {
+              ...company.appStoreProfile,
+              [profileKey]: Math.round((company.appStoreProfile[profileKey] + 0.12) * 100) / 100,
+            },
+            appStorePassiveIncomePerDay: company.appStorePassiveIncomePerDay * 1.02,
+          },
+        },
+      });
+    });
+    setStatusMessage(`AppStore spec ${profileKey} berhasil ditingkatkan.`);
   };
 
   const hireTeam = (key: TeamKey, companyKey?: CompanyKey) => {
@@ -3270,87 +3311,66 @@ export function CpuFoundrySim() {
                     </div>
                   ) : focusedIsSoftwareField ? (
                     <div className={styles.panelList}>
-                      <article className={styles.memoCard}>
-                        <p className={styles.panelTag}>CI/CD Optimization Research</p>
-                        <p>Research digunakan untuk mempercepat test automation, release cadence, rollback safety, dan deployment confidence pada aplikasi production.</p>
-                      </article>
-                      {(Object.entries(focusedCompany.upgrades) as [UpgradeKey, UpgradeState][])
-                        .filter(([key]) => key === 'architecture' || key === 'coreDesign' || key === 'cacheStack')
-                        .map(([key, upgrade]) => {
-                          const cost = getUpgradeCost(key, upgrade, focusedCompany);
-                          return (
-                            <article key={key} className={styles.itemCard}>
-                              <div className={styles.itemTop}>
-                                <div>
-                                  <p className={styles.itemLabel}>{upgrade.label}</p>
-                                  <h3>{getDisplayedUpgradeValue(key, upgrade)}</h3>
-                                </div>
-                                <span className={styles.costPill}>{formatNumber(cost)} RP</span>
-                              </div>
-                              <p className={styles.itemDescription}>{upgrade.description}</p>
-                              <button type="button" className={styles.secondaryButton} onClick={() => improveUpgrade(key, focusedCompany.key)} disabled={!focusedCanManageTechnology || focusedCompany.research < cost}>
-                                {!focusedCanManageTechnology ? 'CEO/CTO only' : focusedCompany.research >= cost ? 'Optimize Pipeline' : 'RP kurang'}
-                              </button>
-                            </article>
-                          );
-                        })}
-
-                      <article className={styles.memoCard}>
-                        <p className={styles.panelTag}>Scalability Research</p>
-                        <p>Fokus scaling workload, edge delivery, caching, dan latency budget agar aplikasi tetap responsif saat traffic spike dan ekspansi global.</p>
-                      </article>
-                      {(Object.entries(focusedCompany.upgrades) as [UpgradeKey, UpgradeState][])
-                        .filter(([key]) => key === 'lithography' || key === 'clockSpeed' || key === 'powerEfficiency')
-                        .map(([key, upgrade]) => {
-                          const cost = getUpgradeCost(key, upgrade, focusedCompany);
-                          return (
-                            <article key={key} className={styles.itemCard}>
-                              <div className={styles.itemTop}>
-                                <div>
-                                  <p className={styles.itemLabel}>{upgrade.label}</p>
-                                  <h3>{getDisplayedUpgradeValue(key, upgrade)}</h3>
-                                </div>
-                                <span className={styles.costPill}>{formatNumber(cost)} RP</span>
-                              </div>
-                              <p className={styles.itemDescription}>{upgrade.description}</p>
-                              <button type="button" className={styles.secondaryButton} onClick={() => improveUpgrade(key, focusedCompany.key)} disabled={!focusedCanManageTechnology || focusedCompany.research < cost}>
-                                {!focusedCanManageTechnology ? 'CEO/CTO only' : focusedCompany.research >= cost ? 'Scale Platform' : 'RP kurang'}
-                              </button>
-                            </article>
-                          );
-                        })}
-
-                      <article className={styles.memoCard}>
-                        <p className={styles.panelTag}>UI/UX Refinement Operations</p>
-                        <p>Operasi tim produk mempertahankan quality bar antarmuka, design system consistency, dan feedback loop pengguna tanpa mengubah core mechanic ekonomi.</p>
-                      </article>
-                      {(Object.entries(focusedCompany.teams) as [TeamKey, TeamState][]).map(([key, team]) => {
-                        const cost = getTeamCost(team);
-                        const isAllowed =
-                          (
-                            key === 'researchers'
-                              ? focusedCanManageTechnology
-                              : key === 'marketing'
-                                ? Boolean(focusedCompany && game && hasCompanyAuthority(focusedCompany, game.player.id, 'marketing'))
-                                : Boolean(focusedCompany && game && hasCompanyAuthority(focusedCompany, game.player.id, 'operations'))
-                          )
-                          && focusedCompany.cash >= cost;
+                      <div className={styles.rankingFilterRow}>
+                        <button type="button" className={softwareUpgradeCategory === 'core' ? styles.rankingFilterButtonActive : styles.rankingFilterButton} onClick={() => setSoftwareUpgradeCategory('core')}>
+                          Core
+                        </button>
+                        <button type="button" className={softwareUpgradeCategory === 'scale' ? styles.rankingFilterButtonActive : styles.rankingFilterButton} onClick={() => setSoftwareUpgradeCategory('scale')}>
+                          Scale
+                        </button>
+                        {focusedCompany.softwareSpecialization === 'app-store' ? (
+                          <button type="button" className={softwareUpgradeCategory === 'appstore' ? styles.rankingFilterButtonActive : styles.rankingFilterButton} onClick={() => setSoftwareUpgradeCategory('appstore')}>
+                            AppStore
+                          </button>
+                        ) : null}
+                      </div>
+                      {(softwareUpgradeCategory === 'core'
+                        ? (Object.entries(focusedCompany.upgrades) as [UpgradeKey, UpgradeState][])
+                          .filter(([key]) => key === 'architecture' || key === 'coreDesign' || key === 'cacheStack')
+                        : softwareUpgradeCategory === 'scale'
+                          ? (Object.entries(focusedCompany.upgrades) as [UpgradeKey, UpgradeState][])
+                            .filter(([key]) => key === 'lithography' || key === 'clockSpeed' || key === 'powerEfficiency')
+                          : []) .map(([key, upgrade]) => {
+                        const cost = getUpgradeCost(key, upgrade, focusedCompany);
                         return (
                           <article key={key} className={styles.itemCard}>
                             <div className={styles.itemTop}>
                               <div>
-                                <p className={styles.itemLabel}>{team.label}</p>
-                                <h3>{formatNumber(team.count)} aktif</h3>
+                                <p className={styles.itemLabel}>{upgrade.label}</p>
+                                <h3>{getDisplayedUpgradeValue(key, upgrade)}</h3>
                               </div>
-                              <span className={styles.costPill}>{formatCurrencyCompact(cost, 2)}</span>
+                              <span className={styles.costPill}>{formatNumber(cost)} RP</span>
                             </div>
-                            <p className={styles.itemDescription}>{team.description}</p>
-                            <button type="button" className={styles.secondaryButton} onClick={() => hireTeam(key, focusedCompany.key)} disabled={!isAllowed}>
-                              {isAllowed ? 'Scale Software Team' : 'Syarat belum terpenuhi'}
+                            <p className={styles.itemDescription}>{upgrade.description}</p>
+                            <button type="button" className={styles.secondaryButton} onClick={() => improveUpgrade(key, focusedCompany.key)} disabled={!focusedCanManageTechnology || focusedCompany.research < cost}>
+                              {!focusedCanManageTechnology ? 'CEO/CTO only' : focusedCompany.research >= cost ? 'Upgrade' : 'RP kurang'}
                             </button>
                           </article>
                         );
                       })}
+                      {softwareUpgradeCategory === 'appstore' && focusedCompany.softwareSpecialization === 'app-store' ? (
+                        <>
+                          {(['discovery', 'infrastructure', 'trust'] as const).map((specKey) => {
+                            const value = focusedCompany.appStoreProfile[specKey];
+                            const cost = Math.round(22 + value * 18);
+                            return (
+                              <article key={specKey} className={styles.itemCard}>
+                                <div className={styles.itemTop}>
+                                  <div>
+                                    <p className={styles.itemLabel}>AppStore Spec</p>
+                                    <h3>{specKey}</h3>
+                                  </div>
+                                  <span className={styles.costPill}>{formatNumber(cost)} RP</span>
+                                </div>
+                                <p className={styles.itemDescription}>Level {formatNumber(value, 2)} · Mempengaruhi download & popularitas partner game.</p>
+                                <button type="button" className={styles.secondaryButton} onClick={() => improveAppStoreProfile(specKey, focusedCompany.key)} disabled={!focusedCanManageTechnology || focusedCompany.research < cost}>
+                                  {!focusedCanManageTechnology ? 'CEO/CTO only' : 'Upgrade AppStore'}
+                                </button>
+                              </article>
+                            );
+                          })}
+                        </>
+                      ) : null}
                     </div>
                   ) : (
                     <div className={styles.panelList}>
@@ -3581,7 +3601,7 @@ export function CpuFoundrySim() {
                           Trending
                         </button>
                       </div>
-                      <div className={styles.panelList}>
+                      <div className={`${styles.panelList} ${styles.appStoreShelfGrid}`}>
                         {visibleAppStoreListings.length > 0 ? visibleAppStoreListings.map((listing) => (
                           <article key={listing.id} className={styles.itemCard}>
                             <div className={styles.itemTop}>

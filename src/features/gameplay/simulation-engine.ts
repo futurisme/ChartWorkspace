@@ -101,6 +101,12 @@ export type AppStoreLicenseRequest = {
   note: string;
 };
 
+export type AppStoreProfile = {
+  discovery: number;
+  infrastructure: number;
+  trust: number;
+};
+
 export type CompanyState = {
   key: CompanyKey;
   field: CompanyField;
@@ -153,6 +159,7 @@ export type CompanyState = {
   establishedDay: number | null;
   appStorePassiveIncomePerDay: number;
   appStoreDownloadsPerDay: number;
+  appStoreProfile: AppStoreProfile;
 };
 
 export type PlayerProfile = {
@@ -1848,6 +1855,11 @@ export function createCompany(config: {
       establishedDay: 0,
       appStorePassiveIncomePerDay: 0,
       appStoreDownloadsPerDay: 0,
+      appStoreProfile: {
+        discovery: config.field === 'software' && config.softwareSpecialization === 'app-store' ? 1.2 : 0.8,
+        infrastructure: config.field === 'software' && config.softwareSpecialization === 'app-store' ? 1.25 : 0.85,
+        trust: config.field === 'software' && config.softwareSpecialization === 'app-store' ? 1.15 : 0.82,
+      },
     } satisfies CompanyState,
   };
 }
@@ -3340,6 +3352,9 @@ export function simulateTick(current: GameState) {
               + governedCompany.reputation * 11
               + governedCompany.releaseCount * 16
               + store.reputation * 5
+              + store.appStoreProfile.discovery * 34
+              + store.appStoreProfile.infrastructure * 29
+              + store.appStoreProfile.trust * 27
           );
           const downloadsPerDay = monthlyDownloads / 30;
           const pricePerDownload = clamp(0.12 + governedCompany.reputation / 850, 0.08, 0.32);
