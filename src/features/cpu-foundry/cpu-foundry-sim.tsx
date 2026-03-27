@@ -384,6 +384,7 @@ export function CpuFoundrySim() {
   const [isGameLicenseFrameOpen, setIsGameLicenseFrameOpen] = useState(false);
   const [companyDetailBackTarget, setCompanyDetailBackTarget] = useState<'game' | 'companies' | 'investor' | 'news' | 'forbes'>('companies');
   const [selectedGameReleaseId, setSelectedGameReleaseId] = useState<string | null>(null);
+  const [appStoreSelectedRelease, setAppStoreSelectedRelease] = useState<GameReleaseCard | null>(null);
   const [selectedGameCommunityId, setSelectedGameCommunityId] = useState<string | null>(null);
   const [communityChatDraft, setCommunityChatDraft] = useState('');
   const [communityChatMessages, setCommunityChatMessages] = useState<Record<string, string[]>>({});
@@ -782,8 +783,8 @@ export function CpuFoundrySim() {
     });
   }, [focusedCompany, game]);
   const selectedGameRelease = useMemo(
-    () => focusedGameReleaseCards.find((entry) => entry.id === selectedGameReleaseId) ?? null,
-    [focusedGameReleaseCards, selectedGameReleaseId]
+    () => focusedGameReleaseCards.find((entry) => entry.id === selectedGameReleaseId) ?? appStoreSelectedRelease ?? null,
+    [appStoreSelectedRelease, focusedGameReleaseCards, selectedGameReleaseId]
   );
   const nonEntrepreneurNpcPool = useMemo(() => {
     if (!game) return [];
@@ -829,15 +830,25 @@ export function CpuFoundrySim() {
       const gameCompany = game.companies[request.gameCompanyKey];
       const seeded = createSeededRandom(`${focusedCompany.key}-appstore-${request.id}-${index}`);
       const icon = APPSTORE_ICON_SET[Math.floor(seeded() * APPSTORE_ICON_SET.length)] ?? '🎮';
+      const datasetEntry = GAME_NAME_DATASET[Math.floor(seeded() * GAME_NAME_DATASET.length)] ?? GAME_NAME_DATASET[0];
       const estimatedDownloads = Math.max(120, gameCompany.marketShare * 140 + gameCompany.reputation * 110 + gameCompany.releaseCount * 90);
+      const releaseCard: GameReleaseCard = {
+        id: `${request.id}-partner-game`,
+        name: `${datasetEntry.name} ${Math.max(1, gameCompany.releaseCount)}`,
+        genre: datasetEntry.genre,
+        releaseDate: formatDateFromDays(Math.max(0, game.elapsedDays - index * 5)),
+        popularity: Math.round(clamp((gameCompany.reputation / 100) * 74 + seeded() * 24, 8, 99) * 10) / 10,
+        communities: [`${gameCompany.name} Players`, `${datasetEntry.theme} Fans`, `${datasetEntry.era} Club`],
+      };
       return {
         id: request.id,
         icon,
-        gameName: `${GAME_NAME_DATASET[Math.floor(seeded() * GAME_NAME_DATASET.length)]?.name ?? 'Partner Game'} ${Math.max(1, gameCompany.releaseCount)}`,
+        gameName: releaseCard.name,
         studioName: gameCompany.name,
-        genre: GAME_NAME_DATASET[Math.floor(seeded() * GAME_NAME_DATASET.length)]?.genre ?? 'Game',
+        genre: releaseCard.genre,
         monthlyDownloads: estimatedDownloads,
         quality: clamp(gameCompany.reputation + gameCompany.marketShare * 0.6, 10, 100),
+        releaseCard,
       };
     });
   }, [focusedCompany, game]);
@@ -849,6 +860,7 @@ export function CpuFoundrySim() {
   }, [appStoreShelf, focusedAppStoreListings]);
   useEffect(() => {
     setSelectedGameReleaseId(null);
+    setAppStoreSelectedRelease(null);
     setSelectedGameCommunityId(null);
     setCommunityChatDraft('');
   }, [focusedCompanyKey]);
@@ -3504,9 +3516,9 @@ export function CpuFoundrySim() {
       ) : null}
 
       {selectedGameRelease && focusedCompany ? (
-        <div className={styles.screenFrameOverlay} role="presentation" onClick={() => setSelectedGameReleaseId(null)}>
-          <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label={`About the ${focusedCompany.field === 'software' ? 'Product' : 'Game'} ${selectedGameRelease.name}`} onClick={(event) => event.stopPropagation()}>
-            <ThinFrameHeader frameName={focusedCompany.field === 'software' ? 'About the Product' : 'About the Game'} subtitle={selectedGameRelease.name} onBack={() => setSelectedGameReleaseId(null)} backLabel="Back from about the game" />
+        <div className={styles.screenFrameOverlay} role="presentation" onClick={() => { setSelectedGameReleaseId(null); setAppStoreSelectedRelease(null); }}>
+          <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label={`About the ${appStoreSelectedRelease ? 'Game' : focusedCompany.field === 'software' ? 'Product' : 'Game'} ${selectedGameRelease.name}`} onClick={(event) => event.stopPropagation()}>
+            <ThinFrameHeader frameName={appStoreSelectedRelease ? 'About the Game' : focusedCompany.field === 'software' ? 'About the Product' : 'About the Game'} subtitle={selectedGameRelease.name} onBack={() => { setSelectedGameReleaseId(null); setAppStoreSelectedRelease(null); }} backLabel="Back from about the game" />
             <div className={styles.screenFrameBody}>
               <div className={styles.memoCard}>
                 <p className={styles.panelTag}>Brief Specifications</p>
@@ -3603,14 +3615,23 @@ export function CpuFoundrySim() {
                       </div>
                       <div className={`${styles.panelList} ${styles.appStoreShelfGrid}`}>
                         {visibleAppStoreListings.length > 0 ? visibleAppStoreListings.map((listing) => (
-                          <article key={listing.id} className={styles.itemCard}>
-                            <div className={styles.itemTop}>
-                              <div className={styles.appIcon}>{listing.icon}</div>
-                              <span className={styles.costPill}>{formatNumber(listing.monthlyDownloads, 0)} dl/mo</span>
-                            </div>
-                            <h3>{listing.gameName}</h3>
-                            <p className={styles.itemDescription}>{listing.studioName} · {listing.genre} · Quality {formatNumber(listing.quality, 1)}%</p>
-                          </article>
+                          <button
+                            key={listing.id}
+                            type="button"
+                            className={styles.companyCardButton}
+                            title={`${listing.gameName} · ${listing.studioName}`}
+                            onClick={() => {
+                              setAppStoreSelectedRelease(listing.releaseCard);
+                              setSelectedGameReleaseId(listing.releaseCard.id);
+                            }}
+                          >
+                            <article className={styles.itemCard}>
+                              <div className={styles.itemTop}>
+                                <div className={styles.appIcon}>{listing.icon}</div>
+                                <span className={styles.costPill}>{formatNumber(listing.monthlyDownloads, 0)} dl/mo</span>
+                              </div>
+                            </article>
+                          </button>
                         )) : (
                           <article className={styles.memoCard}>
                             <p className={styles.panelTag}>AppStore Engineering</p>

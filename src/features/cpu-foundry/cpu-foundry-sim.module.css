@@ -371,8 +371,11 @@
 
 .appStoreShelfGrid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  max-height: 46vh;
+  height: 42vh;
+  max-height: 42vh;
   overflow-y: auto;
+  overflow-x: hidden;
+  align-content: start;
   padding-right: 4px;
 }
 
