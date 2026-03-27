@@ -239,6 +239,7 @@ const GAME_NAME_DATASET: Array<{ name: string; genre: string; era: string; theme
   { name: 'Fable Circuit', genre: 'Co-op Puzzle', era: 'Timeless', theme: 'Whimsical Tech' },
   { name: 'Orbital Cricket League', genre: 'Sports Sim', era: 'Future', theme: 'Interplanetary Tournament' },
 ];
+const APPSTORE_ICON_SET = ['🎮', '🕹️', '🏎️', '⚔️', '🧩', '🚀', '🏰', '🌌', '🐉', '🤖', '🏟️', '🎯'];
 
 const getSoftwareSpecializationLabel = (value?: SoftwareSpecialization | null) => (
   SOFTWARE_SPECIALIZATIONS.find((entry) => entry.key === value)?.label ?? 'Utility Apps'
@@ -386,6 +387,7 @@ export function CpuFoundrySim() {
   const [selectedGameCommunityId, setSelectedGameCommunityId] = useState<string | null>(null);
   const [communityChatDraft, setCommunityChatDraft] = useState('');
   const [communityChatMessages, setCommunityChatMessages] = useState<Record<string, string[]>>({});
+  const [appStoreShelf, setAppStoreShelf] = useState<'featured' | 'new' | 'trending'>('featured');
   const pausedRef = useRef(false);
   const latestGameRef = useRef<GameState | null>(null);
   const pendingPersistTimeoutRef = useRef<number | null>(null);
@@ -812,6 +814,33 @@ export function CpuFoundrySim() {
     () => selectedGameCommunities.find((entry) => entry.id === selectedGameCommunityId) ?? null,
     [selectedGameCommunities, selectedGameCommunityId]
   );
+  const focusedAppStoreListings = useMemo(() => {
+    if (!game || !focusedCompany || focusedCompany.field !== 'software' || focusedCompany.softwareSpecialization !== 'app-store') return [];
+    const approved = game.appStoreLicenseRequests
+      .filter((request) => request.softwareCompanyKey === focusedCompany.key && request.status === 'approved')
+      .sort((left, right) => (right.decisionDay ?? 0) - (left.decisionDay ?? 0));
+    return approved.map((request, index) => {
+      const gameCompany = game.companies[request.gameCompanyKey];
+      const seeded = createSeededRandom(`${focusedCompany.key}-appstore-${request.id}-${index}`);
+      const icon = APPSTORE_ICON_SET[Math.floor(seeded() * APPSTORE_ICON_SET.length)] ?? '🎮';
+      const estimatedDownloads = Math.max(120, gameCompany.marketShare * 140 + gameCompany.reputation * 110 + gameCompany.releaseCount * 90);
+      return {
+        id: request.id,
+        icon,
+        gameName: focusedGameReleaseCards[index % Math.max(1, focusedGameReleaseCards.length)]?.name ?? `${gameCompany.name} Signature`,
+        studioName: gameCompany.name,
+        genre: focusedGameReleaseCards[index % Math.max(1, focusedGameReleaseCards.length)]?.genre ?? 'Game',
+        monthlyDownloads: estimatedDownloads,
+        quality: clamp(gameCompany.reputation + gameCompany.marketShare * 0.6, 10, 100),
+      };
+    });
+  }, [focusedCompany, focusedGameReleaseCards, game]);
+  const visibleAppStoreListings = useMemo(() => {
+    if (focusedAppStoreListings.length === 0) return [];
+    if (appStoreShelf === 'new') return [...focusedAppStoreListings].sort((left, right) => right.quality - left.quality).slice(0, 6);
+    if (appStoreShelf === 'trending') return [...focusedAppStoreListings].sort((left, right) => right.monthlyDownloads - left.monthlyDownloads).slice(0, 6);
+    return focusedAppStoreListings.slice(0, 6);
+  }, [appStoreShelf, focusedAppStoreListings]);
   useEffect(() => {
     setSelectedGameReleaseId(null);
     setSelectedGameCommunityId(null);
@@ -3539,31 +3568,64 @@ export function CpuFoundrySim() {
                   <span>{communityPanelOpen.social ? 'Tutup' : 'Buka'}</span>
                 </button>
                 {communityPanelOpen.social ? (
-                  <div className={styles.panelBody}>
-                    <div className={styles.memoCard}>
-                      <p className={styles.panelTag}>Discord-style container · #general</p>
-                      {[...(selectedGameCommunity.messages ?? []), ...(communityChatMessages[selectedGameCommunity.id] ?? [])].map((message, index) => (
-                        <p key={`${message}-${index}`} className={styles.kv}>• {message}</p>
-                      ))}
+                  focusedCompany?.field === 'software' && focusedCompany.softwareSpecialization === 'app-store' ? (
+                    <div className={styles.panelBody}>
+                      <div className={styles.rankingFilterRow}>
+                        <button type="button" className={appStoreShelf === 'featured' ? styles.rankingFilterButtonActive : styles.rankingFilterButton} onClick={() => setAppStoreShelf('featured')}>
+                          Featured
+                        </button>
+                        <button type="button" className={appStoreShelf === 'new' ? styles.rankingFilterButtonActive : styles.rankingFilterButton} onClick={() => setAppStoreShelf('new')}>
+                          New
+                        </button>
+                        <button type="button" className={appStoreShelf === 'trending' ? styles.rankingFilterButtonActive : styles.rankingFilterButton} onClick={() => setAppStoreShelf('trending')}>
+                          Trending
+                        </button>
+                      </div>
+                      <div className={styles.panelList}>
+                        {visibleAppStoreListings.length > 0 ? visibleAppStoreListings.map((listing) => (
+                          <article key={listing.id} className={styles.itemCard}>
+                            <div className={styles.itemTop}>
+                              <div className={styles.appIcon}>{listing.icon}</div>
+                              <span className={styles.costPill}>{formatNumber(listing.monthlyDownloads, 0)} dl/mo</span>
+                            </div>
+                            <h3>{listing.gameName}</h3>
+                            <p className={styles.itemDescription}>{listing.studioName} · {listing.genre} · Quality {formatNumber(listing.quality, 1)}%</p>
+                          </article>
+                        )) : (
+                          <article className={styles.memoCard}>
+                            <p className={styles.panelTag}>AppStore Engineering</p>
+                            <p>Belum ada game berlisensi pada AppStore ini.</p>
+                          </article>
+                        )}
+                      </div>
                     </div>
-                    <div className={styles.actionRow}>
-                      <input className={styles.input} value={communityChatDraft} onChange={(event) => setCommunityChatDraft(event.target.value)} placeholder="Kirim pesan ke #general" />
-                      <button
-                        type="button"
-                        className={styles.secondaryButton}
-                        onClick={() => {
-                          if (!communityChatDraft.trim()) return;
-                          setCommunityChatMessages((current) => ({
-                            ...current,
-                            [selectedGameCommunity.id]: [...(current[selectedGameCommunity.id] ?? []), `${game?.player.name ?? 'Player'}: ${communityChatDraft.trim()}`],
-                          }));
-                          setCommunityChatDraft('');
-                        }}
-                      >
-                        Send
-                      </button>
+                  ) : (
+                    <div className={styles.panelBody}>
+                      <div className={styles.memoCard}>
+                        <p className={styles.panelTag}>Discord-style container · #general</p>
+                        {[...(selectedGameCommunity.messages ?? []), ...(communityChatMessages[selectedGameCommunity.id] ?? [])].map((message, index) => (
+                          <p key={`${message}-${index}`} className={styles.kv}>• {message}</p>
+                        ))}
+                      </div>
+                      <div className={styles.actionRow}>
+                        <input className={styles.input} value={communityChatDraft} onChange={(event) => setCommunityChatDraft(event.target.value)} placeholder="Kirim pesan ke #general" />
+                        <button
+                          type="button"
+                          className={styles.secondaryButton}
+                          onClick={() => {
+                            if (!communityChatDraft.trim()) return;
+                            setCommunityChatMessages((current) => ({
+                              ...current,
+                              [selectedGameCommunity.id]: [...(current[selectedGameCommunity.id] ?? []), `${game?.player.name ?? 'Player'}: ${communityChatDraft.trim()}`],
+                            }));
+                            setCommunityChatDraft('');
+                          }}
+                        >
+                          Send
+                        </button>
+                      </div>
                     </div>
-                  </div>
+                  )
                 ) : null}
               </section>
             </div>

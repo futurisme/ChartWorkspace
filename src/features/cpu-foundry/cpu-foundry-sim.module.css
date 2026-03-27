@@ -358,6 +358,17 @@
   color: #0f172a;
 }
 
+.appIcon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  font-size: 1.1rem;
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(99, 102, 241, 0.24));
+  border: 1px solid rgba(99, 102, 241, 0.22);
+}
+
 .infoRow,
 .infoRowCompact {
   grid-template-columns: repeat(2, minmax(0, 1fr));
