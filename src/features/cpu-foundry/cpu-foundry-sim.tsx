@@ -20,6 +20,7 @@ import type {
   BoardVoteKind,
   BoardVoteState,
   BoardDecisionAction,
+  AppStoreLicenseRequest,
   CompanyExecutive,
   ShareListing,
   CompanyState,
@@ -188,7 +189,9 @@ const {
   mapProfileCompanyTypeToField,
   investInCommunityPlan,
   changeCompanyShareSheetTotal,
-  MAX_ACTIVE_COMPANIES
+  MAX_ACTIVE_COMPANIES,
+  requestAppStoreLicense,
+  decideAppStoreLicense
 } = Engine;
 
 const STORAGE_PERSIST_INTERVAL_MS = 5000;
@@ -356,6 +359,7 @@ export function CpuFoundrySim() {
   const [decisionRole, setDecisionRole] = useState<ExecutiveRole>('cto');
   const [decisionNomineeId, setDecisionNomineeId] = useState('');
   const [decisionAmountPercent, setDecisionAmountPercent] = useState(8);
+  const [isLicenseDeskOpen, setIsLicenseDeskOpen] = useState(true);
   const [companyDetailBackTarget, setCompanyDetailBackTarget] = useState<'game' | 'companies' | 'investor' | 'news' | 'forbes'>('companies');
   const [selectedGameReleaseId, setSelectedGameReleaseId] = useState<string | null>(null);
   const [selectedGameCommunityId, setSelectedGameCommunityId] = useState<string | null>(null);
@@ -502,6 +506,8 @@ export function CpuFoundrySim() {
             }),
             isEstablished: company.isEstablished ?? false,
             establishedDay: company.establishedDay ?? null,
+            appStorePassiveIncomePerDay: company.appStorePassiveIncomePerDay ?? 0,
+            appStoreDownloadsPerDay: company.appStoreDownloadsPerDay ?? 0,
           };
           return acc;
         }, {} as Record<CompanyKey, CompanyState>),
@@ -542,6 +548,18 @@ export function CpuFoundrySim() {
               targetCapital: Number.isFinite(plan.targetCapital) ? plan.targetCapital : 0,
               dueDay: Number.isFinite(plan.dueDay) ? plan.dueDay : 0,
               startDay: Number.isFinite(plan.startDay) ? plan.startDay : 0,
+            }))
+          : [],
+        appStoreLicenseRequests: Array.isArray((parsed as GameState).appStoreLicenseRequests)
+          ? ((parsed as GameState).appStoreLicenseRequests as AppStoreLicenseRequest[])
+            .filter((request) => Boolean(request?.id && request.gameCompanyKey && request.softwareCompanyKey))
+            .map((request) => ({
+              ...request,
+              status: request.status === 'approved' || request.status === 'rejected' ? request.status : 'pending',
+              decisionDay: request.decisionDay ?? null,
+              revenueShare: clamp(request.revenueShare ?? 0.2, 0.1, 0.36),
+              monthlyDownloads: Math.max(0, request.monthlyDownloads ?? 0),
+              note: request.note ?? '',
             }))
           : [],
         npcs: parsed.npcs.map((npc) => ({
@@ -1022,12 +1040,46 @@ export function CpuFoundrySim() {
     () => (focusedCompany && game ? focusedCompany.shareListings.find((listing) => listing.sellerId === game.player.id) ?? null : null),
     [focusedCompany, game]
   );
+  const playerOwnedAppStoreCompanies = useMemo(
+    () => (
+      game
+        ? COMPANY_KEYS
+          .map((key) => game.companies[key])
+          .filter((company) => company.isEstablished && company.field === 'software' && company.softwareSpecialization === 'app-store' && company.ceoId === game.player.id)
+        : []
+    ),
+    [game]
+  );
+  const pendingPlayerLicenseRequests = useMemo(
+    () => (
+      game
+        ? game.appStoreLicenseRequests
+          .filter((request) => request.status === 'pending' && playerOwnedAppStoreCompanies.some((company) => company.key === request.softwareCompanyKey))
+          .sort((left, right) => left.requestedDay - right.requestedDay)
+        : []
+    ),
+    [game, playerOwnedAppStoreCompanies]
+  );
+  const availableAppStoreCompanies = useMemo(
+    () => (game
+      ? COMPANY_KEYS
+        .map((key) => game.companies[key])
+        .filter((company) => company.isEstablished && company.field === 'software' && company.softwareSpecialization === 'app-store')
+      : []),
+    [game]
+  );
 
   useEffect(() => {
     if (!focusedCompany) return;
     const fallbackTarget = COMPANY_KEYS.find((key) => key !== focusedCompany.key && game?.companies[key].isEstablished) ?? focusedCompany.key;
     setDecisionTargetCompanyKey(fallbackTarget);
   }, [focusedCompany, game]);
+
+  useEffect(() => {
+    if (pendingPlayerLicenseRequests.length > 0) {
+      setIsLicenseDeskOpen(true);
+    }
+  }, [pendingPlayerLicenseRequests.length]);
 
   const switchCompany = (company: CompanyKey) => {
     if (!game) return;
@@ -1464,6 +1516,39 @@ export function CpuFoundrySim() {
       });
     });
     setStatusMessage(direction === 'up' ? 'Payout policy dinaikkan sedikit.' : 'Payout policy dibuat lebih defensif.');
+  };
+
+  const submitGameLicenseRequest = (gameCompanyKey: CompanyKey, softwareCompanyKey: CompanyKey) => {
+    if (!game) return;
+    const source = game.companies[gameCompanyKey];
+    if (!source.isEstablished || source.field !== 'game' || source.ceoId !== game.player.id) {
+      setStatusMessage('Hanya CEO perusahaan game yang dapat mengajukan lisensi App Store.');
+      return;
+    }
+    const next = requestAppStoreLicense(
+      game,
+      game.player.id,
+      gameCompanyKey,
+      softwareCompanyKey,
+      `${game.player.name} mengajukan lisensi distribusi App Store untuk passive income berbasis download.`
+    );
+    if (next === game) {
+      setStatusMessage('Pengajuan lisensi gagal atau sudah ada request aktif.');
+      return;
+    }
+    setGame(next);
+    setStatusMessage('Pengajuan lisensi App Store dikirim.');
+  };
+
+  const processPlayerLicenseRequest = (requestId: string, decision: 'approved' | 'rejected') => {
+    if (!game) return;
+    const next = decideAppStoreLicense(game, requestId, game.player.id, decision);
+    if (next === game) {
+      setStatusMessage('Keputusan lisensi gagal diproses.');
+      return;
+    }
+    setGame(next);
+    setStatusMessage(decision === 'approved' ? 'Lisensi disetujui.' : 'Lisensi ditolak.');
   };
 
   const queueDecisionBoardVote = (
@@ -2362,6 +2447,46 @@ export function CpuFoundrySim() {
         </div>
       ) : null}
 
+      {isLicenseDeskOpen && pendingPlayerLicenseRequests.length > 0 && game ? (
+        <div className={styles.modalOverlay} role="presentation">
+          <section className={styles.modalCard} role="dialog" aria-modal="true" aria-label="AppStore license desk" onClick={(event) => event.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <div>
+                <p className={styles.panelTag}>License & Permission</p>
+                <h2>{game.companies[pendingPlayerLicenseRequests[0].softwareCompanyKey].name} AppStore</h2>
+              </div>
+            </div>
+            <div className={styles.modalBody}>
+              <div className={styles.memoCard}>
+                <p className={styles.panelTag}>Pemohon</p>
+                <p>{game.companies[pendingPlayerLicenseRequests[0].gameCompanyKey].name} meminta izin distribusi game di AppStore kamu.</p>
+              </div>
+              <div className={styles.infoRow}>
+                <div>
+                  <span>Revenue share store</span>
+                  <strong>{formatNumber(pendingPlayerLicenseRequests[0].revenueShare * 100, 1)}%</strong>
+                </div>
+                <div>
+                  <span>Requested day</span>
+                  <strong>{formatDateFromDays(pendingPlayerLicenseRequests[0].requestedDay)}</strong>
+                </div>
+              </div>
+              <div className={styles.actionRow}>
+                <button type="button" className={styles.secondaryButton} onClick={() => processPlayerLicenseRequest(pendingPlayerLicenseRequests[0].id, 'approved')}>
+                  Approve License
+                </button>
+                <button type="button" className={styles.ghostButton} onClick={() => processPlayerLicenseRequest(pendingPlayerLicenseRequests[0].id, 'rejected')}>
+                  Reject
+                </button>
+                <button type="button" className={styles.quickButton} onClick={() => setIsLicenseDeskOpen(false)}>
+                  Close desk
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
       {activePlayerBoardVote ? (
         <div className={styles.modalOverlay} role="presentation" onClick={() => {}}>
           <section className={styles.modalCard} role="dialog" aria-modal="true" aria-label="Voting dewan direksi" onClick={(event) => event.stopPropagation()}>
@@ -2601,6 +2726,12 @@ export function CpuFoundrySim() {
                         <span>Cash/hari</span>
                         <strong>$ {formatMoneyCompact(focusedCompany.revenuePerDay, 2)}</strong>
                       </div>
+                      {focusedCompany.field === 'game' ? (
+                        <div>
+                          <span>AppStore passive/day</span>
+                          <strong>$ {formatMoneyCompact(focusedCompany.appStorePassiveIncomePerDay, 2)} · {formatNumber(focusedCompany.appStoreDownloadsPerDay, 1)} dl/day</strong>
+                        </div>
+                      ) : null}
                       <div>
                         <span>Harga saham</span>
                         <strong>{formatCurrencyCompact(getSharePrice(focusedCompany), 2)}</strong>
@@ -2633,6 +2764,15 @@ export function CpuFoundrySim() {
                       {focusedPlayerCanUseDecision ? (
                         <button type="button" className={styles.slimActionButton} onClick={() => setIsDecisionFrameOpen(true)}>
                           Decision
+                        </button>
+                      ) : null}
+                      {focusedCompany.field === 'game' && focusedPlayerIsCeo && availableAppStoreCompanies.length > 0 ? (
+                        <button
+                          type="button"
+                          className={styles.slimActionButton}
+                          onClick={() => submitGameLicenseRequest(focusedCompany.key, availableAppStoreCompanies[0].key)}
+                        >
+                          Request AppStore License
                         </button>
                       ) : null}
                     </div>

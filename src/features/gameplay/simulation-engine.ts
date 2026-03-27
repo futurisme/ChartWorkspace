@@ -86,6 +86,21 @@ export type ShareListing = {
   note: string;
 };
 
+export type AppStoreLicenseStatus = 'pending' | 'approved' | 'rejected';
+
+export type AppStoreLicenseRequest = {
+  id: string;
+  gameCompanyKey: CompanyKey;
+  softwareCompanyKey: CompanyKey;
+  requesterId: string;
+  requestedDay: number;
+  status: AppStoreLicenseStatus;
+  decisionDay: number | null;
+  revenueShare: number;
+  monthlyDownloads: number;
+  note: string;
+};
+
 export type CompanyState = {
   key: CompanyKey;
   field: CompanyField;
@@ -136,6 +151,8 @@ export type CompanyState = {
   boardVoteCountInWindow: number;
   isEstablished: boolean;
   establishedDay: number | null;
+  appStorePassiveIncomePerDay: number;
+  appStoreDownloadsPerDay: number;
 };
 
 export type PlayerProfile = {
@@ -172,6 +189,7 @@ export type GameState = {
   companies: Record<CompanyKey, CompanyState>;
   plans: Record<CompanyKey, CompanyEstablishmentPlan>;
   communityPlans: CommunityCompanyPlan[];
+  appStoreLicenseRequests: AppStoreLicenseRequest[];
   npcs: NpcInvestor[];
   activityFeed: string[];
 };
@@ -1828,6 +1846,8 @@ export function createCompany(config: {
       boardVoteCountInWindow: 0,
       isEstablished: true,
       establishedDay: 0,
+      appStorePassiveIncomePerDay: 0,
+      appStoreDownloadsPerDay: 0,
     } satisfies CompanyState,
   };
 }
@@ -2265,6 +2285,7 @@ export function createInitialGameState(profile: ProfileDraft): GameState {
     companies,
     plans,
     communityPlans: [],
+    appStoreLicenseRequests: [],
     npcs,
     activityFeed: [
       `01/01/00: Profil ${profile.name.trim() || 'Player'} dibuat dengan modal awal $${formatMoneyCompact(PLAYER_STARTING_CASH)}.`,
@@ -2577,6 +2598,83 @@ export function mapProfileCompanyTypeToField(companyType: 'cpu' | 'game' | 'soft
   if (companyType === 'game') return 'game';
   if (companyType === 'software') return 'software';
   return 'semiconductor';
+}
+
+export function getActiveAppStoreCompanies(game: GameState) {
+  return (Object.values(game.companies) as CompanyState[])
+    .filter((company) => company.isEstablished && company.field === 'software' && company.softwareSpecialization === 'app-store');
+}
+
+export function requestAppStoreLicense(
+  game: GameState,
+  requesterId: string,
+  gameCompanyKey: CompanyKey,
+  softwareCompanyKey: CompanyKey,
+  note: string
+) {
+  const gameCompany = game.companies[gameCompanyKey];
+  const softwareCompany = game.companies[softwareCompanyKey];
+  if (!gameCompany.isEstablished || !softwareCompany.isEstablished) return game;
+  if (gameCompany.field !== 'game') return game;
+  if (softwareCompany.field !== 'software' || softwareCompany.softwareSpecialization !== 'app-store') return game;
+  const hasOpenRequest = game.appStoreLicenseRequests.some((request) => (
+    request.gameCompanyKey === gameCompanyKey
+    && request.softwareCompanyKey === softwareCompanyKey
+    && request.status === 'pending'
+  ));
+  if (hasOpenRequest) return game;
+
+  const request: AppStoreLicenseRequest = {
+    id: `license-${gameCompanyKey}-${softwareCompanyKey}-${Math.floor(game.elapsedDays)}-${Math.floor(game.tickCount)}`,
+    gameCompanyKey,
+    softwareCompanyKey,
+    requesterId,
+    requestedDay: game.elapsedDays,
+    status: 'pending',
+    decisionDay: null,
+    revenueShare: clamp(0.17 + softwareCompany.reputation / 520, 0.12, 0.34),
+    monthlyDownloads: 0,
+    note,
+  };
+
+  return {
+    ...game,
+    appStoreLicenseRequests: [request, ...game.appStoreLicenseRequests].slice(0, 220),
+    activityFeed: addFeedEntry(
+      game.activityFeed,
+      `${formatDateFromDays(game.elapsedDays)}: ${gameCompany.name} mengajukan lisensi App Store ke ${softwareCompany.name}.`
+    ),
+  };
+}
+
+export function decideAppStoreLicense(
+  game: GameState,
+  requestId: string,
+  approverId: string,
+  decision: 'approved' | 'rejected'
+) {
+  const request = game.appStoreLicenseRequests.find((entry) => entry.id === requestId);
+  if (!request || request.status !== 'pending') return game;
+  const softwareCompany = game.companies[request.softwareCompanyKey];
+  if (softwareCompany.ceoId !== approverId) return game;
+  const updatedRequests = game.appStoreLicenseRequests.map((entry) => {
+    if (entry.id !== requestId) return entry;
+    return {
+      ...entry,
+      status: decision,
+      decisionDay: game.elapsedDays,
+    };
+  });
+  const gameCompany = game.companies[request.gameCompanyKey];
+  const decisionLabel = decision === 'approved' ? 'menyetujui' : 'menolak';
+  return {
+    ...game,
+    appStoreLicenseRequests: updatedRequests,
+    activityFeed: addFeedEntry(
+      game.activityFeed,
+      `${formatDateFromDays(game.elapsedDays)}: ${softwareCompany.name} ${decisionLabel} lisensi ${gameCompany.name} di App Store.`
+    ),
+  };
 }
 
 export function evaluateCompanyFieldCompetition(game: GameState, field: CompanyField) {
@@ -3203,6 +3301,15 @@ export function simulateTick(current: GameState) {
   let nextPlayerCash = governedCurrent.player.cash;
   const npcCashMap = new Map(governedCurrent.npcs.map((npc) => [npc.id, npc.cash]));
   const corporateCashDelta = new Map<CompanyKey, number>();
+  const approvedLicenseByPair = new Map<string, AppStoreLicenseRequest>();
+  governedCurrent.appStoreLicenseRequests.forEach((request) => {
+    if (request.status !== 'approved') return;
+    const pairKey = `${request.gameCompanyKey}:${request.softwareCompanyKey}`;
+    const existing = approvedLicenseByPair.get(pairKey);
+    if (!existing || (existing.decisionDay ?? -1) < (request.decisionDay ?? -1)) {
+      approvedLicenseByPair.set(pairKey, request);
+    }
+  });
   const getPortfolioValue = (companyKey: CompanyKey) => {
     const investorId = getCorporateInvestorId(companyKey);
     return (Object.values(governedCurrent.companies) as CompanyState[]).reduce((sum, targetCompany) => {
@@ -3217,13 +3324,37 @@ export function simulateTick(current: GameState) {
       if (!governedCompany.isEstablished) {
         return [key, governedCompany];
       }
-      const retentionProfit = governedCompany.revenuePerDay * 0.42 * (1 - governedCompany.payoutRatio);
+      let appStoreRevenuePerDay = 0;
+      let appStoreDownloadsPerDay = 0;
+      if (governedCompany.field === 'game') {
+        approvedLicenseByPair.forEach((license) => {
+          if (license.gameCompanyKey !== key) return;
+          const store = governedCurrent.companies[license.softwareCompanyKey];
+          if (!store.isEstablished) return;
+          const monthlyDownloads = Math.max(
+            45,
+            governedCompany.marketShare * 22
+              + governedCompany.reputation * 11
+              + governedCompany.releaseCount * 16
+              + store.reputation * 5
+          );
+          const downloadsPerDay = monthlyDownloads / 30;
+          const pricePerDownload = clamp(0.12 + governedCompany.reputation / 850, 0.08, 0.32);
+          const gross = downloadsPerDay * pricePerDownload;
+          const storeFee = gross * license.revenueShare;
+          appStoreRevenuePerDay += Math.max(0, gross - storeFee);
+          appStoreDownloadsPerDay += downloadsPerDay;
+          corporateCashDelta.set(license.softwareCompanyKey, (corporateCashDelta.get(license.softwareCompanyKey) ?? 0) + storeFee * tickDays);
+        });
+      }
+      const effectiveRevenuePerDay = governedCompany.field === 'game' ? appStoreRevenuePerDay : governedCompany.revenuePerDay;
+      const retentionProfit = effectiveRevenuePerDay * 0.42 * (1 - governedCompany.payoutRatio);
       const dividendPoolPerDay = governedCompany.dividendPerShare * governedCompany.sharesOutstanding;
       const passiveMarketDelta = governedCompany.teams.marketing.count * 0.016 + governedCompany.teams.fabrication.count * 0.011 + governedCompany.boardMood * 0.006;
       const passiveReputationDelta = governedCompany.teams.marketing.count * 0.009 + governedCompany.boardMood * 0.006;
       const stressLevel = getCompanyStressLevel(governedCompany);
       const capitalFlightPerDay = stressLevel * (6 + governedCompany.marketPoolShares / 80);
-      const managementDragPerDay = stressLevel * (1.2 + governedCompany.revenuePerDay * 0.08);
+      const managementDragPerDay = stressLevel * (1.2 + effectiveRevenuePerDay * 0.08);
 
       Object.entries(governedCompany.investors).forEach(([investorId, shares]) => {
         const payout = shares * governedCompany.dividendPerShare * tickDays;
@@ -3259,6 +3390,8 @@ export function simulateTick(current: GameState) {
           marketShare: clamp(governedCompany.marketShare + passiveMarketDelta * tickDays - stressLevel * 0.75 * tickDays, 3, 75),
           reputation: clamp(governedCompany.reputation + passiveReputationDelta * tickDays - stressLevel * 0.92 * tickDays, 10, 100),
           portfolioValue: getPortfolioValue(key),
+          appStorePassiveIncomePerDay: governedCompany.field === 'game' ? appStoreRevenuePerDay : governedCompany.appStorePassiveIncomePerDay,
+          appStoreDownloadsPerDay: governedCompany.field === 'game' ? appStoreDownloadsPerDay : governedCompany.appStoreDownloadsPerDay,
         },
       ];
     })
@@ -3987,6 +4120,53 @@ export function getNpcManagementActionCapacity(company: CompanyState, ceoNpc: Np
   return clamp(Math.round(1 + management.managementIntensity * 1.4 + ceoNpc.intelligence), 1, 4);
 }
 
+function runNpcAppStoreLicensing(game: GameState, company: CompanyState, ceoNpc: NpcInvestor) {
+  let next = game;
+  if (!company.isEstablished) return next;
+
+  if (company.field === 'game') {
+    const approvedOrPending = next.appStoreLicenseRequests.filter((request) => (
+      request.gameCompanyKey === company.key
+      && (request.status === 'approved' || request.status === 'pending')
+    ));
+    if (approvedOrPending.length === 0) {
+      const appStores = getActiveAppStoreCompanies(next);
+      if (appStores.length > 0) {
+        const target = [...appStores].sort((left, right) => (
+          (right.reputation + right.marketShare * 0.8 + right.cash * 0.015)
+          - (left.reputation + left.marketShare * 0.8 + left.cash * 0.015)
+        ))[0];
+        next = requestAppStoreLicense(
+          next,
+          company.ceoId,
+          company.key,
+          target.key,
+          `${company.name} menawarkan portofolio game dengan roadmap stabil dan live-ops aktif.`
+        );
+      }
+    }
+  }
+
+  if (company.field === 'software' && company.softwareSpecialization === 'app-store') {
+    const pending = next.appStoreLicenseRequests
+      .filter((request) => request.softwareCompanyKey === company.key && request.status === 'pending')
+      .sort((left, right) => left.requestedDay - right.requestedDay);
+    const request = pending[0];
+    if (request) {
+      const gameCompany = next.companies[request.gameCompanyKey];
+      const qualitySignal =
+        gameCompany.reputation * 0.34
+        + gameCompany.marketShare * 0.58
+        + gameCompany.releaseCount * 3.8
+        + ceoNpc.intelligence * 24
+        + ceoNpc.boldness * 11;
+      const approved = qualitySignal >= 35;
+      next = decideAppStoreLicense(next, request.id, company.ceoId, approved ? 'approved' : 'rejected');
+    }
+  }
+  return next;
+}
+
 export function runNpcChiefExecutiveTurn(current: GameState) {
   let next = current;
 
@@ -3995,13 +4175,15 @@ export function runNpcChiefExecutiveTurn(current: GameState) {
     if (!company.isEstablished) return;
     const ceoNpcRecord = getNpcById(next, company.ceoId);
     const ceoNpc = getExecutiveAiActor(next, company, company.ceoId);
-    const releasePressure = getNpcReleasePressure(next, ceoNpc, company);
+    next = runNpcAppStoreLicensing(next, company, ceoNpc);
+    const reviewedCompany = next.companies[companyKey];
+    const releasePressure = getNpcReleasePressure(next, ceoNpc, reviewedCompany);
     const isEmergencyReview =
       releasePressure.canForceRelease
-      || (company.cash < 10)
+      || (reviewedCompany.cash < 10)
       || (releasePressure.cpuDelta > 8 && releasePressure.daysSinceRelease >= 8)
       || (releasePressure.cpuDelta > 3 && releasePressure.daysSinceRelease >= 26);
-    if (next.elapsedDays < company.nextManagementReviewDay && !isEmergencyReview) return;
+    if (next.elapsedDays < reviewedCompany.nextManagementReviewDay && !isEmergencyReview) return;
 
     let workingGame = next;
     let workingCompany = workingGame.companies[companyKey];
