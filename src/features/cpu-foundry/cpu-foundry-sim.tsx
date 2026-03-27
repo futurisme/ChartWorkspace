@@ -3622,7 +3622,6 @@ export function CpuFoundrySim() {
                             title={`${listing.gameName} · ${listing.studioName}`}
                             onClick={() => {
                               setAppStoreSelectedRelease(listing.releaseCard);
-                              setSelectedGameReleaseId(listing.releaseCard.id);
                             }}
                           >
                             <article className={styles.itemCard}>
