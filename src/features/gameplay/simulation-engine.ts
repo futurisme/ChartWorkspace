@@ -4324,6 +4324,7 @@ export function runNpcChiefExecutiveTurn(current: GameState) {
 
     let workingGame = next;
     let workingCompany = workingGame.companies[companyKey];
+    let governanceDirty = false;
     const actionsTaken: string[] = [];
     const roleOrder: Array<ExecutiveDomain | 'general'> = ['technology', 'operations', 'marketing', 'finance', 'general'];
     const actionCounts = new Map<string, number>();
@@ -4354,8 +4355,9 @@ export function runNpcChiefExecutiveTurn(current: GameState) {
         if (action.type === 'release' && seenCount >= 1) break;
         if (seenCount >= 3) break;
 
-        workingGame = resolveGovernance(applyNpcManagementAction(workingGame, companyKey, action));
+        workingGame = applyNpcManagementAction(workingGame, companyKey, action);
         workingCompany = workingGame.companies[companyKey];
+        governanceDirty = true;
         actionsTaken.push(`${roleHandlers[domain]}: ${action.label}`);
         actionCounts.set(actionKey, seenCount + 1);
         domainActions += 1;
@@ -4364,6 +4366,12 @@ export function runNpcChiefExecutiveTurn(current: GameState) {
         if (action.type === 'payout' || action.type === 'release') break;
       }
     });
+
+    if (governanceDirty) {
+      workingGame = resolveGovernance(workingGame);
+      workingCompany = workingGame.companies[companyKey];
+      governanceDirty = false;
+    }
 
     const sourceCompany = workingGame.companies[companyKey];
     const boardVotesRemaining = canStartBoardVote(sourceCompany, workingGame.elapsedDays)
@@ -4436,6 +4444,7 @@ export function runNpcChiefExecutiveTurn(current: GameState) {
           if (investmentTrade.tradedValue > 0) {
             workingGame = investmentTrade.next;
             workingCompany = workingGame.companies[companyKey];
+            governanceDirty = false;
             actionsTaken.push(`Board ${sourceCompany.name}: Investasi ke ${bestTarget.targetCompany.name}`);
           }
         }
