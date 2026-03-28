@@ -301,8 +301,8 @@ export type TradePreview = {
 export type NewsCategory = 'investasi-besar' | 'release-cpu' | 'riset-baru' | 'saham-volatil' | 'arus-investor';
 
 export type CompanyAiAction = {
-  type: 'upgrade' | 'team' | 'payout' | 'release';
-  key: UpgradeKey | TeamKey | 'payout-up' | 'payout-down' | 'release';
+  type: 'upgrade' | 'team' | 'payout' | 'release' | 'appstore-profile';
+  key: UpgradeKey | TeamKey | 'payout-up' | 'payout-down' | 'release' | 'appstore-discovery' | 'appstore-infrastructure' | 'appstore-trust';
   resource: 'research' | 'cash';
   cost: number;
   score: number;
@@ -4103,6 +4103,31 @@ export function applyNpcCompanyAction(game: GameState, companyKey: CompanyKey, a
     };
   }
 
+  if (action.type === 'appstore-profile') {
+    const profileKey: keyof AppStoreProfile =
+      action.key === 'appstore-discovery'
+        ? 'discovery'
+        : action.key === 'appstore-infrastructure'
+          ? 'infrastructure'
+          : 'trust';
+    const nextValue = Math.round(clamp(company.appStoreProfile[profileKey] + 0.08 + Math.max(0, company.reputation - 40) * 0.0012, 0.65, 2.5) * 100) / 100;
+    return {
+      ...game,
+      companies: {
+        ...game.companies,
+        [companyKey]: {
+          ...company,
+          cash: Math.max(0, company.cash - action.cost),
+          appStoreProfile: {
+            ...company.appStoreProfile,
+            [profileKey]: nextValue,
+          },
+          executivePulse: `${company.ceoName} memperkuat kapabilitas AppStore (${profileKey}) untuk menjaga kualitas layanan mitra.`,
+        },
+      },
+    };
+  }
+
   const key = action.key as TeamKey;
   const preview = previewTeamCompany(company, key);
   return {
@@ -4137,6 +4162,46 @@ export function scoreNpcPayoutAction(npc: NpcInvestor, company: CompanyState, di
   };
 }
 
+export function scoreNpcAppStoreProfileAction(
+  npc: NpcInvestor,
+  company: CompanyState,
+  profileKey: keyof AppStoreProfile
+): CompanyAiAction | null {
+  if (company.field !== 'software' || company.softwareSpecialization !== 'app-store') return null;
+  const management = getManagementResourceContext(company);
+  const currentValue = company.appStoreProfile[profileKey];
+  if (currentValue >= 2.45) return null;
+  const floor = Math.min(company.appStoreProfile.discovery, company.appStoreProfile.infrastructure, company.appStoreProfile.trust);
+  const dimensionGap = Math.max(0, currentValue - floor);
+  const baseCost = 16 + company.releaseCount * 0.7 + Math.max(0, currentValue - 1) * 12;
+  const cost = clamp(baseCost, 14, 120);
+  if (company.cash < cost) return null;
+  const reservePressure = cost / Math.max(1, company.cash + management.monthlyRetainedCash * 0.45);
+  const strategyBoost = profileKey === 'trust'
+    ? (npc.strategy === 'dividend' || npc.strategy === 'value' ? 0.2 : 0.08)
+    : profileKey === 'discovery'
+      ? (npc.strategy === 'growth' ? 0.2 : 0.08)
+      : 0.12;
+  const score = (
+    management.cashOverflow * 0.8
+    + management.cashUrgency * 0.12
+    + (1.8 - currentValue) * 0.92
+    + dimensionGap * -0.7
+    + npc.intelligence * 0.34
+    + strategyBoost
+    - reservePressure * (0.85 + (1 - npc.patience) * 0.2)
+  );
+  return {
+    type: 'appstore-profile',
+    key: profileKey === 'discovery' ? 'appstore-discovery' : profileKey === 'infrastructure' ? 'appstore-infrastructure' : 'appstore-trust',
+    resource: 'cash',
+    cost,
+    score,
+    label: `Boost AppStore ${profileKey}`,
+    rationale: `menguatkan ${profileKey} AppStore agar lisensi dan monetisasi lebih stabil`,
+  };
+}
+
 export function chooseNpcCompanyActionByDomain(game: GameState, npc: NpcInvestor, company: CompanyState, domain: ExecutiveDomain | 'general') {
   const management = getManagementResourceContext(company);
   const candidates: CompanyAiAction[] = [];
@@ -4144,15 +4209,27 @@ export function chooseNpcCompanyActionByDomain(game: GameState, npc: NpcInvestor
   if (domain === 'technology' || domain === 'general') {
     candidates.push(...(Object.keys(company.upgrades) as UpgradeKey[]).map((key) => scoreNpcUpgradeAction(game, npc, company, key)));
     candidates.push(scoreNpcTeamAction(game, npc, company, 'researchers'));
+    if (company.field === 'software' && company.softwareSpecialization === 'app-store') {
+      const infraAction = scoreNpcAppStoreProfileAction(npc, company, 'infrastructure');
+      if (infraAction) candidates.push(infraAction);
+    }
     const releaseAction = scoreNpcReleaseAction(game, npc, company);
     if (releaseAction?.forceImmediate) return releaseAction;
     if (releaseAction) candidates.push({ ...releaseAction, score: releaseAction.score + (releaseAction.releasePriorityBoost ?? 0) });
   }
   if (domain === 'operations' || domain === 'general') {
     candidates.push(scoreNpcTeamAction(game, npc, company, 'fabrication'));
+    if (company.field === 'software' && company.softwareSpecialization === 'app-store') {
+      const trustAction = scoreNpcAppStoreProfileAction(npc, company, 'trust');
+      if (trustAction) candidates.push(trustAction);
+    }
   }
   if (domain === 'marketing' || domain === 'general') {
     candidates.push(scoreNpcTeamAction(game, npc, company, 'marketing'));
+    if (company.field === 'software' && company.softwareSpecialization === 'app-store') {
+      const discoveryAction = scoreNpcAppStoreProfileAction(npc, company, 'discovery');
+      if (discoveryAction) candidates.push(discoveryAction);
+    }
     if (domain === 'marketing') {
       const releaseAction = scoreNpcReleaseAction(game, npc, company);
       if (releaseAction?.forceImmediate) return releaseAction;
