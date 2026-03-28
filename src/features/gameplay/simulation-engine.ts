@@ -4310,7 +4310,7 @@ export function runNpcChiefExecutiveTurn(current: GameState) {
   COMPANY_KEYS.forEach((companyKey) => {
     const company = next.companies[companyKey];
     if (!company.isEstablished) return;
-    const ceoNpcRecord = getNpcById(next, company.ceoId);
+    const ceoNpcRecordIndex = next.npcs.findIndex((npc) => npc.id === company.ceoId);
     const ceoNpc = getExecutiveAiActor(next, company, company.ceoId);
     next = runNpcAppStoreLicensing(next, company, ceoNpc);
     const reviewedCompany = next.companies[companyKey];
@@ -4326,6 +4326,7 @@ export function runNpcChiefExecutiveTurn(current: GameState) {
     let workingCompany = workingGame.companies[companyKey];
     let governanceDirty = false;
     const actionsTaken: string[] = [];
+    const actionSignatureSet = new Set<string>();
     const roleOrder: Array<ExecutiveDomain | 'general'> = ['technology', 'operations', 'marketing', 'finance', 'general'];
     const actionCounts = new Map<string, number>();
     const roleHandlers: Record<ExecutiveDomain | 'general', string> = {
@@ -4350,7 +4351,10 @@ export function runNpcChiefExecutiveTurn(current: GameState) {
         const action = chooseNpcCompanyActionByDomain(workingGame, actor, workingCompany, domain);
         if (!action) break;
         const actionKey = `${domain}:${action.key}`;
+        const actionSignature = `${action.type}:${String(action.key)}`;
         const seenCount = actionCounts.get(actionKey) ?? 0;
+        if (actionSignatureSet.has(actionSignature)) break;
+        if (action.type === 'payout' && Array.from(actionSignatureSet).some((signature) => signature.startsWith('payout:'))) break;
         if (action.type === 'payout' && seenCount >= 1) break;
         if (action.type === 'release' && seenCount >= 1) break;
         if (seenCount >= 3) break;
@@ -4360,6 +4364,7 @@ export function runNpcChiefExecutiveTurn(current: GameState) {
         governanceDirty = true;
         actionsTaken.push(`${roleHandlers[domain]}: ${action.label}`);
         actionCounts.set(actionKey, seenCount + 1);
+        actionSignatureSet.add(actionSignature);
         domainActions += 1;
         totalActions += 1;
 
@@ -4465,8 +4470,11 @@ export function runNpcChiefExecutiveTurn(current: GameState) {
 
     if (actionsTaken.length === 0) {
       next = workingGame;
-      if (ceoNpcRecord) {
-        ceoNpcRecord.analysisNote = `${ceoNpc.name} menyelesaikan review manajemen ${workingCompany.name} dan memilih menunggu jendela aksi berikutnya di sekitar ${formatDateFromDays(nextReviewDay)}.`;
+      if (ceoNpcRecordIndex >= 0) {
+        next.npcs[ceoNpcRecordIndex] = {
+          ...next.npcs[ceoNpcRecordIndex],
+          analysisNote: `${ceoNpc.name} menyelesaikan review manajemen ${workingCompany.name} dan memilih menunggu jendela aksi berikutnya di sekitar ${formatDateFromDays(nextReviewDay)}.`,
+        };
       }
       return;
     }
@@ -4478,8 +4486,11 @@ export function runNpcChiefExecutiveTurn(current: GameState) {
         `${formatDateFromDays(workingGame.elapsedDays)}: Tim manajemen ${workingCompany.name} mengeksekusi ${actionsTaken.join(' · ')}.`
       ),
     };
-    if (ceoNpcRecord) {
-      ceoNpcRecord.analysisNote = `${ceoNpc.name} menyelaraskan eksekutif ${workingCompany.name}: ${actionsTaken.join(', ')}. Review berikutnya sekitar ${formatDateFromDays(nextReviewDay)}.`;
+    if (ceoNpcRecordIndex >= 0) {
+      next.npcs[ceoNpcRecordIndex] = {
+        ...next.npcs[ceoNpcRecordIndex],
+        analysisNote: `${ceoNpc.name} menyelaraskan eksekutif ${workingCompany.name}: ${actionsTaken.join(', ')}. Review berikutnya sekitar ${formatDateFromDays(nextReviewDay)}.`,
+      };
     }
   });
 
