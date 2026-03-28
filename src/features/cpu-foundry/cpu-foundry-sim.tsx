@@ -3,7 +3,14 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import styles from './cpu-foundry-sim.module.css';
 import { APPSTORE_ICON_SET, GAME_NAME_DATASET, type GameReleaseCard } from './appstore-catalog';
-import { ThinFrameHeader } from './thin-frame-header';
+import {
+  GameButton,
+  GameCardSurface,
+  GameDialog,
+  GamePanelSection,
+  GameScreenFrame,
+  GameSurface,
+} from './cpu-foundry-ui';
 import * as Engine from '@/features/gameplay/simulation-engine';
 import type {
   UpgradeKey,
@@ -284,7 +291,7 @@ function ReusablePieDiagram({ title, slices }: { title: string; slices: PieSlice
               <span className={styles.statisticsLegendSwatch} style={{ backgroundColor: slice.color }} />
               <span className={styles.statisticsLegendLabel}>{slice.label}</span>
               <strong className={styles.statisticsLegendValue}>{formatNumber(percent, 1)}%</strong>
-            </div>
+              </div>
           );
         })}
       </div>
@@ -1938,64 +1945,57 @@ export function CpuFoundrySim() {
   if (!game) {
     return (
       <main className={styles.shell}>
-        <section className={styles.loginCard}>
+        <GameCardSurface as="section" className={styles.loginCard}>
           <p className={styles.eyebrow}>/game · unified career gameplay</p>
           <h1>{simulatorTitle}</h1>
           <p className={styles.subtitle}>Satu simulasi terpadu untuk investor, manajemen perusahaan, dan perilisan produk tanpa mode terpisah.</p>
-
-          <label className={styles.field}>
-            <span>Nama profil</span>
-            <input value={profileDraft.name} onChange={(event) => setProfileDraft((current) => ({ ...current, name: event.target.value }))} placeholder="Contoh: Arka Vega" />
+              <label className={styles.field}>
+              <span>Nama profil</span>
+              <input value={profileDraft.name} onChange={(event) => setProfileDraft((current) => ({ ...current, name: event.target.value }))} placeholder="Contoh: Arka Vega" />
           </label>
-
-          <label className={styles.field}>
-            <span>Latar belakang</span>
-            <input value={profileDraft.background} onChange={(event) => setProfileDraft((current) => ({ ...current, background: event.target.value }))} placeholder="Investor dengan visi teknologi" />
+              <label className={styles.field}>
+              <span>Latar belakang</span>
+              <input value={profileDraft.background} onChange={(event) => setProfileDraft((current) => ({ ...current, background: event.target.value }))} placeholder="Investor dengan visi teknologi" />
           </label>
-
-          <div className={styles.field}>
-            <span>Tipe perusahaan (mekanik sama)</span>
-            <div className={styles.quickGrid}>
-              <button type="button" className={profileDraft.companyType === 'cpu' ? styles.quickButtonActive : styles.quickButton} onClick={() => setProfileDraft((current) => ({ ...current, companyType: 'cpu' }))}>
+              <div className={styles.field}>
+              <span>Tipe perusahaan (mekanik sama)</span>
+              <div className={styles.quickGrid}>
+              <GameButton type="button" className={profileDraft.companyType === 'cpu' ? styles.quickButtonActive : styles.quickButton} onClick={() => setProfileDraft((current) => ({ ...current, companyType: 'cpu' }))}>
                 CPU Company
-              </button>
-              <button type="button" className={profileDraft.companyType === 'game' ? styles.quickButtonActive : styles.quickButton} onClick={() => setProfileDraft((current) => ({ ...current, companyType: 'game' }))}>
+              </GameButton>
+              <GameButton type="button" className={profileDraft.companyType === 'game' ? styles.quickButtonActive : styles.quickButton} onClick={() => setProfileDraft((current) => ({ ...current, companyType: 'game' }))}>
                 Game Company
-              </button>
-              <button type="button" className={profileDraft.companyType === 'software' ? styles.quickButtonActive : styles.quickButton} onClick={() => setProfileDraft((current) => ({ ...current, companyType: 'software' }))}>
+              </GameButton>
+              <GameButton type="button" className={profileDraft.companyType === 'software' ? styles.quickButtonActive : styles.quickButton} onClick={() => setProfileDraft((current) => ({ ...current, companyType: 'software' }))}>
                 Software Company
-              </button>
-            </div>
+              </GameButton>
+              </div>
           </div>
-
-          <div className={styles.quickGrid}>
+              <div className={styles.quickGrid}>
             {COMPANY_KEYS.map((company) => (
-              <button key={company} type="button" className={profileDraft.selectedCompany === company ? styles.quickButtonActive : styles.quickButton} onClick={() => setProfileDraft((current) => ({ ...current, selectedCompany: company }))}>
+              <GameButton key={company} type="button" className={profileDraft.selectedCompany === company ? styles.quickButtonActive : styles.quickButton} onClick={() => setProfileDraft((current) => ({ ...current, selectedCompany: company }))}>
                 {company.toUpperCase()}
-              </button>
+              </GameButton>
             ))}
           </div>
-
-          <div className={styles.loginPreview}>
-            <div>
+              <div className={styles.loginPreview}>
+              <div>
               <span>Modal awal</span>
               <strong>$ {formatMoneyCompact(PLAYER_STARTING_CASH)}</strong>
-            </div>
-            <div>
+              </div>
+              <div>
               <span>Waktu game</span>
               <strong>DD/MM/YY · 1 hari = 1 detik</strong>
-            </div>
+              </div>
           </div>
-
-          <button type="button" className={styles.primaryButton} onClick={createProfile}>
+              <GameButton type="button" className={styles.primaryButton} onClick={createProfile}>
             Login & buat akun
-          </button>
-
-          <div className={styles.memoCard}>
+          </GameButton>
+              <div className={styles.memoCard}>
             <p className={styles.panelTag}>Status</p>
             <p>{statusMessage}</p>
           </div>
-        </section>
+        </GameCardSurface>
       </main>
     );
   }
@@ -2003,36 +2003,34 @@ export function CpuFoundrySim() {
   return (
     <>
       <main className={styles.shell}>
-        <section className={styles.heroCard}>
+        <GameCardSurface as="section" className={styles.heroCard}>
           <div className={styles.heroHeader}>
-            <div>
+              <div>
               <p className={styles.eyebrow}>/game · {simulatorTitle.toLowerCase()}</p>
               <h1>{game.player.name}</h1>
               <p className={styles.subtitle}>{game.player.background}</p>
-            </div>
-            <div className={styles.yearBadge}>{formatDateFromDays(game.elapsedDays)}</div>
+              </div>
+              <div className={styles.yearBadge}>{formatDateFromDays(game.elapsedDays)}</div>
           </div>
-
-          <div className={styles.topStrip}>
-            <div>
+              <div className={styles.topStrip}>
+              <div>
               <span>Cash pribadi</span>
               <strong>$ {formatMoneyCompact(game.player.cash, 2)}</strong>
-            </div>
-            <div>
+              </div>
+              <div>
               <span>Net worth</span>
               <strong>$ {formatMoneyCompact(playerNetWorth, 2)}</strong>
-            </div>
-            <button type="button" className={styles.releaseTrigger} onClick={openCompaniesFrame}>
+              </div>
+              <GameButton type="button" className={styles.releaseTrigger} onClick={openCompaniesFrame}>
               Companies
-            </button>
+            </GameButton>
           </div>
-
-          <div className={styles.statGrid}>
-            <article className={styles.statChip}>
+              <div className={styles.statGrid}>
+              <article className={styles.statChip}>
               <span>Fokus aktif</span>
               <strong>{activeCompany?.name}</strong>
-            </article>
-            <article className={styles.statChip}>
+              </article>
+              <article className={styles.statChip}>
               <span>Role</span>
               <strong>
                 {isPlayerCeo
@@ -2041,27 +2039,27 @@ export function CpuFoundrySim() {
                     ? activePlayerExecutiveRoles.map((role) => EXECUTIVE_ROLE_META[role].title).join(' / ')
                     : 'Investor'}
               </strong>
-            </article>
-            <article className={styles.statChip}>
+              </article>
+              <article className={styles.statChip}>
               <span>NPC aktif</span>
               <strong>{game.npcs.length} / {MAX_ACTIVE_NPCS}</strong>
-            </article>
-            <article className={styles.statChip}>
+              </article>
+              <article className={styles.statChip}>
               <span>Status</span>
               <strong>{statusMessage}</strong>
-            </article>
+              </article>
           </div>
-        </section>
+        </GameCardSurface>
 
-        <section className={styles.panelStack}>
-          <section className={styles.panel}>
-            <button type="button" className={styles.panelToggle} onClick={() => togglePanel('profile')}>
+        <GameSurface as="section" className={styles.panelStack}>
+          <GameCardSurface as="section" className={styles.panel}>
+            <GameButton type="button" className={styles.panelToggle} onClick={() => togglePanel('profile')}>
               <div>
                 <p className={styles.panelTag}>Profile</p>
                 <h2>Akun ringkas & aksi cepat</h2>
               </div>
               <span>{openPanels.profile ? 'Tutup' : 'Buka'}</span>
-            </button>
+              </GameButton>
             {openPanels.profile ? (
               <div className={styles.panelBody}>
                 <div className={styles.infoRow}>
@@ -2105,46 +2103,46 @@ export function CpuFoundrySim() {
                   <p>{activeCompany?.lastRelease}</p>
                 </div>
                 <div className={styles.actionRow}>
-                  <button type="button" className={styles.primaryButton} onClick={openCompaniesFrame}>
+                  <GameButton type="button" className={styles.primaryButton} onClick={openCompaniesFrame}>
                     Companies
-                  </button>
-                  <button type="button" className={styles.secondaryButton} onClick={() => { closeTransientLayers(); setIsCreateCompanyOpen(true); }}>
+                  </GameButton>
+                  <GameButton type="button" className={styles.secondaryButton} onClick={() => { closeTransientLayers(); setIsCreateCompanyOpen(true); }}>
                     Create a company
-                  </button>
-                  <button type="button" className={styles.secondaryButton} onClick={() => { closeTransientLayers(); setIsInvestmentMenuOpen(true); }}>
+                  </GameButton>
+                  <GameButton type="button" className={styles.secondaryButton} onClick={() => { closeTransientLayers(); setIsInvestmentMenuOpen(true); }}>
                     Beli / jual saham
-                  </button>
-                  <button type="button" className={styles.ghostButton} onClick={() => activeCompany && openInvestorFrame(activeCompany.key)}>
+                  </GameButton>
+                  <GameButton type="button" className={styles.ghostButton} onClick={() => activeCompany && openInvestorFrame(activeCompany.key)}>
                     Investor list
-                  </button>
-                  <button type="button" className={styles.ghostButton} onClick={() => activeCompany && openCompanyDetail(activeCompany.key, 'game')}>
+                  </GameButton>
+                  <GameButton type="button" className={styles.ghostButton} onClick={() => activeCompany && openCompanyDetail(activeCompany.key, 'game')}>
                     Detail fokus
-                  </button>
-                  <button type="button" className={styles.ghostButton} onClick={resetProfile}>
+                  </GameButton>
+                  <GameButton type="button" className={styles.ghostButton} onClick={resetProfile}>
                     Reset profil
-                  </button>
+                  </GameButton>
                 </div>
               </div>
             ) : null}
-          </section>
+          </GameCardSurface>
 
-          <section className={styles.panel}>
-            <button type="button" className={styles.panelToggle} onClick={() => togglePanel('intel')}>
+          <GameCardSurface as="section" className={styles.panel}>
+            <GameButton type="button" className={styles.panelToggle} onClick={() => togglePanel('intel')}>
               <div>
                 <p className={styles.panelTag}>NPC intel</p>
                 <h2>Feed ringkas & tekanan investor</h2>
               </div>
               <span>{openPanels.intel ? 'Tutup' : 'Buka'}</span>
-            </button>
+              </GameButton>
             {openPanels.intel ? (
               <div className={styles.panelBody}>
                 <div className={styles.actionRow}>
-                  <button type="button" className={styles.primaryButton} onClick={() => setIsNewsFrameOpen(true)}>
+                  <GameButton type="button" className={styles.primaryButton} onClick={() => setIsNewsFrameOpen(true)}>
                     Buka News
-                  </button>
-                  <button type="button" className={styles.secondaryButton} onClick={() => { setForbesCategory('individual'); setIsForbesFrameOpen(true); }}>
+                  </GameButton>
+                  <GameButton type="button" className={styles.secondaryButton} onClick={() => { setForbesCategory('individual'); setIsForbesFrameOpen(true); }}>
                     Forbes ranking
-                  </button>
+                  </GameButton>
                 </div>
                 <div className={styles.memoCard}>
                   <p className={styles.panelTag}>Intel split frame</p>
@@ -2154,352 +2152,352 @@ export function CpuFoundrySim() {
                 </div>
               </div>
             ) : null}
-          </section>
-        </section>
+          </GameCardSurface>
+        </GameSurface>
       </main>
 
       {isCreateCompanyOpen && game ? (
-        <div className={styles.modalOverlay} role="presentation" onClick={() => setIsCreateCompanyOpen(false)}>
-          <section className={styles.modalCard} role="dialog" aria-modal="true" aria-label="Create company plan" onClick={(event) => event.stopPropagation()}>
-            <div className={styles.modalHeader}>
-              <div>
-                <p className={styles.panelTag}>Create a company</p>
-                <h2>Buka plan pendirian perusahaan</h2>
-              </div>
-              <button type="button" className={styles.closeButton} onClick={() => setIsCreateCompanyOpen(false)} aria-label="Tutup create company">
-                ✕
-              </button>
+        <GameDialog
+          open
+          ariaLabel="Create company plan"
+          eyebrow="Create a company"
+          title="Buka plan pendirian perusahaan"
+          onClose={() => setIsCreateCompanyOpen(false)}
+          closeLabel="Tutup create company"
+        >
+          <label className={styles.field}>
+            <span>Company name</span>
+            <input value={createCompanyDraft.name} onChange={(event) => setCreateCompanyDraft((current) => ({ ...current, name: event.target.value }))} placeholder="Contoh: Aurora Logic" />
+          </label>
+          <label className={styles.field}>
+            <span>Personal funds disalurkan (%)</span>
+            <input type="range" min={5} max={45} step={1} value={createCompanyDraft.percent} onChange={(event) => setCreateCompanyDraft((current) => ({ ...current, percent: Number(event.target.value) }))} />
+          </label>
+          <div className={styles.field}>
+            <span>Company type for this plan</span>
+            <div className={styles.quickGrid}>
+              <GameButton type="button" className={createCompanyDraft.companyType === 'cpu' ? styles.quickButtonActive : styles.quickButton} onClick={() => setCreateCompanyDraft((current) => ({ ...current, companyType: 'cpu' }))}>
+                CPU Company
+              </GameButton>
+              <GameButton type="button" className={createCompanyDraft.companyType === 'game' ? styles.quickButtonActive : styles.quickButton} onClick={() => setCreateCompanyDraft((current) => ({ ...current, companyType: 'game' }))}>
+                Game Company
+              </GameButton>
+              <GameButton type="button" className={createCompanyDraft.companyType === 'software' ? styles.quickButtonActive : styles.quickButton} onClick={() => setCreateCompanyDraft((current) => ({ ...current, companyType: 'software' }))}>
+                Software Company
+              </GameButton>
             </div>
-            <div className={styles.modalBody}>
-              <label className={styles.field}>
-                <span>Company name</span>
-                <input value={createCompanyDraft.name} onChange={(event) => setCreateCompanyDraft((current) => ({ ...current, name: event.target.value }))} placeholder="Contoh: Aurora Logic" />
-              </label>
-              <label className={styles.field}>
-                <span>Personal funds disalurkan (%)</span>
-                <input type="range" min={5} max={45} step={1} value={createCompanyDraft.percent} onChange={(event) => setCreateCompanyDraft((current) => ({ ...current, percent: Number(event.target.value) }))} />
-              </label>
-              <div className={styles.field}>
-                <span>Company type for this plan</span>
-                <div className={styles.quickGrid}>
-                  <button type="button" className={createCompanyDraft.companyType === 'cpu' ? styles.quickButtonActive : styles.quickButton} onClick={() => setCreateCompanyDraft((current) => ({ ...current, companyType: 'cpu' }))}>
-                    CPU Company
-                  </button>
-                  <button type="button" className={createCompanyDraft.companyType === 'game' ? styles.quickButtonActive : styles.quickButton} onClick={() => setCreateCompanyDraft((current) => ({ ...current, companyType: 'game' }))}>
-                    Game Company
-                  </button>
-                  <button type="button" className={createCompanyDraft.companyType === 'software' ? styles.quickButtonActive : styles.quickButton} onClick={() => setCreateCompanyDraft((current) => ({ ...current, companyType: 'software' }))}>
-                    Software Company
-                  </button>
-                </div>
-              </div>
-              {createCompanyDraft.companyType === 'software' ? (
-                <label className={styles.field}>
-                  <span>Software focus</span>
-                  <select value={createCompanyDraft.softwareSpecialization} onChange={(event) => setCreateCompanyDraft((current) => ({ ...current, softwareSpecialization: event.target.value as SoftwareSpecialization }))}>
-                    {SOFTWARE_SPECIALIZATIONS.map((entry) => (
-                      <option key={entry.key} value={entry.key}>{entry.label}</option>
-                    ))}
-                  </select>
-                  <small>{SOFTWARE_SPECIALIZATIONS.find((entry) => entry.key === createCompanyDraft.softwareSpecialization)?.description}</small>
-                </label>
-              ) : null}
-              <div className={styles.memoCard}>
-                <p className={styles.panelTag}>Preview</p>
-                <p>
-                  Dana awal pendiri: {formatCurrencyCompact(game.player.cash * (createCompanyDraft.percent / 100), 2)} · Batas perusahaan aktif: {MAX_ACTIVE_COMPANIES}.
-                </p>
-              </div>
-              <button type="button" className={styles.primaryButton} onClick={createCompanyPlanByPlayer}>
-                Buat plan sekarang
-              </button>
-            </div>
-          </section>
-        </div>
+          </div>
+          {createCompanyDraft.companyType === 'software' ? (
+            <label className={styles.field}>
+              <span>Software focus</span>
+              <select value={createCompanyDraft.softwareSpecialization} onChange={(event) => setCreateCompanyDraft((current) => ({ ...current, softwareSpecialization: event.target.value as SoftwareSpecialization }))}>
+                {SOFTWARE_SPECIALIZATIONS.map((entry) => (
+                  <option key={entry.key} value={entry.key}>{entry.label}</option>
+                ))}
+              </select>
+              <small>{SOFTWARE_SPECIALIZATIONS.find((entry) => entry.key === createCompanyDraft.softwareSpecialization)?.description}</small>
+            </label>
+          ) : null}
+          <div className={styles.memoCard}>
+            <p className={styles.panelTag}>Preview</p>
+            <p>
+              Dana awal pendiri: {formatCurrencyCompact(game.player.cash * (createCompanyDraft.percent / 100), 2)} · Batas perusahaan aktif: {MAX_ACTIVE_COMPANIES}.
+            </p>
+          </div>
+          <GameButton type="button" className={styles.primaryButton} onClick={createCompanyPlanByPlayer}>
+            Buat plan sekarang
+          </GameButton>
+        </GameDialog>
       ) : null}
-
       {isCompaniesFrameOpen ? (
-        <div className={styles.screenFrameOverlay} role="presentation" onClick={() => setIsCompaniesFrameOpen(false)}>
-          <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label="Daftar perusahaan" onClick={(event) => event.stopPropagation()}>
-            <ThinFrameHeader frameName="Companies" subtitle={`Plans & perusahaan ${productLabel}`} onBack={() => setIsCompaniesFrameOpen(false)} backLabel="Tutup daftar perusahaan" />
+        <GameScreenFrame
+          open
+          ariaLabel="Daftar perusahaan"
+          frameName="Companies"
+          subtitle={`Plans & perusahaan ${productLabel}`}
+          onClose={() => setIsCompaniesFrameOpen(false)}
+          backLabel="Tutup daftar perusahaan"
+        >
+          <div className={styles.memoCard}>
+            <p className={styles.panelTag}>Instruksi</p>
+            <p>
+              {establishedCompanies.length > 0
+                ? 'Tap perusahaan untuk cek valuasi, harga saham, dan ownership live.'
+                : 'Belum ada perusahaan aktif. Buka Company Establishment Plan untuk membantu pendanaan awal hingga perusahaan resmi berdiri.'}
+            </p>
+          </div>
 
-            <div className={styles.screenFrameBody}>
-              <div className={styles.memoCard}>
-                <p className={styles.panelTag}>Instruksi</p>
-                <p>
-                  {establishedCompanies.length > 0
-                    ? 'Tap perusahaan untuk cek valuasi, harga saham, dan ownership live.'
-                    : 'Belum ada perusahaan aktif. Buka Company Establishment Plan untuk membantu pendanaan awal hingga perusahaan resmi berdiri.'}
-                </p>
-              </div>
-
-              <div className={styles.companyList}>
-                {openPlans.map((plan) => (
-                  <button key={`plan-${plan.companyKey}`} type="button" className={styles.companyCardButton} onClick={() => openPlanDetail(plan.companyKey)}>
-                    <article className={styles.companyCard}>
-                      <div className={styles.itemTop}>
-                        <div>
-                          <p className={styles.itemLabel}>Company Establishment Plan</p>
-                          <h3>{plan.companyName}</h3>
-                        </div>
-                        <span className={styles.costPill}>
-                          {getCompanyFieldLabel(plan.field)}
-                          {plan.field === 'software' ? ` · ${getSoftwareSpecializationLabel(plan.softwareSpecialization)}` : ''}
-                          {' · 1 bulan pendanaan'}
-                        </span>
-                      </div>
-                      <div className={styles.infoRowCompact}>
-                        <div>
-                          <span>Capital</span>
-                          <strong>{formatCurrencyCompact(plan.pledgedCapital, 2)}</strong>
-                        </div>
-                        <div>
-                          <span>Target</span>
-                          <strong>{formatCurrencyCompact(plan.targetCapital, 2)}</strong>
-                        </div>
-                        <div>
-                          <span>Jumlah investor</span>
-                          <strong>{formatNumber(new Set(plan.pledges.map((pledge) => pledge.investorId)).size)}</strong>
-                        </div>
-                        <div>
-                          <span>Sisa hari</span>
-                          <strong>{formatNumber(Math.max(0, plan.dueDay - game.elapsedDays), 0)}</strong>
-                        </div>
-                      </div>
-                      <p className={styles.itemDescription}>Tekan kartu untuk membuka full frame detail plan pendirian perusahaan.</p>
-                    </article>
-                  </button>
-                ))}
-                {communityPlans.map((plan) => (
-                  <article key={plan.id} className={styles.companyCard}>
-                    <div className={styles.itemTop}>
-                      <div>
-                        <p className={styles.itemLabel}>Open Market Plan</p>
-                        <h3>{plan.companyName}</h3>
-                      </div>
-                      <span className={styles.costPill}>{plan.status}</span>
+          <div className={styles.companyList}>
+            {openPlans.map((plan) => (
+              <GameButton key={`plan-${plan.companyKey}`} type="button" className={styles.companyCardButton} onClick={() => openPlanDetail(plan.companyKey)}>
+                <article className={styles.companyCard}>
+                  <div className={styles.itemTop}>
+                    <div>
+                      <p className={styles.itemLabel}>Company Establishment Plan</p>
+                      <h3>{plan.companyName}</h3>
                     </div>
-                    <div className={styles.infoRowCompact}>
-                      <div>
-                        <span>Field</span>
-                        <strong>{getCompanyFieldLabel(plan.field)}{plan.field === 'software' ? ` · ${getSoftwareSpecializationLabel(plan.softwareSpecialization)}` : ''}</strong>
-                      </div>
-                      <div>
-                        <span>Capital</span>
-                        <strong>{formatCurrencyCompact(plan.pledgedCapital, 2)}</strong>
-                      </div>
-                      <div>
-                        <span>Investors</span>
-                        <strong>{formatNumber(plan.investorIds.length)}</strong>
-                      </div>
-                      <div>
-                        <span>Kompetitor target</span>
-                        <strong>{plan.competesWith}</strong>
-                      </div>
+                    <span className={styles.costPill}>
+                      {getCompanyFieldLabel(plan.field)}
+                      {plan.field === 'software' ? ` · ${getSoftwareSpecializationLabel(plan.softwareSpecialization)}` : ''}
+                      {' · 1 bulan pendanaan'}
+                    </span>
+                  </div>
+                  <div className={styles.infoRowCompact}>
+                    <div>
+                      <span>Capital</span>
+                      <strong>{formatCurrencyCompact(plan.pledgedCapital, 2)}</strong>
                     </div>
-                    {plan.status === 'funding' ? (
-                      <div className={styles.actionRow}>
-                        <button type="button" className={styles.secondaryButton} onClick={() => game && setGame(investInCommunityPlan(game, game.player.id, plan.id, clamp(game.player.cash * 0.04, MIN_TRADE_AMOUNT, game.player.cash)))}>
-                          Invest 4% cash
-                        </button>
-                      </div>
-                    ) : null}
-                  </article>
-                ))}
-                {companyCards.map(({ company, playerOwnership, sharePrice, companyValue }) => (
-                  <button key={company.key} type="button" className={styles.companyCardButton} onClick={() => openCompanyDetail(company.key, 'companies')}>
-                    <article className={styles.companyCard}>
-                      <div className={styles.itemTop}>
-                        <div>
-                          <p className={styles.itemLabel}>{company.focus}</p>
-                          <h3>{company.name}</h3>
-                        </div>
-                        <span className={styles.costPill}>{formatCurrencyCompact(sharePrice, 2)} / share</span>
-                      </div>
-                      <div className={styles.infoRowCompact}>
-                        <div>
-                          <span>CEO</span>
-                          <strong>{company.ceoName}</strong>
-                        </div>
-                        <div>
-                          <span>Value</span>
-                          <strong>{formatCurrencyCompact(companyValue, 2)}</strong>
-                        </div>
-                        <div>
-                          <span>Kepemilikanmu</span>
-                          <strong>{formatNumber(playerOwnership, 1)}%</strong>
-                        </div>
-                        <div>
-                          <span>Market cap</span>
-                          <strong>{formatCurrencyCompact(getSharePrice(company) * company.sharesOutstanding, 2)}</strong>
-                        </div>
-                        <div>
-                          <span>Exec seats</span>
-                          <strong>{formatNumber(EXECUTIVE_ROLES.filter((role) => company.executives[role]).length)}</strong>
-                        </div>
-                      </div>
-                      <p className={styles.itemDescription}>Pantau board, investor, dan trade live.</p>
-                    </article>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </section>
-        </div>
-      ) : null}
-
-      {isInvestorFrameOpen ? (
-        <div className={styles.screenFrameOverlay} role="presentation" onClick={() => setIsInvestorFrameOpen(false)}>
-          <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label="Daftar investor" onClick={(event) => event.stopPropagation()}>
-            <ThinFrameHeader frameName="Investor list" subtitle={`${game.companies[investorFrameCompanyKey].name} ownership board`} onBack={() => setIsInvestorFrameOpen(false)} backLabel="Kembali ke halaman utama" />
-
-            <div className={styles.screenFrameBody}>
-              <div className={styles.quickGrid}>
-                {COMPANY_KEYS.filter((company) => game.companies[company].isEstablished).map((company) => (
-                  <button key={company} type="button" className={investorFrameCompanyKey === company ? styles.quickButtonActive : styles.quickButton} onClick={() => setInvestorFrameCompanyKey(company)}>
-                    {game.companies[company].name}
-                  </button>
-                ))}
-              </div>
-
-              <div className={styles.memoCard}>
-                <p className={styles.panelTag}>Urutan investor</p>
-                <p>Jual saham besar bisa langsung menggoyang kursi CEO.</p>
-              </div>
-
-              <div className={styles.panel}>
-                <div className={styles.panelToggle} role="presentation">
+                    <div>
+                      <span>Target</span>
+                      <strong>{formatCurrencyCompact(plan.targetCapital, 2)}</strong>
+                    </div>
+                    <div>
+                      <span>Jumlah investor</span>
+                      <strong>{formatNumber(new Set(plan.pledges.map((pledge) => pledge.investorId)).size)}</strong>
+                    </div>
+                    <div>
+                      <span>Sisa hari</span>
+                      <strong>{formatNumber(Math.max(0, plan.dueDay - game.elapsedDays), 0)}</strong>
+                    </div>
+                  </div>
+                  <p className={styles.itemDescription}>Tekan kartu untuk membuka full frame detail plan pendirian perusahaan.</p>
+                </article>
+              </GameButton>
+            ))}
+            {communityPlans.map((plan) => (
+              <article key={plan.id} className={styles.companyCard}>
+                <div className={styles.itemTop}>
                   <div>
-                    <p className={styles.panelTag}>Ranking</p>
-                    <h2>Investor terbesar → terkecil</h2>
+                    <p className={styles.itemLabel}>Open Market Plan</p>
+                    <h3>{plan.companyName}</h3>
                   </div>
-                  <span>{formatNumber(investorRankings.length)} investor</span>
+                  <span className={styles.costPill}>{plan.status}</span>
                 </div>
-                <div className={styles.panelList}>
-                  {investorRankings.map((entry, index) => (
-                    <article key={entry.investorId} className={styles.itemCard}>
-                      <div className={styles.itemTop}>
-                        <div>
-                          <p className={styles.itemLabel}>Rank #{index + 1}</p>
-                          <h3>{entry.displayName}</h3>
-                        </div>
-                        <span className={styles.costPill}>{formatNumber(entry.ownership, 1)}%</span>
-                      </div>
-                      <p className={styles.itemDescription}>Saham {formatNumber(entry.shares, 2)} · Nilai {formatCurrencyCompact(entry.amount, 2)} · {game.companies[investorFrameCompanyKey].ceoId === entry.investorId ? 'CEO aktif.' : 'Investor aktif.'}</p>
-                    </article>
-                  ))}
+                <div className={styles.infoRowCompact}>
+                  <div>
+                    <span>Field</span>
+                    <strong>{getCompanyFieldLabel(plan.field)}{plan.field === 'software' ? ` · ${getSoftwareSpecializationLabel(plan.softwareSpecialization)}` : ''}</strong>
+                  </div>
+                  <div>
+                    <span>Capital</span>
+                    <strong>{formatCurrencyCompact(plan.pledgedCapital, 2)}</strong>
+                  </div>
+                  <div>
+                    <span>Investors</span>
+                    <strong>{formatNumber(plan.investorIds.length)}</strong>
+                  </div>
+                  <div>
+                    <span>Kompetitor target</span>
+                    <strong>{plan.competesWith}</strong>
+                  </div>
                 </div>
-              </div>
-            </div>
-          </section>
-        </div>
-      ) : null}
-
-      {isNewsFrameOpen ? (
-        <div className={styles.screenFrameOverlay} role="presentation" onClick={() => setIsNewsFrameOpen(false)}>
-          <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label="News frame" onClick={(event) => event.stopPropagation()}>
-            <ThinFrameHeader frameName="News" subtitle={`5 berita terbaru pasar ${productLabel}`} onBack={() => setIsNewsFrameOpen(false)} backLabel="Kembali dari news" />
-            <div className={styles.screenFrameBody}>
-              <div className={styles.quickGrid}>
-                <button type="button" className={newsCompanyFilter === 'all' ? styles.quickButtonActive : styles.quickButton} onClick={() => setNewsCompanyFilter('all')}>
-                  Semua
-                </button>
-                {COMPANY_KEYS.map((companyKey) => (
-                  <button key={companyKey} type="button" className={newsCompanyFilter === companyKey ? styles.quickButtonActive : styles.quickButton} onClick={() => setNewsCompanyFilter(companyKey)}>
-                    {game.companies[companyKey].name}
-                  </button>
-                ))}
-              </div>
-              <div className={styles.panelList}>
-                {newsItems.length > 0 ? newsItems.map((item) => (
-                  <article key={item.id} className={styles.itemCard}>
-                    <div className={styles.itemTop}>
-                      <p className={styles.itemLabel}>{getNewsCategoryLabel(item.category)}</p>
-                      <span className={styles.costPill}>{item.companyKey ? game.companies[item.companyKey].name : 'Global'}</span>
+                {plan.status === 'funding' ? (
+                  <div className={styles.actionRow}>
+                    <GameButton type="button" className={styles.secondaryButton} onClick={() => game && setGame(investInCommunityPlan(game, game.player.id, plan.id, clamp(game.player.cash * 0.04, MIN_TRADE_AMOUNT, game.player.cash)))}>
+                      Invest 4% cash
+                    </GameButton>
+                  </div>
+                ) : null}
+              </article>
+            ))}
+            {companyCards.map(({ company, playerOwnership, sharePrice, companyValue }) => (
+              <GameButton key={company.key} type="button" className={styles.companyCardButton} onClick={() => openCompanyDetail(company.key, 'companies')}>
+                <article className={styles.companyCard}>
+                  <div className={styles.itemTop}>
+                    <div>
+                      <p className={styles.itemLabel}>{company.focus}</p>
+                      <h3>{company.name}</h3>
                     </div>
-                    <p className={styles.itemDescription}>{item.entry}</p>
-                  </article>
-                )) : (
-                  <div className={styles.memoCard}>
-                    <p className={styles.panelTag}>News kosong</p>
-                    <p>Belum ada event yang memenuhi kategori berita untuk filter saat ini.</p>
+                    <span className={styles.costPill}>{formatCurrencyCompact(sharePrice, 2)} / share</span>
                   </div>
-                )}
-              </div>
-            </div>
-          </section>
-        </div>
+                  <div className={styles.infoRowCompact}>
+                    <div>
+                      <span>CEO</span>
+                      <strong>{company.ceoName}</strong>
+                    </div>
+                    <div>
+                      <span>Value</span>
+                      <strong>{formatCurrencyCompact(companyValue, 2)}</strong>
+                    </div>
+                    <div>
+                      <span>Kepemilikanmu</span>
+                      <strong>{formatNumber(playerOwnership, 1)}%</strong>
+                    </div>
+                    <div>
+                      <span>Market cap</span>
+                      <strong>{formatCurrencyCompact(getSharePrice(company) * company.sharesOutstanding, 2)}</strong>
+                    </div>
+                    <div>
+                      <span>Exec seats</span>
+                      <strong>{formatNumber(EXECUTIVE_ROLES.filter((role) => company.executives[role]).length)}</strong>
+                    </div>
+                  </div>
+                  <p className={styles.itemDescription}>Pantau board, investor, dan trade live.</p>
+                </article>
+              </GameButton>
+            ))}
+          </div>
+        </GameScreenFrame>
       ) : null}
+      {isInvestorFrameOpen ? (
+        <GameScreenFrame
+          open
+          ariaLabel="Daftar investor"
+          frameName="Investor list"
+          subtitle={`${game.companies[investorFrameCompanyKey].name} ownership board`}
+          onClose={() => setIsInvestorFrameOpen(false)}
+          backLabel="Kembali ke halaman utama"
+        >
+          <div className={styles.quickGrid}>
+            {COMPANY_KEYS.filter((company) => game.companies[company].isEstablished).map((company) => (
+              <GameButton key={company} type="button" className={investorFrameCompanyKey === company ? styles.quickButtonActive : styles.quickButton} onClick={() => setInvestorFrameCompanyKey(company)}>
+                {game.companies[company].name}
+              </GameButton>
+            ))}
+          </div>
 
+          <div className={styles.memoCard}>
+            <p className={styles.panelTag}>Urutan investor</p>
+            <p>Jual saham besar bisa langsung menggoyang kursi CEO.</p>
+          </div>
+
+          <GameCardSurface as="section" className={styles.panel}>
+            <div className={styles.panelToggle} role="presentation">
+              <div>
+                <p className={styles.panelTag}>Ranking</p>
+                <h2>Investor terbesar → terkecil</h2>
+              </div>
+              <span>{formatNumber(investorRankings.length)} investor</span>
+            </div>
+            <div className={styles.panelList}>
+              {investorRankings.map((entry, index) => (
+                <article key={entry.investorId} className={styles.itemCard}>
+                  <div className={styles.itemTop}>
+                    <div>
+                      <p className={styles.itemLabel}>Rank #{index + 1}</p>
+                      <h3>{entry.displayName}</h3>
+                    </div>
+                    <span className={styles.costPill}>{formatNumber(entry.ownership, 1)}%</span>
+                  </div>
+                  <p className={styles.itemDescription}>Saham {formatNumber(entry.shares, 2)} · Nilai {formatCurrencyCompact(entry.amount, 2)} · {game.companies[investorFrameCompanyKey].ceoId === entry.investorId ? 'CEO aktif.' : 'Investor aktif.'}</p>
+                </article>
+              ))}
+            </div>
+          </GameCardSurface>
+        </GameScreenFrame>
+      ) : null}
+      {isNewsFrameOpen ? (
+        <GameScreenFrame
+          open
+          ariaLabel="News frame"
+          frameName="News"
+          subtitle={`5 berita terbaru pasar ${productLabel}`}
+          onClose={() => setIsNewsFrameOpen(false)}
+          backLabel="Kembali dari news"
+        >
+          <div className={styles.quickGrid}>
+            <GameButton type="button" className={newsCompanyFilter === 'all' ? styles.quickButtonActive : styles.quickButton} onClick={() => setNewsCompanyFilter('all')}>
+              Semua
+            </GameButton>
+            {COMPANY_KEYS.map((companyKey) => (
+              <GameButton key={companyKey} type="button" className={newsCompanyFilter === companyKey ? styles.quickButtonActive : styles.quickButton} onClick={() => setNewsCompanyFilter(companyKey)}>
+                {game.companies[companyKey].name}
+              </GameButton>
+            ))}
+          </div>
+          <div className={styles.panelList}>
+            {newsItems.length > 0 ? newsItems.map((item) => (
+              <article key={item.id} className={styles.itemCard}>
+                <div className={styles.itemTop}>
+                  <p className={styles.itemLabel}>{getNewsCategoryLabel(item.category)}</p>
+                  <span className={styles.costPill}>{item.companyKey ? game.companies[item.companyKey].name : 'Global'}</span>
+                </div>
+                <p className={styles.itemDescription}>{item.entry}</p>
+              </article>
+            )) : (
+              <div className={styles.memoCard}>
+                <p className={styles.panelTag}>News kosong</p>
+                <p>Belum ada event yang memenuhi kategori berita untuk filter saat ini.</p>
+              </div>
+            )}
+          </div>
+        </GameScreenFrame>
+      ) : null}
       {isForbesFrameOpen ? (
-        <div className={styles.screenFrameOverlay} role="presentation" onClick={() => setIsForbesFrameOpen(false)}>
-          <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label="Forbes ranking frame" onClick={(event) => event.stopPropagation()}>
-            <ThinFrameHeader frameName="Forbes Ranking" subtitle="Nama · Wealth · Company name" onBack={() => setIsForbesFrameOpen(false)} backLabel="Kembali dari forbes" />
-            <div className={styles.screenFrameBody}>
-              <div className={styles.rankingFilterRow}>
-                <button
-                  type="button"
-                  className={forbesCategory === 'individual' ? styles.rankingFilterButtonActive : styles.rankingFilterButton}
-                  onClick={() => setForbesCategory('individual')}
-                >
-                  Individual
-                </button>
-                <button
-                  type="button"
-                  className={forbesCategory === 'business' ? styles.rankingFilterButtonActive : styles.rankingFilterButton}
-                  onClick={() => setForbesCategory('business')}
-                >
-                  Business
-                </button>
-              </div>
-              {forbesCategory === 'individual' ? (
-                <div className={styles.forbesList}>
-                  {forbesIndividualList.map((entry, index) => (
-                    <article key={entry.investorId} className={styles.forbesCard}>
-                      <p className={styles.forbesRank}>#{index + 1}</p>
-                      <p className={styles.forbesName}>{entry.name}</p>
-                      <p className={styles.forbesWealth}>{formatMoneyCompact(entry.wealth, 2)}</p>
-                      <p className={styles.forbesCompanies}>{entry.companyNames.length ? entry.companyNames.join(', ') : '-'}</p>
-                    </article>
-                  ))}
-                </div>
-              ) : (
-                <div className={styles.forbesList}>
-                  {forbesBusinessList.map((entry, index) => (
-                    <article key={entry.companyKey} className={styles.forbesBusinessCard}>
-                      <p className={styles.forbesRank}>#{index + 1}</p>
-                      <div className={styles.forbesBusinessMain}>
-                        <p className={styles.forbesName}>{entry.name}</p>
-                        <div className={styles.forbesBusinessLine}>
-                          <p className={styles.forbesWealth}>{formatMoneyCompact(entry.valuation, 2)}</p>
-                          <p className={styles.forbesBusinessCategory}>{entry.category}</p>
-                        </div>
-                        <p className={styles.forbesCompanies}>{formatNumber(entry.investorsCount)} Investors</p>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              )}
+        <GameScreenFrame
+          open
+          ariaLabel="Forbes ranking frame"
+          frameName="Forbes Ranking"
+          subtitle="Nama · Wealth · Company name"
+          onClose={() => setIsForbesFrameOpen(false)}
+          backLabel="Kembali dari forbes"
+        >
+          <div className={styles.rankingFilterRow}>
+            <GameButton
+              type="button"
+              className={forbesCategory === 'individual' ? styles.rankingFilterButtonActive : styles.rankingFilterButton}
+              onClick={() => setForbesCategory('individual')}
+            >
+              Individual
+            </GameButton>
+            <GameButton
+              type="button"
+              className={forbesCategory === 'business' ? styles.rankingFilterButtonActive : styles.rankingFilterButton}
+              onClick={() => setForbesCategory('business')}
+            >
+              Business
+            </GameButton>
+          </div>
+          {forbesCategory === 'individual' ? (
+            <div className={styles.forbesList}>
+              {forbesIndividualList.map((entry, index) => (
+                <article key={entry.investorId} className={styles.forbesCard}>
+                  <p className={styles.forbesRank}>#{index + 1}</p>
+                  <p className={styles.forbesName}>{entry.name}</p>
+                  <p className={styles.forbesWealth}>{formatMoneyCompact(entry.wealth, 2)}</p>
+                  <p className={styles.forbesCompanies}>{entry.companyNames.length ? entry.companyNames.join(', ') : '-'}</p>
+                </article>
+              ))}
             </div>
-          </section>
-        </div>
+          ) : (
+            <div className={styles.forbesList}>
+              {forbesBusinessList.map((entry, index) => (
+                <article key={entry.companyKey} className={styles.forbesBusinessCard}>
+                  <p className={styles.forbesRank}>#{index + 1}</p>
+                  <div className={styles.forbesBusinessMain}>
+                    <p className={styles.forbesName}>{entry.name}</p>
+                    <div className={styles.forbesBusinessLine}>
+                      <p className={styles.forbesWealth}>{formatMoneyCompact(entry.valuation, 2)}</p>
+                      <p className={styles.forbesBusinessCategory}>{entry.category}</p>
+                    </div>
+                    <p className={styles.forbesCompanies}>{formatNumber(entry.investorsCount)} Investors</p>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </GameScreenFrame>
       ) : null}
-
       {isStatisticsFrameOpen && focusedCompany ? (
-        <div className={`${styles.screenFrameOverlay} ${styles.statisticsOverlay}`} role="presentation" onClick={() => setIsStatisticsFrameOpen(false)}>
-          <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label={`Statistik ${focusedCompany.name}`} onClick={(event) => event.stopPropagation()}>
-            <ThinFrameHeader frameName="Company statistics" subtitle={focusedCompany.name} onBack={() => setIsStatisticsFrameOpen(false)} backLabel="Tutup statistik" />
-            <div className={styles.screenFrameBody}>
+        <GameScreenFrame
+          open
+          ariaLabel={`Statistik ${focusedCompany.name}`}
+          frameName="Company statistics"
+          subtitle={focusedCompany.name}
+          onClose={() => setIsStatisticsFrameOpen(false)}
+          backLabel="Tutup statistik"
+          overlayClassName={styles.statisticsOverlay}
+        >
               <div className={styles.statisticsSwitchRow}>
                 {statisticsTabConfig.map((option) => (
-                  <button
+                  <GameButton
                     key={option.key}
                     type="button"
                     className={statisticsTab === option.key ? styles.rankingFilterButtonActive : styles.rankingFilterButton}
                     onClick={() => setStatisticsTab(option.key)}
                   >
                     {option.label}
-                  </button>
+                  </GameButton>
                 ))}
               </div>
               <article className={styles.statisticsCard}>
@@ -2507,16 +2505,18 @@ export function CpuFoundrySim() {
                 <h3 className={styles.statisticsTitle}>{activeStatisticsConfig?.title}</h3>
                 <ReusablePieDiagram title={activeStatisticsConfig?.title ?? 'Diagram statistik'} slices={activeStatisticsConfig?.slices ?? []} />
               </article>
-            </div>
-          </section>
-        </div>
+        </GameScreenFrame>
       ) : null}
-
       {isDecisionFrameOpen && focusedCompany && focusedPlayerCanUseDecision ? (
-        <div className={`${styles.screenFrameOverlay} ${styles.statisticsOverlay}`} role="presentation" onClick={() => setIsDecisionFrameOpen(false)}>
-          <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label={`Decision ${focusedCompany.name}`} onClick={(event) => event.stopPropagation()}>
-            <ThinFrameHeader frameName="Decision" subtitle={`${focusedCompany.name} board actions`} onBack={() => setIsDecisionFrameOpen(false)} backLabel="Tutup decision" />
-            <div className={styles.screenFrameBody}>
+        <GameScreenFrame
+          open
+          ariaLabel={`Decision ${focusedCompany.name}`}
+          frameName="Decision"
+          subtitle={`${focusedCompany.name} board actions`}
+          onClose={() => setIsDecisionFrameOpen(false)}
+          backLabel="Tutup decision"
+          overlayClassName={styles.statisticsOverlay}
+        >
               <div className={styles.quickGrid}>
                 {([
                   { key: 'invest', label: 'Invest' },
@@ -2526,9 +2526,9 @@ export function CpuFoundrySim() {
                   { key: 'payout-up', label: 'Raise Payout' },
                   { key: 'payout-down', label: 'Lower Payout' },
                 ] as Array<{ key: DecisionMode; label: string }>).map((entry) => (
-                  <button key={entry.key} type="button" className={decisionMode === entry.key ? styles.quickButtonActive : styles.quickButton} onClick={() => setDecisionMode(entry.key)}>
+                  <GameButton key={entry.key} type="button" className={decisionMode === entry.key ? styles.quickButtonActive : styles.quickButton} onClick={() => setDecisionMode(entry.key)}>
                     {entry.label}
-                  </button>
+                  </GameButton>
                 ))}
               </div>
 
@@ -2542,9 +2542,9 @@ export function CpuFoundrySim() {
                   </div>
                   <div className={styles.quickGrid}>
                     {COMPANY_KEYS.filter((key) => key !== focusedCompany.key && game.companies[key].isEstablished).map((key) => (
-                      <button key={key} type="button" className={decisionTargetCompanyKey === key ? styles.quickButtonActive : styles.quickButton} onClick={() => setDecisionTargetCompanyKey(key)}>
+                      <GameButton key={key} type="button" className={decisionTargetCompanyKey === key ? styles.quickButtonActive : styles.quickButton} onClick={() => setDecisionTargetCompanyKey(key)}>
                         {game.companies[key].name}
-                      </button>
+                      </GameButton>
                     ))}
                   </div>
                   <div className={styles.sliderLabels}>
@@ -2560,17 +2560,17 @@ export function CpuFoundrySim() {
                   <div className={styles.panelBody}>
                     <div className={styles.quickGrid}>
                       {EXECUTIVE_ROLES.map((role) => (
-                        <button key={role} type="button" className={decisionRole === role ? styles.quickButtonActive : styles.quickButton} onClick={() => setDecisionRole(role)}>
+                        <GameButton key={role} type="button" className={decisionRole === role ? styles.quickButtonActive : styles.quickButton} onClick={() => setDecisionRole(role)}>
                           {EXECUTIVE_ROLE_META[role].title}
-                        </button>
+                        </GameButton>
                       ))}
                     </div>
                     {decisionMode === 'appoint' ? (
                       <div className={styles.quickGrid}>
                         {focusedExecutiveCandidatePool.map((candidateId) => (
-                          <button key={candidateId} type="button" className={decisionNomineeId === candidateId ? styles.quickButtonActive : styles.quickButton} onClick={() => setDecisionNomineeId(candidateId)}>
+                          <GameButton key={candidateId} type="button" className={decisionNomineeId === candidateId ? styles.quickButtonActive : styles.quickButton} onClick={() => setDecisionNomineeId(candidateId)}>
                             {investorDisplayName(game, candidateId)}
-                          </button>
+                          </GameButton>
                         ))}
                       </div>
                     ) : (
@@ -2587,19 +2587,21 @@ export function CpuFoundrySim() {
                 <p className={styles.panelTag}>Policy</p>
                 <p>Semua proposal dari panel Decision langsung memicu Board voting popup dan dikecualikan dari limit voting bulanan.</p>
               </div>
-              <button type="button" className={styles.primaryButton} onClick={submitDecision}>
+              <GameButton type="button" className={styles.primaryButton} onClick={submitDecision}>
                 Submit to Board Voting
-              </button>
-            </div>
-          </section>
-        </div>
+              </GameButton>
+        </GameScreenFrame>
       ) : null}
-
       {isGameLicenseFrameOpen && focusedCompany && focusedPlayerIsGameExecutive ? (
-        <div className={`${styles.screenFrameOverlay} ${styles.statisticsOverlay}`} role="presentation" onClick={() => setIsGameLicenseFrameOpen(false)}>
-          <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label="Game license frame" onClick={(event) => event.stopPropagation()}>
-            <ThinFrameHeader frameName="License" subtitle={`${focusedCompany.name} · AppStore contracts`} onBack={() => setIsGameLicenseFrameOpen(false)} backLabel="Tutup lisensi" />
-            <div className={styles.screenFrameBody}>
+        <GameScreenFrame
+          open
+          ariaLabel="Game license frame"
+          frameName="License"
+          subtitle={`${focusedCompany.name} · AppStore contracts`}
+          onClose={() => setIsGameLicenseFrameOpen(false)}
+          backLabel="Tutup lisensi"
+          overlayClassName={styles.statisticsOverlay}
+        >
               <div className={styles.memoCard}>
                 <p className={styles.panelTag}>Policy</p>
                 <p>Bisa apply ke AppStore yang belum melisensikan game kamu kapan saja. Jika ditolak, apply ulang tersedia setelah 30 hari.</p>
@@ -2625,32 +2627,27 @@ export function CpuFoundrySim() {
                             ? `Rejected · bisa apply lagi ${formatNumber(entry.cooldownDaysLeft, 0)} hari lagi.`
                             : 'Belum pernah apply.'}
                     </p>
-                    <button
+                    <GameButton
                       type="button"
                       className={styles.secondaryButton}
                       onClick={() => submitGameLicenseRequest(focusedCompany.key, entry.store.key)}
                       disabled={!entry.canApply}
                     >
                       {entry.canApply ? 'Apply License' : 'Cooldown aktif'}
-                    </button>
+                    </GameButton>
                   </article>
                 ))}
               </div>
-            </div>
-          </section>
-        </div>
+        </GameScreenFrame>
       ) : null}
-
       {isLicenseDeskOpen && isMonthlyLicenseWindow && pendingPlayerLicenseRequests.length > 0 && game ? (
-        <div className={styles.modalOverlay} role="presentation">
-          <section className={styles.modalCard} role="dialog" aria-modal="true" aria-label="AppStore license desk" onClick={(event) => event.stopPropagation()}>
-            <div className={styles.modalHeader}>
-              <div>
-                <p className={styles.panelTag}>License & Permission</p>
-                <h2>{game.companies[pendingPlayerLicenseRequests[0].softwareCompanyKey].name} AppStore</h2>
-              </div>
-            </div>
-            <div className={styles.modalBody}>
+        <GameDialog
+          open
+          ariaLabel="AppStore license desk"
+          eyebrow="License & Permission"
+          title={`${game.companies[pendingPlayerLicenseRequests[0].softwareCompanyKey].name} AppStore`}
+          dismissOnOverlay={false}
+        >
               <div className={styles.memoCard}>
                 <p className={styles.panelTag}>Pemohon</p>
                 <p>{game.companies[pendingPlayerLicenseRequests[0].gameCompanyKey].name} meminta izin distribusi game di AppStore kamu.</p>
@@ -2667,31 +2664,26 @@ export function CpuFoundrySim() {
                 </div>
               </div>
               <div className={styles.actionRow}>
-                <button type="button" className={styles.secondaryButton} onClick={() => processPlayerLicenseRequest(pendingPlayerLicenseRequests[0].id, 'approved')}>
+                <GameButton type="button" className={styles.secondaryButton} onClick={() => processPlayerLicenseRequest(pendingPlayerLicenseRequests[0].id, 'approved')}>
                   Approve License
-                </button>
-                <button type="button" className={styles.ghostButton} onClick={() => processPlayerLicenseRequest(pendingPlayerLicenseRequests[0].id, 'rejected')}>
+                </GameButton>
+                <GameButton type="button" className={styles.ghostButton} onClick={() => processPlayerLicenseRequest(pendingPlayerLicenseRequests[0].id, 'rejected')}>
                   Reject
-                </button>
-                <button type="button" className={styles.quickButton} onClick={() => setIsLicenseDeskOpen(false)}>
+                </GameButton>
+                <GameButton type="button" className={styles.quickButton} onClick={() => setIsLicenseDeskOpen(false)}>
                   Close desk
-                </button>
+                </GameButton>
               </div>
-            </div>
-          </section>
-        </div>
+        </GameDialog>
       ) : null}
-
       {activePlayerBoardVote ? (
-        <div className={styles.modalOverlay} role="presentation" onClick={() => {}}>
-          <section className={styles.modalCard} role="dialog" aria-modal="true" aria-label="Voting dewan direksi" onClick={(event) => event.stopPropagation()}>
-            <div className={styles.modalHeader}>
-              <div>
-                <p className={styles.panelTag}>Board voting (3 hari)</p>
-                <h2>{activePlayerBoardVote.company.name}</h2>
-              </div>
-            </div>
-            <div className={styles.modalBody}>
+        <GameDialog
+          open
+          ariaLabel="Voting dewan direksi"
+          eyebrow="Board voting (3 hari)"
+          title={activePlayerBoardVote.company.name}
+          dismissOnOverlay={false}
+        >
               <div className={styles.infoRow}>
                 <div>
                   <span>Jenis voting</span>
@@ -2748,33 +2740,34 @@ export function CpuFoundrySim() {
                 ) : null}
               </div>
               <div className={styles.actionRow}>
-                <button
+                <GameButton
                   type="button"
                   className={styles.secondaryButton}
                   onClick={() => castPlayerBoardVote(activePlayerBoardVote.companyKey, 'yes')}
                   disabled={game.elapsedDays > activePlayerBoardVote.vote.endDay || !activePlayerBoardVoteMeta?.playerCanVote}
                 >
                   Setuju
-                </button>
-                <button
+                </GameButton>
+                <GameButton
                   type="button"
                   className={styles.ghostButton}
                   onClick={() => castPlayerBoardVote(activePlayerBoardVote.companyKey, 'no')}
                   disabled={game.elapsedDays > activePlayerBoardVote.vote.endDay || !activePlayerBoardVoteMeta?.playerCanVote}
                 >
                   Tolak
-                </button>
+                </GameButton>
               </div>
-            </div>
-          </section>
-        </div>
+        </GameDialog>
       ) : null}
-
       {focusedPlan && game ? (
-        <div className={styles.screenFrameOverlay} role="presentation" onClick={() => setFocusedPlanKey(null)}>
-          <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label={`Detail plan pendirian ${focusedPlan.companyName}`} onClick={(event) => event.stopPropagation()}>
-            <ThinFrameHeader frameName="Company Establishment Plan" subtitle={`${focusedPlan.companyName} full frame`} onBack={() => setFocusedPlanKey(null)} backLabel="Tutup detail plan" />
-            <div className={styles.screenFrameBody}>
+        <GameScreenFrame
+          open
+          ariaLabel={`Detail plan pendirian ${focusedPlan.companyName}`}
+          frameName="Company Establishment Plan"
+          subtitle={`${focusedPlan.companyName} full frame`}
+          onClose={() => setFocusedPlanKey(null)}
+          backLabel="Tutup detail plan"
+        >
               <div className={styles.infoRow}>
                 <div>
                   <span>Company Name</span>
@@ -2811,24 +2804,24 @@ export function CpuFoundrySim() {
                 </p>
               </div>
               <div className={styles.actionRow}>
-                <button type="button" className={styles.secondaryButton} onClick={() => investInPlan(focusedPlan.companyKey, 0.08)} disabled={focusedPlan.isEstablished}>
+                <GameButton type="button" className={styles.secondaryButton} onClick={() => investInPlan(focusedPlan.companyKey, 0.08)} disabled={focusedPlan.isEstablished}>
                   Invest 8% cash
-                </button>
-                <button type="button" className={styles.primaryButton} onClick={() => investInPlan(focusedPlan.companyKey, 0.2)} disabled={focusedPlan.isEstablished}>
+                </GameButton>
+                <GameButton type="button" className={styles.primaryButton} onClick={() => investInPlan(focusedPlan.companyKey, 0.2)} disabled={focusedPlan.isEstablished}>
                   Invest 20% cash
-                </button>
+                </GameButton>
               </div>
-            </div>
-          </section>
-        </div>
+        </GameScreenFrame>
       ) : null}
-
       {focusedCompany && game ? (
-        <div className={styles.screenFrameOverlay} role="presentation" onClick={closeCompanyDetail}>
-          <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label={`Detail perusahaan ${focusedCompany.name}`} onClick={(event) => event.stopPropagation()}>
-            <ThinFrameHeader frameName="Company detail" subtitle={`${focusedCompany.name} full frame`} onBack={closeCompanyDetail} backLabel="Kembali ke daftar perusahaan" />
-
-            <div className={styles.screenFrameBody}>
+        <GameScreenFrame
+          open
+          ariaLabel={`Detail perusahaan ${focusedCompany.name}`}
+          frameName="Company detail"
+          subtitle={`${focusedCompany.name} full frame`}
+          onClose={closeCompanyDetail}
+          backLabel="Kembali ke daftar perusahaan"
+        >
               <div className={styles.heroMiniCard}>
                 <div className={styles.infoRow}>
                   <div>
@@ -2871,29 +2864,29 @@ export function CpuFoundrySim() {
                   ) : null}
                 </div>
                 <div className={styles.actionRow}>
-                  <button type="button" className={styles.ghostButton} onClick={closeCompanyDetail}>
+                  <GameButton type="button" className={styles.ghostButton} onClick={closeCompanyDetail}>
                     Go back
-                  </button>
-                  <button type="button" className={styles.secondaryButton} onClick={() => { switchCompany(focusedCompany.key); setInvestmentDraft((current) => ({ ...current, company: focusedCompany.key })); closeTransientLayers(); setIsInvestmentMenuOpen(true); }}>
+                  </GameButton>
+                  <GameButton type="button" className={styles.secondaryButton} onClick={() => { switchCompany(focusedCompany.key); setInvestmentDraft((current) => ({ ...current, company: focusedCompany.key })); closeTransientLayers(); setIsInvestmentMenuOpen(true); }}>
                     Beli / jual saham
-                  </button>
-                  <button type="button" className={styles.primaryButton} onClick={() => { switchCompany(focusedCompany.key); closeTransientLayers(); setIsReleaseMenuOpen(true); }} disabled={!focusedCanReleaseCpu}>
+                  </GameButton>
+                  <GameButton type="button" className={styles.primaryButton} onClick={() => { switchCompany(focusedCompany.key); closeTransientLayers(); setIsReleaseMenuOpen(true); }} disabled={!focusedCanReleaseCpu}>
                     {focusedCanReleaseCpu ? `Release ${productLabel}` : 'Butuh CEO/CTO/CMO'}
-                  </button>
-                  <button type="button" className={styles.ghostButton} onClick={() => openInvestorFrame(focusedCompany.key)}>
+                  </GameButton>
+                  <GameButton type="button" className={styles.ghostButton} onClick={() => openInvestorFrame(focusedCompany.key)}>
                     Investor list
-                  </button>
+                  </GameButton>
                 </div>
               </div>
 
               <section className={styles.panel}>
-                <button type="button" className={styles.panelToggle} onClick={() => toggleCompanyDetailPanel('overview')}>
+                <GameButton type="button" className={styles.panelToggle} onClick={() => toggleCompanyDetailPanel('overview')}>
                   <div>
                     <p className={styles.panelTag}>Overview</p>
                     <h2>{(focusedIsGameField || focusedIsSoftwareField) ? 'Company Overview' : 'Kondisi perusahaan'}</h2>
                   </div>
                   <span>{companyDetailPanels.overview ? 'Tutup' : 'Buka'}</span>
-                </button>
+                </GameButton>
                 {companyDetailPanels.overview ? (
                   <div className={`${styles.panelBody} ${styles.overviewCompactBody}`}>
                     <div className={`${styles.infoRow} ${styles.overviewCompactGrid}`}>
@@ -2953,18 +2946,18 @@ export function CpuFoundrySim() {
                       </div>
                     </div>
                     <div className={styles.actionRow}>
-                      <button type="button" className={styles.slimActionButton} onClick={() => setIsStatisticsFrameOpen(true)}>
+                      <GameButton type="button" className={styles.slimActionButton} onClick={() => setIsStatisticsFrameOpen(true)}>
                         Open Statistics
-                      </button>
+                      </GameButton>
                       {focusedPlayerCanUseDecision ? (
-                        <button type="button" className={styles.slimActionButton} onClick={() => setIsDecisionFrameOpen(true)}>
+                        <GameButton type="button" className={styles.slimActionButton} onClick={() => setIsDecisionFrameOpen(true)}>
                           Decision
-                        </button>
+                        </GameButton>
                       ) : null}
                       {focusedPlayerIsGameExecutive && availableAppStoreCompanies.length > 0 ? (
-                        <button type="button" className={styles.slimActionButton} onClick={() => setIsGameLicenseFrameOpen(true)}>
+                        <GameButton type="button" className={styles.slimActionButton} onClick={() => setIsGameLicenseFrameOpen(true)}>
                           License
-                        </button>
+                        </GameButton>
                       ) : null}
                     </div>
                     <div className={styles.memoCard}>
@@ -2980,13 +2973,13 @@ export function CpuFoundrySim() {
               </section>
 
               <section className={styles.panel}>
-                <button type="button" className={styles.panelToggle} onClick={() => toggleCompanyDetailPanel('governance')}>
+                <GameButton type="button" className={styles.panelToggle} onClick={() => toggleCompanyDetailPanel('governance')}>
                   <div>
                     <p className={styles.panelTag}>{focusedIsSoftwareField ? 'Board' : 'Governance'}</p>
                     <h2>{(focusedIsGameField || focusedIsSoftwareField) ? 'Board of Directors' : 'Dewan direksi ala dunia nyata'}</h2>
                   </div>
                   <span>{companyDetailPanels.governance ? 'Tutup' : 'Buka'}</span>
-                </button>
+                </GameButton>
                 {companyDetailPanels.governance ? (
                   <div className={styles.panelList}>
                     <div className={styles.memoCard}>
@@ -3029,13 +3022,13 @@ export function CpuFoundrySim() {
               </section>
 
               <section className={styles.panel}>
-                <button type="button" className={styles.panelToggle} onClick={() => toggleCompanyDetailPanel('management')}>
+                <GameButton type="button" className={styles.panelToggle} onClick={() => toggleCompanyDetailPanel('management')}>
                   <div>
                     <p className={styles.panelTag}>Management</p>
                     <h2>{(focusedIsGameField || focusedIsSoftwareField) ? 'Executive Management' : 'CEO & jabatan eksekutif opsional'}</h2>
                   </div>
                   <span>{companyDetailPanels.management ? 'Tutup' : 'Buka'}</span>
-                </button>
+                </GameButton>
                 {companyDetailPanels.management ? (
                   <div className={styles.panelList}>
                     <div className={styles.memoCard}>
@@ -3081,12 +3074,12 @@ export function CpuFoundrySim() {
                           </div>
                           {focusedPlayerIsCeo ? (
                             <div className={styles.actionRow}>
-                              <button type="button" className={styles.secondaryButton} onClick={() => rotateExecutiveAppointment(focusedCompany.key, role)}>
+                              <GameButton type="button" className={styles.secondaryButton} onClick={() => rotateExecutiveAppointment(focusedCompany.key, role)}>
                                 {executive ? 'Rotasi kandidat' : 'Tunjuk kandidat'}
-                              </button>
-                              <button type="button" className={styles.ghostButton} onClick={() => clearExecutiveAppointment(focusedCompany.key, role)} disabled={!executive}>
+                              </GameButton>
+                              <GameButton type="button" className={styles.ghostButton} onClick={() => clearExecutiveAppointment(focusedCompany.key, role)} disabled={!executive}>
                                 Kosongkan kursi
-                              </button>
+                              </GameButton>
                             </div>
                           ) : null}
                         </article>
@@ -3094,25 +3087,25 @@ export function CpuFoundrySim() {
                     })}
 
                     <div className={styles.actionRow}>
-                      <button type="button" className={styles.secondaryButton} onClick={() => adjustPayoutBias('down', focusedCompany.key)} disabled={!focusedCanManageFinance}>
+                      <GameButton type="button" className={styles.secondaryButton} onClick={() => adjustPayoutBias('down', focusedCompany.key)} disabled={!focusedCanManageFinance}>
                         {focusedCanManageFinance ? 'Turunkan payout' : 'Butuh CEO/CFO'}
-                      </button>
-                      <button type="button" className={styles.ghostButton} onClick={() => adjustPayoutBias('up', focusedCompany.key)} disabled={!focusedCanManageFinance}>
+                      </GameButton>
+                      <GameButton type="button" className={styles.ghostButton} onClick={() => adjustPayoutBias('up', focusedCompany.key)} disabled={!focusedCanManageFinance}>
                         {focusedCanManageFinance ? 'Naikkan payout' : 'Butuh CEO/CFO'}
-                      </button>
+                      </GameButton>
                     </div>
                   </div>
                 ) : null}
               </section>
 
               <section className={styles.panel}>
-                <button type="button" className={styles.panelToggle} onClick={() => toggleCompanyDetailPanel('ownership')}>
+                <GameButton type="button" className={styles.panelToggle} onClick={() => toggleCompanyDetailPanel('ownership')}>
                   <div>
                     <p className={styles.panelTag}>Ownership</p>
                     <h2>{(focusedIsGameField || focusedIsSoftwareField) ? 'Ownership & CEO Control' : 'Investor & kendali CEO'}</h2>
                   </div>
                   <span>{companyDetailPanels.ownership ? 'Tutup' : 'Buka'}</span>
-                </button>
+                </GameButton>
                 {companyDetailPanels.ownership ? (
                   <div className={styles.panelList}>
                     <article className={styles.itemCard}>
@@ -3131,7 +3124,7 @@ export function CpuFoundrySim() {
                       </p>
                       <div className={styles.quickGrid}>
                         {SHARE_SHEET_OPTIONS.map((option) => (
-                          <button
+                          <GameButton
                             key={option}
                             type="button"
                             className={focusedCompany.sharesOutstanding === option ? styles.quickButtonActive : styles.quickButton}
@@ -3139,7 +3132,7 @@ export function CpuFoundrySim() {
                             onClick={() => updateShareSheetOption(focusedCompany.key, option)}
                           >
                             {formatNumber(option)} sheets
-                          </button>
+                          </GameButton>
                         ))}
                       </div>
                     </article>
@@ -3168,23 +3161,23 @@ export function CpuFoundrySim() {
                         </label>
                         <div className={styles.quickGrid}>
                           {([2, 3, 4] as const).map((multiplier) => (
-                            <button
+                            <GameButton
                               key={multiplier}
                               type="button"
                               className={(shareListingDraft.company === focusedCompany.key ? shareListingDraft.priceMultiplier : 2) === multiplier ? styles.quickButtonActive : styles.quickButton}
                               onClick={() => setShareListingDraft((current) => ({ ...current, company: focusedCompany.key, priceMultiplier: multiplier }))}
                             >
                               {multiplier}x normal
-                            </button>
+                            </GameButton>
                           ))}
                         </div>
                         <div className={styles.actionRow}>
-                          <button type="button" className={styles.secondaryButton} onClick={() => openPlayerShareListing(focusedCompany.key)}>
+                          <GameButton type="button" className={styles.secondaryButton} onClick={() => openPlayerShareListing(focusedCompany.key)}>
                             Buka saham
-                          </button>
-                          <button type="button" className={styles.ghostButton} onClick={() => cancelPlayerShareListing(focusedCompany.key)} disabled={!focusedPlayerListing}>
+                          </GameButton>
+                          <GameButton type="button" className={styles.ghostButton} onClick={() => cancelPlayerShareListing(focusedCompany.key)} disabled={!focusedPlayerListing}>
                             Tutup listing
-                          </button>
+                          </GameButton>
                         </div>
                       </article>
                     ) : null}
@@ -3227,13 +3220,13 @@ export function CpuFoundrySim() {
               </section>
 
               <section className={styles.panel}>
-                <button type="button" className={styles.panelToggle} onClick={() => toggleCompanyDetailPanel('operations')}>
+                <GameButton type="button" className={styles.panelToggle} onClick={() => toggleCompanyDetailPanel('operations')}>
                   <div>
                     <p className={styles.panelTag}>Operations</p>
                     <h2>{focusedIsGameField ? 'Game Studio Pipeline & tim' : focusedIsSoftwareField ? 'Company Operations' : `Upgrade ${productLabel} & tim`}</h2>
                   </div>
                   <span>{companyDetailPanels.operations ? 'Tutup' : 'Buka'}</span>
-                </button>
+                </GameButton>
                 {companyDetailPanels.operations ? (
                   focusedIsGameField ? (
                     <div className={styles.panelList}>
@@ -3249,9 +3242,9 @@ export function CpuFoundrySim() {
                             <article key={key} className={styles.itemCard}>
                               <div className={styles.itemTop}><strong>{upgrade.label}</strong><span className={styles.costPill}>{formatNumber(cost)} RP</span></div>
                               <p className={styles.itemDescription}>{upgrade.description}</p>
-                              <button type="button" className={styles.secondaryButton} onClick={() => improveUpgrade(key, focusedCompany.key)} disabled={!focusedCanManageTechnology || focusedCompany.research < cost}>
+                              <GameButton type="button" className={styles.secondaryButton} onClick={() => improveUpgrade(key, focusedCompany.key)} disabled={!focusedCanManageTechnology || focusedCompany.research < cost}>
                                 {!focusedCanManageTechnology ? 'CEO/CTO only' : focusedCompany.research >= cost ? 'Develop Feature' : 'RP kurang'}
-                              </button>
+                              </GameButton>
                             </article>
                           );
                         })}
@@ -3268,9 +3261,9 @@ export function CpuFoundrySim() {
                             <article key={key} className={styles.itemCard}>
                               <div className={styles.itemTop}><strong>{upgrade.label}</strong><span className={styles.costPill}>{formatNumber(cost)} RP</span></div>
                               <p className={styles.itemDescription}>{upgrade.description}</p>
-                              <button type="button" className={styles.secondaryButton} onClick={() => improveUpgrade(key, focusedCompany.key)} disabled={!focusedCanManageTechnology || focusedCompany.research < cost}>
+                              <GameButton type="button" className={styles.secondaryButton} onClick={() => improveUpgrade(key, focusedCompany.key)} disabled={!focusedCanManageTechnology || focusedCompany.research < cost}>
                                 {!focusedCanManageTechnology ? 'CEO/CTO only' : focusedCompany.research >= cost ? 'Develop Tech' : 'RP kurang'}
-                              </button>
+                              </GameButton>
                             </article>
                           );
                         })}
@@ -3294,9 +3287,9 @@ export function CpuFoundrySim() {
                           <article key={key} className={styles.itemCard}>
                             <div className={styles.itemTop}><strong>{team.label}</strong><span className={styles.costPill}>{formatCurrencyCompact(cost, 2)}</span></div>
                             <p className={styles.itemDescription}>{team.description}</p>
-                            <button type="button" className={styles.secondaryButton} onClick={() => hireTeam(key, focusedCompany.key)} disabled={!isAllowed}>
+                            <GameButton type="button" className={styles.secondaryButton} onClick={() => hireTeam(key, focusedCompany.key)} disabled={!isAllowed}>
                               {isAllowed ? 'Scale Studio' : 'Syarat belum terpenuhi'}
-                            </button>
+                            </GameButton>
                           </article>
                         );
                       })}
@@ -3305,28 +3298,28 @@ export function CpuFoundrySim() {
                         <p className={styles.panelTag}>Monthly Marketing Fund Management</p>
                         <p>Kelola agresivitas belanja marketing bulanan melalui payout policy (lebih rendah payout = alokasi marketing lebih tinggi).</p>
                         <div className={styles.actionRow}>
-                          <button type="button" className={styles.secondaryButton} onClick={() => adjustPayoutBias('down', focusedCompany.key)} disabled={!focusedCanManageFinance}>
+                          <GameButton type="button" className={styles.secondaryButton} onClick={() => adjustPayoutBias('down', focusedCompany.key)} disabled={!focusedCanManageFinance}>
                             Naikkan Marketing Fund
-                          </button>
-                          <button type="button" className={styles.ghostButton} onClick={() => adjustPayoutBias('up', focusedCompany.key)} disabled={!focusedCanManageFinance}>
+                          </GameButton>
+                          <GameButton type="button" className={styles.ghostButton} onClick={() => adjustPayoutBias('up', focusedCompany.key)} disabled={!focusedCanManageFinance}>
                             Turunkan Marketing Fund
-                          </button>
+                          </GameButton>
                         </div>
                       </article>
                     </div>
                   ) : focusedIsSoftwareField ? (
                     <div className={styles.panelList}>
                       <div className={styles.rankingFilterRow}>
-                        <button type="button" className={softwareUpgradeCategory === 'core' ? styles.rankingFilterButtonActive : styles.rankingFilterButton} onClick={() => setSoftwareUpgradeCategory('core')}>
+                        <GameButton type="button" className={softwareUpgradeCategory === 'core' ? styles.rankingFilterButtonActive : styles.rankingFilterButton} onClick={() => setSoftwareUpgradeCategory('core')}>
                           Core
-                        </button>
-                        <button type="button" className={softwareUpgradeCategory === 'scale' ? styles.rankingFilterButtonActive : styles.rankingFilterButton} onClick={() => setSoftwareUpgradeCategory('scale')}>
+                        </GameButton>
+                        <GameButton type="button" className={softwareUpgradeCategory === 'scale' ? styles.rankingFilterButtonActive : styles.rankingFilterButton} onClick={() => setSoftwareUpgradeCategory('scale')}>
                           Scale
-                        </button>
+                        </GameButton>
                         {focusedCompany.softwareSpecialization === 'app-store' ? (
-                          <button type="button" className={softwareUpgradeCategory === 'appstore' ? styles.rankingFilterButtonActive : styles.rankingFilterButton} onClick={() => setSoftwareUpgradeCategory('appstore')}>
+                          <GameButton type="button" className={softwareUpgradeCategory === 'appstore' ? styles.rankingFilterButtonActive : styles.rankingFilterButton} onClick={() => setSoftwareUpgradeCategory('appstore')}>
                             AppStore
-                          </button>
+                          </GameButton>
                         ) : null}
                       </div>
                       {(softwareUpgradeCategory === 'core'
@@ -3347,9 +3340,9 @@ export function CpuFoundrySim() {
                               <span className={styles.costPill}>{formatNumber(cost)} RP</span>
                             </div>
                             <p className={styles.itemDescription}>{upgrade.description}</p>
-                            <button type="button" className={styles.secondaryButton} onClick={() => improveUpgrade(key, focusedCompany.key)} disabled={!focusedCanManageTechnology || focusedCompany.research < cost}>
+                            <GameButton type="button" className={styles.secondaryButton} onClick={() => improveUpgrade(key, focusedCompany.key)} disabled={!focusedCanManageTechnology || focusedCompany.research < cost}>
                               {!focusedCanManageTechnology ? 'CEO/CTO only' : focusedCompany.research >= cost ? 'Upgrade' : 'RP kurang'}
-                            </button>
+                            </GameButton>
                           </article>
                         );
                       })}
@@ -3368,9 +3361,9 @@ export function CpuFoundrySim() {
                                   <span className={styles.costPill}>{formatNumber(cost)} RP</span>
                                 </div>
                                 <p className={styles.itemDescription}>Level {formatNumber(value, 2)} · Mempengaruhi download & popularitas partner game.</p>
-                                <button type="button" className={styles.secondaryButton} onClick={() => improveAppStoreProfile(specKey, focusedCompany.key)} disabled={!focusedCanManageTechnology || focusedCompany.research < cost}>
+                                <GameButton type="button" className={styles.secondaryButton} onClick={() => improveAppStoreProfile(specKey, focusedCompany.key)} disabled={!focusedCanManageTechnology || focusedCompany.research < cost}>
                                   {!focusedCanManageTechnology ? 'CEO/CTO only' : 'Upgrade AppStore'}
-                                </button>
+                                </GameButton>
                               </article>
                             );
                           })}
@@ -3395,9 +3388,9 @@ export function CpuFoundrySim() {
                               <span className={styles.costPill}>{formatNumber(cost)} RP</span>
                             </div>
                             <p className={styles.itemDescription}>{upgrade.description}</p>
-                            <button type="button" className={styles.secondaryButton} onClick={() => improveUpgrade(key, focusedCompany.key)} disabled={!focusedCanManageTechnology || focusedCompany.research < cost}>
+                            <GameButton type="button" className={styles.secondaryButton} onClick={() => improveUpgrade(key, focusedCompany.key)} disabled={!focusedCanManageTechnology || focusedCompany.research < cost}>
                               {!focusedCanManageTechnology ? 'CEO/CTO only' : focusedCompany.research >= cost ? 'Upgrade' : 'RP kurang'}
-                            </button>
+                            </GameButton>
                           </article>
                         );
                       })}
@@ -3423,9 +3416,9 @@ export function CpuFoundrySim() {
                               <span className={styles.costPill}>{formatCurrencyCompact(cost, 2)}</span>
                             </div>
                             <p className={styles.itemDescription}>{team.description}</p>
-                            <button type="button" className={styles.secondaryButton} onClick={() => hireTeam(key, focusedCompany.key)} disabled={!isAllowed}>
+                            <GameButton type="button" className={styles.secondaryButton} onClick={() => hireTeam(key, focusedCompany.key)} disabled={!isAllowed}>
                               {isAllowed ? 'Expand' : 'Syarat belum terpenuhi'}
-                            </button>
+                            </GameButton>
                           </article>
                         );
                       })}
@@ -3435,18 +3428,18 @@ export function CpuFoundrySim() {
               </section>
 
               <section className={styles.panel}>
-                <button type="button" className={styles.panelToggle} onClick={() => toggleCompanyDetailPanel('intel')}>
+                <GameButton type="button" className={styles.panelToggle} onClick={() => toggleCompanyDetailPanel('intel')}>
                   <div>
                     <p className={styles.panelTag}>{focusedIsGameField ? 'Games' : focusedIsSoftwareField ? 'Software' : 'Intel'}</p>
                     <h2>{focusedIsGameField ? 'Games' : focusedIsSoftwareField ? 'Released Apps/Software' : 'Release & tekanan pasar'}</h2>
                   </div>
                   <span>{companyDetailPanels.intel ? 'Tutup' : 'Buka'}</span>
-                </button>
+                </GameButton>
                 {companyDetailPanels.intel ? (
                   (focusedIsGameField || focusedIsSoftwareField) ? (
                     <div className={styles.panelList}>
                       {focusedGameReleaseCards.map((entry, index) => (
-                        <button key={entry.id} type="button" className={styles.companyCardButton} onClick={() => { setSelectedGameReleaseId(entry.id); setSelectedGameCommunityId(null); }}>
+                        <GameButton key={entry.id} type="button" className={styles.companyCardButton} onClick={() => { setSelectedGameReleaseId(entry.id); setSelectedGameCommunityId(null); }}>
                           <article className={styles.itemCard}>
                             <div className={styles.itemTop}>
                               <p className={styles.itemLabel}>{focusedIsSoftwareField ? `Released App/Software Card #${index + 1}` : `Game Name Card #${index + 1}`}</p>
@@ -3455,7 +3448,7 @@ export function CpuFoundrySim() {
                             <p className={styles.itemDescription}><strong>{entry.name}</strong> · {entry.genre} · Popularity {formatNumber(entry.popularity, 1)}%</p>
                             {focusedPlayerIsGameExecutive && availableAppStoreCompanies.length > 0 ? (
                               <div className={styles.actionRow}>
-                                <button
+                                <GameButton
                                   type="button"
                                   className={styles.slimActionButton}
                                   onClick={(event) => {
@@ -3464,11 +3457,11 @@ export function CpuFoundrySim() {
                                   }}
                                 >
                                   License
-                                </button>
+                                </GameButton>
                               </div>
                             ) : null}
                           </article>
-                        </button>
+                        </GameButton>
                       ))}
                     </div>
                   ) : (
@@ -3503,23 +3496,24 @@ export function CpuFoundrySim() {
                   )
                 ) : null}
               </section>
-            </div>
-          </section>
-        </div>
+        </GameScreenFrame>
       ) : null}
-
       {selectedGameRelease && focusedCompany ? (
-        <div className={styles.screenFrameOverlay} role="presentation" onClick={() => { setSelectedGameReleaseId(null); setAppStoreSelectedRelease(null); }}>
-          <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label={`About the ${appStoreSelectedRelease ? 'Game' : focusedCompany.field === 'software' ? 'Product' : 'Game'} ${selectedGameRelease.name}`} onClick={(event) => event.stopPropagation()}>
-            <ThinFrameHeader frameName={appStoreSelectedRelease ? 'About the Game' : focusedCompany.field === 'software' ? 'About the Product' : 'About the Game'} subtitle={selectedGameRelease.name} onBack={() => { setSelectedGameReleaseId(null); setAppStoreSelectedRelease(null); }} backLabel="Back from about the game" />
-            <div className={styles.screenFrameBody}>
+        <GameScreenFrame
+          open
+          ariaLabel={`About the ${appStoreSelectedRelease ? 'Game' : focusedCompany.field === 'software' ? 'Product' : 'Game'} ${selectedGameRelease.name}`}
+          frameName={appStoreSelectedRelease ? 'About the Game' : focusedCompany.field === 'software' ? 'About the Product' : 'About the Game'}
+          subtitle={selectedGameRelease.name}
+          onClose={() => { setSelectedGameReleaseId(null); setAppStoreSelectedRelease(null); }}
+          backLabel="Back from about the game"
+        >
               <div className={styles.memoCard}>
                 <p className={styles.panelTag}>Brief Specifications</p>
                 <p>Type: {selectedGameRelease.genre} · Release Date: {selectedGameRelease.releaseDate} · Popularity: {formatNumber(selectedGameRelease.popularity, 1)}%</p>
               </div>
               <div className={styles.panelList}>
                 {selectedGameCommunities.map((community) => (
-                  <button key={community.id} type="button" className={styles.companyCardButton} onClick={() => setSelectedGameCommunityId(community.id)}>
+                  <GameButton key={community.id} type="button" className={styles.companyCardButton} onClick={() => setSelectedGameCommunityId(community.id)}>
                     <article className={styles.itemCard}>
                       <div className={styles.itemTop}>
                         <p className={styles.itemLabel}>Community</p>
@@ -3527,61 +3521,50 @@ export function CpuFoundrySim() {
                       </div>
                       <h3>{community.name}</h3>
                     </article>
-                  </button>
+                  </GameButton>
                 ))}
               </div>
-            </div>
-          </section>
-        </div>
+        </GameScreenFrame>
       ) : null}
-
       {selectedGameCommunity ? (
-        <div className={styles.screenFrameOverlay} role="presentation" onClick={() => setSelectedGameCommunityId(null)}>
-          <section className={styles.screenFrameCard} role="dialog" aria-modal="true" aria-label={`About the Community ${selectedGameCommunity.name}`} onClick={(event) => event.stopPropagation()}>
-            <ThinFrameHeader frameName="About the Community" subtitle={selectedGameCommunity.name} onBack={() => setSelectedGameCommunityId(null)} backLabel="Back from community" />
-            <div className={styles.screenFrameBody}>
+        <GameScreenFrame
+          open
+          ariaLabel={`About the Community ${selectedGameCommunity.name}`}
+          frameName="About the Community"
+          subtitle={selectedGameCommunity.name}
+          onClose={() => setSelectedGameCommunityId(null)}
+          backLabel="Back from community"
+        >
+              <GamePanelSection
+                label="Panel"
+                title={focusedCompany?.field === 'software' ? 'Apps and products in this community' : 'Games the community plays'}
+                open={communityPanelOpen.games}
+                onToggle={() => runViewTransition(() => uiSignalStoreRef.current.update((current) => ({
+                  ...current,
+                  communityPanelOpen: { ...current.communityPanelOpen, games: !current.communityPanelOpen.games },
+                })))}
+                bodyClassName={styles.panelList}
+              >
+                {selectedGameCommunity.games.map((gameName) => <article className={styles.itemCard} key={gameName}><p className={styles.itemDescription}>{gameName}</p></article>)}
+              </GamePanelSection>
+              <GamePanelSection
+                label="Panel"
+                title="Leadership"
+                open={communityPanelOpen.leadership}
+                onToggle={() => runViewTransition(() => uiSignalStoreRef.current.update((current) => ({
+                  ...current,
+                  communityPanelOpen: { ...current.communityPanelOpen, leadership: !current.communityPanelOpen.leadership },
+                })))}
+                bodyClassName={styles.infoRow}
+              >
+                <div><span>Owner</span><strong>{selectedGameCommunity.leadership.owner}</strong></div>
+                <div><span>Co-Owner</span><strong>{selectedGameCommunity.leadership.coOwner}</strong></div>
+                <div><span>Admin</span><strong>{selectedGameCommunity.leadership.admin}</strong></div>
+                <div><span>Moderator</span><strong>{selectedGameCommunity.leadership.moderator}</strong></div>
+                <div><span>Helper</span><strong>{selectedGameCommunity.leadership.helper}</strong></div>
+              </GamePanelSection>
               <section className={styles.panel}>
-                <button
-                  type="button"
-                  className={styles.panelToggle}
-                  onClick={() => runViewTransition(() => uiSignalStoreRef.current.update((current) => ({
-                    ...current,
-                    communityPanelOpen: { ...current.communityPanelOpen, games: !current.communityPanelOpen.games },
-                  })))}
-                >
-                  <div><p className={styles.panelTag}>Panel</p><h2>{focusedCompany?.field === 'software' ? 'Apps and products in this community' : 'Games the community plays'}</h2></div>
-                  <span>{communityPanelOpen.games ? 'Tutup' : 'Buka'}</span>
-                </button>
-                {communityPanelOpen.games ? (
-                  <div className={styles.panelList}>
-                    {selectedGameCommunity.games.map((gameName) => <article className={styles.itemCard} key={gameName}><p className={styles.itemDescription}>{gameName}</p></article>)}
-                  </div>
-                ) : null}
-              </section>
-              <section className={styles.panel}>
-                <button
-                  type="button"
-                  className={styles.panelToggle}
-                  onClick={() => runViewTransition(() => uiSignalStoreRef.current.update((current) => ({
-                    ...current,
-                    communityPanelOpen: { ...current.communityPanelOpen, leadership: !current.communityPanelOpen.leadership },
-                  })))}
-                >
-                  <div><p className={styles.panelTag}>Panel</p><h2>Leadership</h2></div>
-                  <span>{communityPanelOpen.leadership ? 'Tutup' : 'Buka'}</span>
-                </button>
-                {communityPanelOpen.leadership ? (
-                  <div className={styles.infoRow}>
-                    <div><span>Owner</span><strong>{selectedGameCommunity.leadership.owner}</strong></div>
-                    <div><span>Co-Owner</span><strong>{selectedGameCommunity.leadership.coOwner}</strong></div>
-                    <div><span>Admin</span><strong>{selectedGameCommunity.leadership.admin}</strong></div>
-                    <div><span>Moderator</span><strong>{selectedGameCommunity.leadership.moderator}</strong></div>
-                    <div><span>Helper</span><strong>{selectedGameCommunity.leadership.helper}</strong></div>
-                  </div>
-                ) : null}
-              </section>
-              <section className={styles.panel}>
-                <button
+                <GameButton
                   type="button"
                   className={styles.panelToggle}
                   onClick={() => runViewTransition(() => uiSignalStoreRef.current.update((current) => ({
@@ -3591,24 +3574,24 @@ export function CpuFoundrySim() {
                 >
                   <div><p className={styles.panelTag}>Panel</p><h2>Community Interface (#general)</h2></div>
                   <span>{communityPanelOpen.social ? 'Tutup' : 'Buka'}</span>
-                </button>
+                </GameButton>
                 {communityPanelOpen.social ? (
                   focusedCompany?.field === 'software' && focusedCompany.softwareSpecialization === 'app-store' ? (
                     <div className={styles.panelBody}>
                       <div className={styles.rankingFilterRow}>
-                        <button type="button" className={appStoreShelf === 'featured' ? styles.rankingFilterButtonActive : styles.rankingFilterButton} onClick={() => setAppStoreShelf('featured')}>
+                        <GameButton type="button" className={appStoreShelf === 'featured' ? styles.rankingFilterButtonActive : styles.rankingFilterButton} onClick={() => setAppStoreShelf('featured')}>
                           Featured
-                        </button>
-                        <button type="button" className={appStoreShelf === 'new' ? styles.rankingFilterButtonActive : styles.rankingFilterButton} onClick={() => setAppStoreShelf('new')}>
+                        </GameButton>
+                        <GameButton type="button" className={appStoreShelf === 'new' ? styles.rankingFilterButtonActive : styles.rankingFilterButton} onClick={() => setAppStoreShelf('new')}>
                           New
-                        </button>
-                        <button type="button" className={appStoreShelf === 'trending' ? styles.rankingFilterButtonActive : styles.rankingFilterButton} onClick={() => setAppStoreShelf('trending')}>
+                        </GameButton>
+                        <GameButton type="button" className={appStoreShelf === 'trending' ? styles.rankingFilterButtonActive : styles.rankingFilterButton} onClick={() => setAppStoreShelf('trending')}>
                           Trending
-                        </button>
+                        </GameButton>
                       </div>
                       <div className={`${styles.panelList} ${styles.appStoreShelfGrid}`}>
                         {visibleAppStoreListings.length > 0 ? visibleAppStoreListings.map((listing) => (
-                          <button
+                          <GameButton
                             key={listing.id}
                             type="button"
                             className={styles.companyCardButton}
@@ -3623,7 +3606,7 @@ export function CpuFoundrySim() {
                                 <span className={styles.costPill}>{formatNumber(listing.monthlyDownloads, 0)} dl/mo</span>
                               </div>
                             </article>
-                          </button>
+                          </GameButton>
                         )) : (
                           <article className={styles.memoCard}>
                             <p className={styles.panelTag}>AppStore Engineering</p>
@@ -3642,7 +3625,7 @@ export function CpuFoundrySim() {
                       </div>
                       <div className={styles.actionRow}>
                         <input className={styles.input} value={communityChatDraft} onChange={(event) => setCommunityChatDraft(event.target.value)} placeholder="Kirim pesan ke #general" />
-                        <button
+                        <GameButton
                           type="button"
                           className={styles.secondaryButton}
                           onClick={() => {
@@ -3655,56 +3638,48 @@ export function CpuFoundrySim() {
                           }}
                         >
                           Send
-                        </button>
+                        </GameButton>
                       </div>
                     </div>
                   )
                 ) : null}
               </section>
-            </div>
-          </section>
-        </div>
+        </GameScreenFrame>
       ) : null}
-
       {isInvestmentMenuOpen && game && investmentPreview ? (
-        <div className={styles.modalOverlay} role="presentation" onClick={() => setIsInvestmentMenuOpen(false)}>
-          <section className={styles.modalCard} role="dialog" aria-modal="true" aria-label="Investasi saham" onClick={(event) => event.stopPropagation()}>
-            <div className={styles.modalHeader}>
-              <div>
-                <p className={styles.panelTag}>Perdagangan saham</p>
-                <h2>Beli atau jual saham realtime</h2>
-              </div>
-              <button type="button" className={styles.closeButton} onClick={() => setIsInvestmentMenuOpen(false)} aria-label="Tutup menu investasi">
-                ✕
-              </button>
-            </div>
-
-            <div className={styles.modalBody}>
+        <GameDialog
+          open
+          ariaLabel="Investasi saham"
+          eyebrow="Perdagangan saham"
+          title="Beli atau jual saham realtime"
+          onClose={() => setIsInvestmentMenuOpen(false)}
+          closeLabel="Tutup menu investasi"
+        >
               <div className={styles.quickGrid}>
                 {COMPANY_KEYS.map((company) => (
-                  <button key={company} type="button" className={investmentDraft.company === company ? styles.quickButtonActive : styles.quickButton} onClick={() => setInvestmentDraft((current) => ({ ...current, company }))}>
+                  <GameButton key={company} type="button" className={investmentDraft.company === company ? styles.quickButtonActive : styles.quickButton} onClick={() => setInvestmentDraft((current) => ({ ...current, company }))}>
                     {game.companies[company].name}
-                  </button>
+                  </GameButton>
                 ))}
               </div>
 
               <div className={styles.quickGrid}>
-                <button type="button" className={investmentDraft.mode === 'buy' ? styles.quickButtonActive : styles.quickButton} onClick={() => setInvestmentDraft((current) => ({ ...current, mode: 'buy' }))}>
+                <GameButton type="button" className={investmentDraft.mode === 'buy' ? styles.quickButtonActive : styles.quickButton} onClick={() => setInvestmentDraft((current) => ({ ...current, mode: 'buy' }))}>
                   Buy
-                </button>
-                <button type="button" className={investmentDraft.mode === 'sell' ? styles.quickButtonActive : styles.quickButton} onClick={() => setInvestmentDraft((current) => ({ ...current, mode: 'sell' }))}>
+                </GameButton>
+                <GameButton type="button" className={investmentDraft.mode === 'sell' ? styles.quickButtonActive : styles.quickButton} onClick={() => setInvestmentDraft((current) => ({ ...current, mode: 'sell' }))}>
                   Sell
-                </button>
-                <button type="button" className={styles.quickButton} onClick={() => setInvestmentDraft((current) => ({ ...current, sliderPercent: 50 }))}>
+                </GameButton>
+                <GameButton type="button" className={styles.quickButton} onClick={() => setInvestmentDraft((current) => ({ ...current, sliderPercent: 50 }))}>
                   Reset
-                </button>
+                </GameButton>
               </div>
 
               <div className={styles.quickGrid}>
                 {(['auto', 'company', 'holders'] as TradeRoute[]).map((route) => (
-                  <button key={route} type="button" className={investmentDraft.route === route ? styles.quickButtonActive : styles.quickButton} onClick={() => setInvestmentDraft((current) => ({ ...current, route }))}>
+                  <GameButton key={route} type="button" className={investmentDraft.route === route ? styles.quickButtonActive : styles.quickButton} onClick={() => setInvestmentDraft((current) => ({ ...current, route }))}>
                     {route === 'auto' ? 'Auto' : route === 'company' ? 'Perusahaan' : 'Holder'}
-                  </button>
+                  </GameButton>
                 ))}
               </div>
 
@@ -3758,7 +3733,7 @@ export function CpuFoundrySim() {
                 </div>
               </div>
 
-              <button type="button" className={styles.primaryButton} onClick={investInCompany} disabled={investmentPreview.grossTradeValue < MIN_TRADE_AMOUNT}>
+              <GameButton type="button" className={styles.primaryButton} onClick={investInCompany} disabled={investmentPreview.grossTradeValue < MIN_TRADE_AMOUNT}>
                 {investmentPreview.grossTradeValue < MIN_TRADE_AMOUNT
                   ? 'Nilai aktual terlalu kecil'
                   : investmentDraft.mode === 'sell' && investmentDraft.route === 'holders'
@@ -3766,26 +3741,18 @@ export function CpuFoundrySim() {
                   : investmentDraft.mode === 'buy'
                     ? 'Beli saham sekarang'
                     : 'Jual saham sekarang'}
-              </button>
-            </div>
-          </section>
-        </div>
+              </GameButton>
+        </GameDialog>
       ) : null}
-
       {isReleaseMenuOpen && activeCompany ? (
-        <div className={styles.modalOverlay} role="presentation" onClick={() => setIsReleaseMenuOpen(false)}>
-          <section className={styles.modalCard} role="dialog" aria-modal="true" aria-label={`Release ${productLabel}`} onClick={(event) => event.stopPropagation()}>
-            <div className={styles.modalHeader}>
-              <div>
-                <p className={styles.panelTag}>Release {productLabel}</p>
-                <h2>{activeCompany.name} launch studio</h2>
-              </div>
-              <button type="button" className={styles.closeButton} onClick={() => setIsReleaseMenuOpen(false)} aria-label={`Tutup menu release ${productLabelLower}`}>
-                ✕
-              </button>
-            </div>
-
-            <div className={styles.modalBody}>
+        <GameDialog
+          open
+          ariaLabel={`Release ${productLabel}`}
+          eyebrow={`Release ${productLabel}`}
+          title={`${activeCompany.name} launch studio`}
+          onClose={() => setIsReleaseMenuOpen(false)}
+          closeLabel={`Tutup menu release ${productLabelLower}`}
+        >
               <label className={styles.field}>
                 <span>Seri</span>
                 <input value={releaseDraft.series} onChange={(event) => setReleaseDraft((current) => ({ ...current, series: event.target.value }))} placeholder="Contoh: Cosmic Prime" />
@@ -3799,9 +3766,9 @@ export function CpuFoundrySim() {
                   <span>Release via AppStore</span>
                   <div className={styles.quickGrid}>
                     {activeApprovedReleaseStores.length > 0 ? activeApprovedReleaseStores.map((store) => (
-                      <button key={store.key} type="button" className={releaseStoreCompanyKey === store.key ? styles.quickButtonActive : styles.quickButton} onClick={() => setReleaseStoreCompanyKey(store.key)}>
+                      <GameButton key={store.key} type="button" className={releaseStoreCompanyKey === store.key ? styles.quickButtonActive : styles.quickButton} onClick={() => setReleaseStoreCompanyKey(store.key)}>
                         {store.name}
-                      </button>
+                      </GameButton>
                     )) : (
                       <p className={styles.itemDescription}>Belum ada lisensi AppStore aktif. Gunakan tombol License lebih dulu.</p>
                     )}
@@ -3847,12 +3814,10 @@ export function CpuFoundrySim() {
                 </div>
               </div>
 
-              <button type="button" className={styles.primaryButton} onClick={launchCpu} disabled={activeCompany.field === 'game' && activeApprovedReleaseStores.length === 0}>
+              <GameButton type="button" className={styles.primaryButton} onClick={launchCpu} disabled={activeCompany.field === 'game' && activeApprovedReleaseStores.length === 0}>
                 Release {productLabel} sekarang
-              </button>
-            </div>
-          </section>
-        </div>
+              </GameButton>
+        </GameDialog>
       ) : null}
     </>
   );

@@ -9,7 +9,7 @@
     "build": "npx prisma generate && node -e \"const candidates=[process.env.DATABASE_PUBLIC_URL,process.env.DATABASE_URL_PUBLIC,process.env.POSTGRES_PRISMA_URL,process.env.POSTGRES_URL_NON_POOLING,process.env.POSTGRES_URL,process.env.DATABASE_URL].filter(Boolean);const selected=candidates.find((value)=>!value.includes('railway.internal'))||candidates[0];if(selected){process.env.DATABASE_URL=selected;try{require('child_process').execSync('npx prisma migrate deploy',{stdio:'inherit',env:process.env})}catch(error){console.warn('Prisma migrate deploy failed during build, continuing without blocking deployment.');console.warn(error.message)}}else{console.log('Skipping prisma migrate deploy because no database env var is set')}\" && next build",
     "start": "next start",
     "lint": "next lint",
-    "test:unit": "tsx --test src/features/flow/*.test.ts",
+    "test:unit": "tsx --test src/features/flow/*.test.ts src/lib/fadhilweblib/core/*.test.ts",
     "scan:fadhilai": "tsx scripts/fadhilai-scan.ts"
   },
   "dependencies": {

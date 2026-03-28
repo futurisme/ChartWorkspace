@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { ActionGroup, HeaderShell, Inline, Panel, StatusChip } from '@/lib/fadhilweblib';
+import { Button } from '@/lib/fadhilweblib/client';
 import { useWorkspaceSearch } from '@/features/workspace-home/use-workspace-search';
 
 export default function WorkspaceHome() {
@@ -16,11 +18,12 @@ export default function WorkspaceHome() {
   const { searchResults, isSearching, searchError, searchReady } = useWorkspaceSearch(searchQuery);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined') {
+      return;
+    }
 
     setLastMapId(localStorage.getItem('lastMapId'));
     setLastMapTitle(localStorage.getItem('lastMapTitle'));
-
   }, []);
 
   const quickStats = useMemo(() => {
@@ -31,8 +34,8 @@ export default function WorkspaceHome() {
     };
   }, [lastMapId, searchResults.length]);
 
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCreate = async (event: React.FormEvent) => {
+    event.preventDefault();
     if (!mapTitle.trim()) {
       setError('Please enter a map title');
       return;
@@ -46,7 +49,9 @@ export default function WorkspaceHome() {
         body: JSON.stringify({ title: mapTitle.trim() }),
       });
 
-      if (!response.ok) throw new Error('Failed to create map');
+      if (!response.ok) {
+        throw new Error('Failed to create map');
+      }
 
       const { id } = (await response.json()) as { id: string };
       router.push(`/editor/${id}`);
@@ -57,7 +62,10 @@ export default function WorkspaceHome() {
   };
 
   const handleLoadLast = () => {
-    if (!lastMapId) return;
+    if (!lastMapId) {
+      return;
+    }
+
     router.push(`/editor/${lastMapId}`);
   };
 
@@ -67,19 +75,21 @@ export default function WorkspaceHome() {
 
       <div className="relative mx-auto flex min-h-screen w-full max-w-6xl items-start px-2 py-4 sm:items-center sm:px-6 sm:py-6 lg:px-10">
         <div className="grid w-full gap-3 lg:grid-cols-[1.12fr_0.88fr] lg:gap-4">
-          <section className="rounded-2xl border border-cyan-300/20 bg-slate-950/75 p-3 shadow-[0_18px_55px_rgba(6,182,212,0.12)] backdrop-blur-xl sm:p-6">
-            <div className="mb-5">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-cyan-300/90">ChartWorkspace</p>
-              <h1 className="mt-2 text-xl font-black tracking-tight text-cyan-100 sm:text-4xl">Launch Control</h1>
-              <p className="mt-2 max-w-xl text-xs text-slate-300 sm:text-base">Created by Fadhil.</p>
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                <span className="rounded-full border border-cyan-400/30 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-semibold text-cyan-200">Fast Launch</span>
-                <span className="rounded-full border border-violet-400/30 bg-violet-500/10 px-2 py-0.5 text-[10px] font-semibold text-violet-200">Realtime Ready</span>
-                <span className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-200">Mobile Friendly</span>
-              </div>
-            </div>
+          <Panel as="section" tone="brand" density="spacious" className="h-full">
+            <HeaderShell
+              eyebrow="ChartWorkspace"
+              title="Launch Control"
+              subtitle="Created by Fadhil."
+              actions={<StatusChip tone={isCreating ? 'warning' : 'brand'} label="state" value={isCreating ? 'creating' : 'ready'} />}
+            />
 
-            <form onSubmit={handleCreate} className="space-y-2.5 sm:space-y-3">
+            <ActionGroup gap="sm" wrap className="mt-4">
+              <StatusChip tone="brand" label="launch" value="fast" />
+              <StatusChip tone="info" label="collab" value="realtime" />
+              <StatusChip tone="success" label="mobile" value="ready" />
+            </ActionGroup>
+
+            <form onSubmit={handleCreate} className="mt-5 space-y-2.5 sm:space-y-3">
               <label htmlFor="title" className="block text-xs font-semibold uppercase tracking-[0.12em] text-cyan-200/90">
                 New Map Name
               </label>
@@ -87,8 +97,8 @@ export default function WorkspaceHome() {
                 id="title"
                 type="text"
                 value={mapTitle}
-                onChange={(e) => {
-                  setMapTitle(e.target.value);
+                onChange={(event) => {
+                  setMapTitle(event.target.value);
                   setError('');
                 }}
                 placeholder="e.g. National Strategy 2040"
@@ -98,61 +108,70 @@ export default function WorkspaceHome() {
               {error && <div className="rounded-lg border border-red-500/30 bg-red-900/25 px-3 py-2 text-xs text-red-200">{error}</div>}
 
               <div className="grid gap-2 sm:grid-cols-2">
-                <button
+                <Button
                   type="submit"
-                  disabled={isCreating}
-                  className="rounded-xl border border-cyan-200 bg-gradient-to-r from-cyan-400 to-sky-400 px-4 py-2 text-sm font-bold text-slate-950 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                  tone="brand"
+                  fullWidth
+                  loading={isCreating}
+                  trailingVisual={isCreating ? undefined : '->'}
                 >
-                  {isCreating ? 'Creating…' : 'Open New Editor'}
-                </button>
-                <button
+                  {isCreating ? 'Creating...' : 'Open New Editor'}
+                </Button>
+                <Button
                   type="button"
-                  onClick={handleLoadLast}
+                  tone="neutral"
+                  fullWidth
                   disabled={!lastMapId}
-                  className="rounded-xl border border-slate-600 bg-slate-900 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-cyan-400 hover:bg-slate-800/90 hover:text-cyan-100 disabled:cursor-not-allowed disabled:opacity-40"
+                  onClick={handleLoadLast}
                 >
                   Resume Last Workspace
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
+                  tone="info"
+                  fullWidth
                   onClick={() => router.push('/archive-lab')}
-                  className="rounded-xl border border-violet-400/40 bg-violet-500/20 px-4 py-2 text-sm font-semibold text-violet-100 transition hover:bg-violet-500/35"
                 >
                   Open FadhilLabEncrypt (BETA)
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
+                  tone="success"
+                  fullWidth
                   onClick={() => router.push('/game-ideas')}
-                  className="rounded-xl border border-cyan-400/40 bg-cyan-500/20 px-4 py-2 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-500/35"
                 >
                   Open FeatureLib
-                </button>
+                </Button>
               </div>
 
               {lastMapId && (
-                <p className="text-xs text-slate-400">
-                  Last opened: <span className="text-slate-200">{lastMapTitle || 'Untitled Map'}</span> (#{lastMapId})
-                </p>
+                <Inline gap="xs" wrap className="text-xs text-slate-400">
+                  <span>Last opened:</span>
+                  <span className="text-slate-200">{lastMapTitle || 'Untitled Map'}</span>
+                  <span>(#{lastMapId})</span>
+                </Inline>
               )}
             </form>
-          </section>
+          </Panel>
 
-          <section className="rounded-2xl border border-cyan-300/20 bg-slate-950/75 p-3 shadow-[0_18px_45px_rgba(6,182,212,0.1)] backdrop-blur-xl sm:p-5">
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <h2 className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-200 sm:text-sm">Search Workspace</h2>
-              <span className="text-[10px] text-slate-400 sm:text-[11px]">Top {quickStats.resultsCount} shown</span>
-            </div>
+          <Panel as="section" density="comfortable" className="h-full">
+            <HeaderShell
+              compact
+              eyebrow="Search"
+              title="Workspace Search"
+              subtitle={searchReady ? 'Fast local workspace lookup.' : 'Preparing lightweight search index...'}
+              meta={<StatusChip tone="info" label="top" value={String(quickStats.resultsCount)} />}
+            />
 
             <input
               type="text"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by title…"
-              className="w-full rounded-xl border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 outline-none transition focus:border-cyan-400"
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search by title..."
+              className="mt-4 w-full rounded-xl border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 outline-none transition focus:border-cyan-400"
             />
 
-            {!searchReady && <p className="mt-3 text-xs text-slate-500">Preparing lightweight search index…</p>}
-            {searchReady && isSearching && <p className="mt-3 text-xs text-slate-400">Loading results…</p>}
+            {searchReady && isSearching && <p className="mt-3 text-xs text-slate-400">Loading results...</p>}
             {searchError && <p className="mt-3 rounded-lg border border-red-500/30 bg-red-900/25 p-2 text-xs text-red-200">{searchError}</p>}
 
             {searchReady && !isSearching && !searchError && (
@@ -177,21 +196,12 @@ export default function WorkspaceHome() {
               </ul>
             )}
 
-            <div className="mt-4 grid grid-cols-3 gap-2">
-              <div className="rounded-lg border border-cyan-500/20 bg-slate-900/70 px-2 py-2 text-center">
-                <p className="text-[10px] uppercase text-slate-500">Recent</p>
-                <p className="text-sm font-bold text-cyan-200">{quickStats.hasRecent ? 'YES' : 'NO'}</p>
-              </div>
-              <div className="rounded-lg border border-cyan-500/20 bg-slate-900/70 px-2 py-2 text-center">
-                <p className="text-[10px] uppercase text-slate-500">Mode</p>
-                <p className="text-sm font-bold text-cyan-200">SYNC</p>
-              </div>
-              <div className="rounded-lg border border-cyan-500/20 bg-slate-900/70 px-2 py-2 text-center">
-                <p className="text-[10px] uppercase text-slate-500">UX</p>
-                <p className="text-sm font-bold text-cyan-200">LIGHT</p>
-              </div>
-            </div>
-          </section>
+            <ActionGroup gap="sm" wrap className="mt-4">
+              <StatusChip tone={quickStats.hasRecent ? 'success' : 'warning'} label="recent" value={quickStats.hasRecent ? 'yes' : 'no'} />
+              <StatusChip tone="brand" label="mode" value="sync" />
+              <StatusChip tone="info" label="ux" value="light" />
+            </ActionGroup>
+          </Panel>
         </div>
       </div>
     </main>

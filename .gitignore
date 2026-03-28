@@ -32,3 +32,6 @@ prisma/dev.db*
 # Testing
 coverage/
 .nyc_output/
+
+# TypeScript
+*.tsbuildinfo

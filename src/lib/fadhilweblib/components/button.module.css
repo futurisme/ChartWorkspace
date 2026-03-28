@@ -1,0 +1,335 @@
+.root {
+  --fwlb-button-tone-background: var(--fwlb-tone-neutral-bg);
+  --fwlb-button-tone-color: var(--fwlb-tone-neutral-fg);
+  --fwlb-button-tone-border: var(--fwlb-tone-neutral-border);
+  --fwlb-current-background: var(--fwlb-base-background, var(--fwlb-button-tone-background));
+  --fwlb-current-background-image: var(--fwlb-base-background-image, none);
+  --fwlb-current-background-size: var(--fwlb-base-background-size, auto);
+  --fwlb-current-background-position: var(--fwlb-base-background-position, 0% 0%);
+  --fwlb-current-background-repeat: var(--fwlb-base-background-repeat, repeat);
+  --fwlb-current-color: var(--fwlb-base-color, var(--fwlb-button-tone-color));
+  --fwlb-current-border-color: var(--fwlb-base-border-color, var(--fwlb-button-tone-border));
+  --fwlb-current-border-width: var(--fwlb-base-border-width, 1px);
+  --fwlb-current-border-style: var(--fwlb-base-border-style, solid);
+  --fwlb-current-border-radius: var(--fwlb-base-border-radius, var(--fwlb-radius-control));
+  --fwlb-current-box-shadow: var(--fwlb-base-box-shadow, inset 0 1px 0 rgba(255, 255, 255, 0.06));
+  --fwlb-current-opacity: var(--fwlb-base-opacity, 1);
+  --fwlb-current-transform: var(--fwlb-base-transform, none);
+  --fwlb-current-filter: var(--fwlb-base-filter, none);
+  --fwlb-current-backdrop-filter: var(--fwlb-base-backdrop-filter, none);
+  --fwlb-current-outline-color: var(--fwlb-base-outline-color, transparent);
+  --fwlb-current-outline-width: var(--fwlb-base-outline-width, 0);
+  --fwlb-current-outline-offset: var(--fwlb-base-outline-offset, 0);
+  --fwlb-current-cursor: var(--fwlb-base-cursor, pointer);
+  --fwlb-current-pointer-events: var(--fwlb-base-pointer-events, auto);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--fwlb-space-2);
+  min-width: 0;
+  border-width: var(--fwlb-current-border-width);
+  border-style: var(--fwlb-current-border-style);
+  border-color: var(--fwlb-current-border-color);
+  border-radius: var(--fwlb-current-border-radius);
+  background: var(--fwlb-current-background);
+  background-image: var(--fwlb-current-background-image);
+  background-size: var(--fwlb-current-background-size);
+  background-position: var(--fwlb-current-background-position);
+  background-repeat: var(--fwlb-current-background-repeat);
+  color: var(--fwlb-current-color);
+  font-family: var(--fwlb-font-family);
+  font-weight: 700;
+  line-height: 1;
+  cursor: var(--fwlb-current-cursor);
+  pointer-events: var(--fwlb-current-pointer-events);
+  user-select: none;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease,
+    opacity 160ms ease;
+  box-shadow: var(--fwlb-current-box-shadow);
+  opacity: var(--fwlb-current-opacity);
+  transform: var(--fwlb-current-transform);
+  filter: var(--fwlb-current-filter);
+  backdrop-filter: var(--fwlb-current-backdrop-filter);
+  outline-color: var(--fwlb-current-outline-color);
+  outline-style: solid;
+  outline-width: var(--fwlb-current-outline-width);
+  outline-offset: var(--fwlb-current-outline-offset);
+}
+
+.root:hover:not(:disabled) {
+  --fwlb-current-background: var(--fwlb-hover-background, var(--fwlb-base-background, var(--fwlb-button-tone-background)));
+  --fwlb-current-background-image: var(--fwlb-hover-background-image, var(--fwlb-base-background-image, none));
+  --fwlb-current-background-size: var(--fwlb-hover-background-size, var(--fwlb-base-background-size, auto));
+  --fwlb-current-background-position: var(--fwlb-hover-background-position, var(--fwlb-base-background-position, 0% 0%));
+  --fwlb-current-background-repeat: var(--fwlb-hover-background-repeat, var(--fwlb-base-background-repeat, repeat));
+  --fwlb-current-color: var(--fwlb-hover-color, var(--fwlb-base-color, var(--fwlb-button-tone-color)));
+  --fwlb-current-border-color: var(--fwlb-hover-border-color, var(--fwlb-base-border-color, var(--fwlb-button-tone-border)));
+  --fwlb-current-border-width: var(--fwlb-hover-border-width, var(--fwlb-base-border-width, 1px));
+  --fwlb-current-border-style: var(--fwlb-hover-border-style, var(--fwlb-base-border-style, solid));
+  --fwlb-current-border-radius: var(--fwlb-hover-border-radius, var(--fwlb-base-border-radius, var(--fwlb-radius-control)));
+  --fwlb-current-box-shadow: var(--fwlb-hover-box-shadow, var(--fwlb-base-box-shadow, inset 0 1px 0 rgba(255, 255, 255, 0.06)));
+  --fwlb-current-opacity: var(--fwlb-hover-opacity, var(--fwlb-base-opacity, 1));
+  --fwlb-current-transform: var(--fwlb-hover-transform, var(--fwlb-base-transform, translateY(-1px)));
+  --fwlb-current-filter: var(--fwlb-hover-filter, var(--fwlb-base-filter, none));
+  --fwlb-current-backdrop-filter: var(--fwlb-hover-backdrop-filter, var(--fwlb-base-backdrop-filter, none));
+  --fwlb-current-outline-color: var(--fwlb-hover-outline-color, var(--fwlb-base-outline-color, transparent));
+  --fwlb-current-outline-width: var(--fwlb-hover-outline-width, var(--fwlb-base-outline-width, 0));
+  --fwlb-current-outline-offset: var(--fwlb-hover-outline-offset, var(--fwlb-base-outline-offset, 0));
+  --fwlb-current-cursor: var(--fwlb-hover-cursor, var(--fwlb-base-cursor, pointer));
+  --fwlb-current-pointer-events: var(--fwlb-hover-pointer-events, var(--fwlb-base-pointer-events, auto));
+}
+
+.root:active:not(:disabled) {
+  --fwlb-current-background: var(--fwlb-active-background, var(--fwlb-base-background, var(--fwlb-button-tone-background)));
+  --fwlb-current-background-image: var(--fwlb-active-background-image, var(--fwlb-base-background-image, none));
+  --fwlb-current-background-size: var(--fwlb-active-background-size, var(--fwlb-base-background-size, auto));
+  --fwlb-current-background-position: var(--fwlb-active-background-position, var(--fwlb-base-background-position, 0% 0%));
+  --fwlb-current-background-repeat: var(--fwlb-active-background-repeat, var(--fwlb-base-background-repeat, repeat));
+  --fwlb-current-color: var(--fwlb-active-color, var(--fwlb-base-color, var(--fwlb-button-tone-color)));
+  --fwlb-current-border-color: var(--fwlb-active-border-color, var(--fwlb-base-border-color, var(--fwlb-button-tone-border)));
+  --fwlb-current-border-width: var(--fwlb-active-border-width, var(--fwlb-base-border-width, 1px));
+  --fwlb-current-border-style: var(--fwlb-active-border-style, var(--fwlb-base-border-style, solid));
+  --fwlb-current-border-radius: var(--fwlb-active-border-radius, var(--fwlb-base-border-radius, var(--fwlb-radius-control)));
+  --fwlb-current-box-shadow: var(--fwlb-active-box-shadow, var(--fwlb-base-box-shadow, inset 0 1px 0 rgba(255, 255, 255, 0.06)));
+  --fwlb-current-opacity: var(--fwlb-active-opacity, var(--fwlb-base-opacity, 1));
+  --fwlb-current-transform: var(--fwlb-active-transform, var(--fwlb-base-transform, translateY(0)));
+  --fwlb-current-filter: var(--fwlb-active-filter, var(--fwlb-base-filter, none));
+  --fwlb-current-backdrop-filter: var(--fwlb-active-backdrop-filter, var(--fwlb-base-backdrop-filter, none));
+  --fwlb-current-outline-color: var(--fwlb-active-outline-color, var(--fwlb-base-outline-color, transparent));
+  --fwlb-current-outline-width: var(--fwlb-active-outline-width, var(--fwlb-base-outline-width, 0));
+  --fwlb-current-outline-offset: var(--fwlb-active-outline-offset, var(--fwlb-base-outline-offset, 0));
+  --fwlb-current-cursor: var(--fwlb-active-cursor, var(--fwlb-base-cursor, pointer));
+  --fwlb-current-pointer-events: var(--fwlb-active-pointer-events, var(--fwlb-base-pointer-events, auto));
+}
+
+.root:focus-visible {
+  outline: none;
+  --fwlb-current-background: var(--fwlb-focus-background, var(--fwlb-base-background, var(--fwlb-button-tone-background)));
+  --fwlb-current-background-image: var(--fwlb-focus-background-image, var(--fwlb-base-background-image, none));
+  --fwlb-current-background-size: var(--fwlb-focus-background-size, var(--fwlb-base-background-size, auto));
+  --fwlb-current-background-position: var(--fwlb-focus-background-position, var(--fwlb-base-background-position, 0% 0%));
+  --fwlb-current-background-repeat: var(--fwlb-focus-background-repeat, var(--fwlb-base-background-repeat, repeat));
+  --fwlb-current-color: var(--fwlb-focus-color, var(--fwlb-base-color, var(--fwlb-button-tone-color)));
+  --fwlb-current-border-color: var(--fwlb-focus-border-color, var(--fwlb-base-border-color, var(--fwlb-button-tone-border)));
+  --fwlb-current-border-width: var(--fwlb-focus-border-width, var(--fwlb-base-border-width, 1px));
+  --fwlb-current-border-style: var(--fwlb-focus-border-style, var(--fwlb-base-border-style, solid));
+  --fwlb-current-border-radius: var(--fwlb-focus-border-radius, var(--fwlb-base-border-radius, var(--fwlb-radius-control)));
+  --fwlb-current-box-shadow: var(--fwlb-focus-box-shadow, inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 0 0 3px var(--fwlb-focus-ring-color, var(--fwlb-focus-ring)));
+  --fwlb-current-opacity: var(--fwlb-focus-opacity, var(--fwlb-base-opacity, 1));
+  --fwlb-current-transform: var(--fwlb-focus-transform, var(--fwlb-base-transform, none));
+  --fwlb-current-filter: var(--fwlb-focus-filter, var(--fwlb-base-filter, none));
+  --fwlb-current-backdrop-filter: var(--fwlb-focus-backdrop-filter, var(--fwlb-base-backdrop-filter, none));
+  --fwlb-current-outline-color: var(--fwlb-focus-outline-color, var(--fwlb-base-outline-color, transparent));
+  --fwlb-current-outline-width: var(--fwlb-focus-outline-width, var(--fwlb-base-outline-width, 0));
+  --fwlb-current-outline-offset: var(--fwlb-focus-outline-offset, var(--fwlb-base-outline-offset, 0));
+  --fwlb-current-cursor: var(--fwlb-focus-cursor, var(--fwlb-base-cursor, pointer));
+  --fwlb-current-pointer-events: var(--fwlb-focus-pointer-events, var(--fwlb-base-pointer-events, auto));
+}
+
+.root[data-open='true'] {
+  --fwlb-current-background: var(--fwlb-open-background, var(--fwlb-base-background, var(--fwlb-button-tone-background)));
+  --fwlb-current-background-image: var(--fwlb-open-background-image, var(--fwlb-base-background-image, none));
+  --fwlb-current-background-size: var(--fwlb-open-background-size, var(--fwlb-base-background-size, auto));
+  --fwlb-current-background-position: var(--fwlb-open-background-position, var(--fwlb-base-background-position, 0% 0%));
+  --fwlb-current-background-repeat: var(--fwlb-open-background-repeat, var(--fwlb-base-background-repeat, repeat));
+  --fwlb-current-color: var(--fwlb-open-color, var(--fwlb-base-color, var(--fwlb-button-tone-color)));
+  --fwlb-current-border-color: var(--fwlb-open-border-color, var(--fwlb-base-border-color, var(--fwlb-button-tone-border)));
+  --fwlb-current-border-width: var(--fwlb-open-border-width, var(--fwlb-base-border-width, 1px));
+  --fwlb-current-border-style: var(--fwlb-open-border-style, var(--fwlb-base-border-style, solid));
+  --fwlb-current-border-radius: var(--fwlb-open-border-radius, var(--fwlb-base-border-radius, var(--fwlb-radius-control)));
+  --fwlb-current-box-shadow: var(--fwlb-open-box-shadow, var(--fwlb-base-box-shadow, inset 0 1px 0 rgba(255, 255, 255, 0.06)));
+  --fwlb-current-opacity: var(--fwlb-open-opacity, var(--fwlb-base-opacity, 1));
+  --fwlb-current-transform: var(--fwlb-open-transform, var(--fwlb-base-transform, none));
+  --fwlb-current-filter: var(--fwlb-open-filter, var(--fwlb-base-filter, none));
+  --fwlb-current-backdrop-filter: var(--fwlb-open-backdrop-filter, var(--fwlb-base-backdrop-filter, none));
+}
+
+.root[data-current='true'] {
+  --fwlb-current-background: var(--fwlb-current-state-background, var(--fwlb-base-background, var(--fwlb-button-tone-background)));
+  --fwlb-current-background-image: var(--fwlb-current-state-background-image, var(--fwlb-base-background-image, none));
+  --fwlb-current-background-size: var(--fwlb-current-state-background-size, var(--fwlb-base-background-size, auto));
+  --fwlb-current-background-position: var(--fwlb-current-state-background-position, var(--fwlb-base-background-position, 0% 0%));
+  --fwlb-current-background-repeat: var(--fwlb-current-state-background-repeat, var(--fwlb-base-background-repeat, repeat));
+  --fwlb-current-color: var(--fwlb-current-state-color, var(--fwlb-base-color, var(--fwlb-button-tone-color)));
+  --fwlb-current-border-color: var(--fwlb-current-state-border-color, var(--fwlb-base-border-color, var(--fwlb-button-tone-border)));
+  --fwlb-current-border-width: var(--fwlb-current-state-border-width, var(--fwlb-base-border-width, 1px));
+  --fwlb-current-border-style: var(--fwlb-current-state-border-style, var(--fwlb-base-border-style, solid));
+  --fwlb-current-border-radius: var(--fwlb-current-state-border-radius, var(--fwlb-base-border-radius, var(--fwlb-radius-control)));
+  --fwlb-current-box-shadow: var(--fwlb-current-state-box-shadow, var(--fwlb-base-box-shadow, inset 0 1px 0 rgba(255, 255, 255, 0.06)));
+  --fwlb-current-opacity: var(--fwlb-current-state-opacity, var(--fwlb-base-opacity, 1));
+  --fwlb-current-transform: var(--fwlb-current-state-transform, var(--fwlb-base-transform, none));
+  --fwlb-current-filter: var(--fwlb-current-state-filter, var(--fwlb-base-filter, none));
+  --fwlb-current-backdrop-filter: var(--fwlb-current-state-backdrop-filter, var(--fwlb-base-backdrop-filter, none));
+}
+
+.root[data-loading='true'] {
+  --fwlb-current-background: var(--fwlb-loading-background, var(--fwlb-base-background, var(--fwlb-button-tone-background)));
+  --fwlb-current-background-image: var(--fwlb-loading-background-image, var(--fwlb-base-background-image, none));
+  --fwlb-current-background-size: var(--fwlb-loading-background-size, var(--fwlb-base-background-size, auto));
+  --fwlb-current-background-position: var(--fwlb-loading-background-position, var(--fwlb-base-background-position, 0% 0%));
+  --fwlb-current-background-repeat: var(--fwlb-loading-background-repeat, var(--fwlb-base-background-repeat, repeat));
+  --fwlb-current-color: var(--fwlb-loading-color, var(--fwlb-base-color, var(--fwlb-button-tone-color)));
+  --fwlb-current-border-color: var(--fwlb-loading-border-color, var(--fwlb-base-border-color, var(--fwlb-button-tone-border)));
+  --fwlb-current-border-width: var(--fwlb-loading-border-width, var(--fwlb-base-border-width, 1px));
+  --fwlb-current-border-style: var(--fwlb-loading-border-style, var(--fwlb-base-border-style, solid));
+  --fwlb-current-border-radius: var(--fwlb-loading-border-radius, var(--fwlb-base-border-radius, var(--fwlb-radius-control)));
+  --fwlb-current-box-shadow: var(--fwlb-loading-box-shadow, var(--fwlb-base-box-shadow, inset 0 1px 0 rgba(255, 255, 255, 0.06)));
+  --fwlb-current-opacity: var(--fwlb-loading-opacity, var(--fwlb-base-opacity, 1));
+  --fwlb-current-transform: var(--fwlb-loading-transform, var(--fwlb-base-transform, none));
+  --fwlb-current-filter: var(--fwlb-loading-filter, var(--fwlb-base-filter, none));
+  --fwlb-current-backdrop-filter: var(--fwlb-loading-backdrop-filter, var(--fwlb-base-backdrop-filter, none));
+  --fwlb-current-cursor: var(--fwlb-loading-cursor, progress);
+  --fwlb-current-pointer-events: var(--fwlb-loading-pointer-events, var(--fwlb-base-pointer-events, auto));
+}
+
+.root:disabled:not([data-loading='true']),
+.root[data-disabled='true'] {
+  --fwlb-current-background: var(--fwlb-disabled-background, var(--fwlb-base-background, var(--fwlb-button-tone-background)));
+  --fwlb-current-background-image: var(--fwlb-disabled-background-image, var(--fwlb-base-background-image, none));
+  --fwlb-current-background-size: var(--fwlb-disabled-background-size, var(--fwlb-base-background-size, auto));
+  --fwlb-current-background-position: var(--fwlb-disabled-background-position, var(--fwlb-base-background-position, 0% 0%));
+  --fwlb-current-background-repeat: var(--fwlb-disabled-background-repeat, var(--fwlb-base-background-repeat, repeat));
+  --fwlb-current-color: var(--fwlb-disabled-color, var(--fwlb-base-color, var(--fwlb-button-tone-color)));
+  --fwlb-current-border-color: var(--fwlb-disabled-border-color, var(--fwlb-base-border-color, var(--fwlb-button-tone-border)));
+  --fwlb-current-border-width: var(--fwlb-disabled-border-width, var(--fwlb-base-border-width, 1px));
+  --fwlb-current-border-style: var(--fwlb-disabled-border-style, var(--fwlb-base-border-style, solid));
+  --fwlb-current-border-radius: var(--fwlb-disabled-border-radius, var(--fwlb-base-border-radius, var(--fwlb-radius-control)));
+  --fwlb-current-box-shadow: var(--fwlb-disabled-box-shadow, var(--fwlb-base-box-shadow, inset 0 1px 0 rgba(255, 255, 255, 0.06)));
+  --fwlb-current-opacity: var(--fwlb-disabled-opacity, 0.56);
+  --fwlb-current-transform: var(--fwlb-disabled-transform, var(--fwlb-base-transform, none));
+  --fwlb-current-filter: var(--fwlb-disabled-filter, var(--fwlb-base-filter, none));
+  --fwlb-current-backdrop-filter: var(--fwlb-disabled-backdrop-filter, var(--fwlb-base-backdrop-filter, none));
+  --fwlb-current-outline-color: var(--fwlb-disabled-outline-color, var(--fwlb-base-outline-color, transparent));
+  --fwlb-current-outline-width: var(--fwlb-disabled-outline-width, var(--fwlb-base-outline-width, 0));
+  --fwlb-current-outline-offset: var(--fwlb-disabled-outline-offset, var(--fwlb-base-outline-offset, 0));
+  --fwlb-current-cursor: var(--fwlb-disabled-cursor, not-allowed);
+  --fwlb-current-pointer-events: var(--fwlb-disabled-pointer-events, var(--fwlb-base-pointer-events, auto));
+}
+
+.root[data-full-width='true'] {
+  width: 100%;
+}
+
+.root[data-size='xs'] {
+  min-height: 1.75rem;
+  padding: 0.36rem 0.68rem;
+  font-size: 0.68rem;
+}
+
+.root[data-size='sm'] {
+  min-height: 2rem;
+  padding: 0.5rem 0.9rem;
+  font-size: 0.76rem;
+}
+
+.root[data-size='md'] {
+  min-height: 2.4rem;
+  padding: 0.68rem 1rem;
+  font-size: 0.88rem;
+}
+
+.root[data-size='lg'] {
+  min-height: 2.9rem;
+  padding: 0.82rem 1.2rem;
+  font-size: 1rem;
+}
+
+.root[data-tone='neutral'] {
+  --fwlb-button-tone-background: var(--fwlb-tone-neutral-bg);
+  --fwlb-button-tone-color: var(--fwlb-tone-neutral-fg);
+  --fwlb-button-tone-border: var(--fwlb-tone-neutral-border);
+}
+
+.root[data-tone='brand'] {
+  --fwlb-button-tone-background: var(--fwlb-tone-brand-bg);
+  --fwlb-button-tone-color: var(--fwlb-tone-brand-fg);
+  --fwlb-button-tone-border: var(--fwlb-tone-brand-border);
+}
+
+.root[data-tone='success'] {
+  --fwlb-button-tone-background: var(--fwlb-tone-success-bg);
+  --fwlb-button-tone-color: var(--fwlb-tone-success-fg);
+  --fwlb-button-tone-border: var(--fwlb-tone-success-border);
+}
+
+.root[data-tone='warning'] {
+  --fwlb-button-tone-background: var(--fwlb-tone-warning-bg);
+  --fwlb-button-tone-color: var(--fwlb-tone-warning-fg);
+  --fwlb-button-tone-border: var(--fwlb-tone-warning-border);
+}
+
+.root[data-tone='danger'] {
+  --fwlb-button-tone-background: var(--fwlb-tone-danger-bg);
+  --fwlb-button-tone-color: var(--fwlb-tone-danger-fg);
+  --fwlb-button-tone-border: var(--fwlb-tone-danger-border);
+}
+
+.root[data-tone='info'] {
+  --fwlb-button-tone-background: var(--fwlb-tone-info-bg);
+  --fwlb-button-tone-color: var(--fwlb-tone-info-fg);
+  --fwlb-button-tone-border: var(--fwlb-tone-info-border);
+}
+
+.root[data-icon-only='true'][data-size='xs'] {
+  width: 1.75rem;
+  padding-inline: 0;
+}
+
+.root[data-icon-only='true'][data-size='sm'] {
+  width: 2rem;
+  padding-inline: 0;
+}
+
+.root[data-icon-only='true'][data-size='md'] {
+  width: 2.4rem;
+  padding-inline: 0;
+}
+
+.root[data-icon-only='true'][data-size='lg'] {
+  width: 2.9rem;
+  padding-inline: 0;
+}
+
+.visual,
+.spinner,
+.label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.visual {
+  flex-shrink: 0;
+}
+
+.label {
+  min-width: 0;
+}
+
+.spinner {
+  width: 0.95em;
+  height: 0.95em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 999px;
+  animation: spin 700ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .root,
+  .spinner {
+    transition-duration: 1ms;
+    animation-duration: 1ms;
+  }
+}

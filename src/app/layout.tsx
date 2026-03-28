@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import '@/lib/fadhilweblib/styles/theme.css';
 import { GlobalRuntime } from '@/components/global-runtime';
 
 const siteUrl = 'https://mindmapper.qzz.io';

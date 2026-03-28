@@ -1,0 +1,124 @@
+.root {
+  --fwlb-status-tone-border: var(--fwlb-border-soft);
+  --fwlb-status-tone-color: var(--fwlb-text-soft);
+  --fwlb-current-background: var(--fwlb-base-background, var(--fwlb-surface-muted));
+  --fwlb-current-background-image: var(--fwlb-base-background-image, none);
+  --fwlb-current-background-size: var(--fwlb-base-background-size, auto);
+  --fwlb-current-background-position: var(--fwlb-base-background-position, 0% 0%);
+  --fwlb-current-background-repeat: var(--fwlb-base-background-repeat, repeat);
+  --fwlb-current-color: var(--fwlb-base-color, var(--fwlb-status-tone-color));
+  --fwlb-current-border-color: var(--fwlb-base-border-color, var(--fwlb-status-tone-border));
+  --fwlb-current-border-width: var(--fwlb-base-border-width, 1px);
+  --fwlb-current-border-style: var(--fwlb-base-border-style, solid);
+  --fwlb-current-border-radius: var(--fwlb-base-border-radius, 999px);
+  --fwlb-current-box-shadow: var(--fwlb-base-box-shadow, none);
+  --fwlb-current-opacity: var(--fwlb-base-opacity, 1);
+  --fwlb-current-transform: var(--fwlb-base-transform, none);
+  --fwlb-current-filter: var(--fwlb-base-filter, none);
+  --fwlb-current-backdrop-filter: var(--fwlb-base-backdrop-filter, none);
+  --fwlb-current-outline-color: var(--fwlb-base-outline-color, transparent);
+  --fwlb-current-outline-width: var(--fwlb-base-outline-width, 0);
+  --fwlb-current-outline-offset: var(--fwlb-base-outline-offset, 0);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+  min-width: 0;
+  padding: 0.4rem 0.62rem;
+  border-width: var(--fwlb-current-border-width);
+  border-style: var(--fwlb-current-border-style);
+  border-color: var(--fwlb-current-border-color);
+  border-radius: var(--fwlb-current-border-radius);
+  background: var(--fwlb-current-background);
+  background-image: var(--fwlb-current-background-image);
+  background-size: var(--fwlb-current-background-size);
+  background-position: var(--fwlb-current-background-position);
+  background-repeat: var(--fwlb-current-background-repeat);
+  color: var(--fwlb-current-color);
+  font-size: 0.7rem;
+  line-height: 1;
+  font-weight: 600;
+  box-shadow: var(--fwlb-current-box-shadow);
+  opacity: var(--fwlb-current-opacity);
+  transform: var(--fwlb-current-transform);
+  filter: var(--fwlb-current-filter);
+  backdrop-filter: var(--fwlb-current-backdrop-filter);
+  outline-color: var(--fwlb-current-outline-color);
+  outline-style: solid;
+  outline-width: var(--fwlb-current-outline-width);
+  outline-offset: var(--fwlb-current-outline-offset);
+}
+
+.root[data-tone='brand'] {
+  --fwlb-status-tone-border: var(--fwlb-tone-brand-border);
+  --fwlb-status-tone-color: #8ceeff;
+}
+
+.root[data-tone='success'] {
+  --fwlb-status-tone-border: var(--fwlb-tone-success-border);
+  --fwlb-status-tone-color: #9df5c4;
+}
+
+.root[data-tone='warning'] {
+  --fwlb-status-tone-border: var(--fwlb-tone-warning-border);
+  --fwlb-status-tone-color: #ffd37a;
+}
+
+.root[data-tone='danger'] {
+  --fwlb-status-tone-border: var(--fwlb-tone-danger-border);
+  --fwlb-status-tone-color: #ffb4b4;
+}
+
+.root[data-tone='info'] {
+  --fwlb-status-tone-border: var(--fwlb-tone-info-border);
+  --fwlb-status-tone-color: #c9bbff;
+}
+
+.root:hover {
+  --fwlb-current-background: var(--fwlb-hover-background, var(--fwlb-base-background, var(--fwlb-surface-muted)));
+  --fwlb-current-color: var(--fwlb-hover-color, var(--fwlb-base-color, var(--fwlb-status-tone-color)));
+  --fwlb-current-border-color: var(--fwlb-hover-border-color, var(--fwlb-base-border-color, var(--fwlb-status-tone-border)));
+  --fwlb-current-box-shadow: var(--fwlb-hover-box-shadow, var(--fwlb-base-box-shadow, none));
+  --fwlb-current-opacity: var(--fwlb-hover-opacity, var(--fwlb-base-opacity, 1));
+  --fwlb-current-transform: var(--fwlb-hover-transform, var(--fwlb-base-transform, none));
+}
+
+.root[data-open='true'] {
+  --fwlb-current-background: var(--fwlb-open-background, var(--fwlb-base-background, var(--fwlb-surface-muted)));
+  --fwlb-current-color: var(--fwlb-open-color, var(--fwlb-base-color, var(--fwlb-status-tone-color)));
+  --fwlb-current-border-color: var(--fwlb-open-border-color, var(--fwlb-base-border-color, var(--fwlb-status-tone-border)));
+  --fwlb-current-box-shadow: var(--fwlb-open-box-shadow, var(--fwlb-base-box-shadow, none));
+}
+
+.root[data-current='true'] {
+  --fwlb-current-background: var(--fwlb-current-state-background, var(--fwlb-base-background, var(--fwlb-surface-muted)));
+  --fwlb-current-color: var(--fwlb-current-state-color, var(--fwlb-base-color, var(--fwlb-status-tone-color)));
+  --fwlb-current-border-color: var(--fwlb-current-state-border-color, var(--fwlb-base-border-color, var(--fwlb-status-tone-border)));
+  --fwlb-current-box-shadow: var(--fwlb-current-state-box-shadow, var(--fwlb-base-box-shadow, none));
+}
+
+.root[data-loading='true'] {
+  --fwlb-current-background: var(--fwlb-loading-background, var(--fwlb-base-background, var(--fwlb-surface-muted)));
+  --fwlb-current-color: var(--fwlb-loading-color, var(--fwlb-base-color, var(--fwlb-status-tone-color)));
+  --fwlb-current-border-color: var(--fwlb-loading-border-color, var(--fwlb-base-border-color, var(--fwlb-status-tone-border)));
+  --fwlb-current-box-shadow: var(--fwlb-loading-box-shadow, var(--fwlb-base-box-shadow, none));
+}
+
+.root[data-disabled='true'] {
+  --fwlb-current-background: var(--fwlb-disabled-background, var(--fwlb-base-background, var(--fwlb-surface-muted)));
+  --fwlb-current-color: var(--fwlb-disabled-color, var(--fwlb-base-color, var(--fwlb-status-tone-color)));
+  --fwlb-current-border-color: var(--fwlb-disabled-border-color, var(--fwlb-base-border-color, var(--fwlb-status-tone-border)));
+  --fwlb-current-box-shadow: var(--fwlb-disabled-box-shadow, var(--fwlb-base-box-shadow, none));
+  --fwlb-current-opacity: var(--fwlb-disabled-opacity, var(--fwlb-base-opacity, 1));
+  --fwlb-current-transform: var(--fwlb-disabled-transform, var(--fwlb-base-transform, none));
+}
+
+.label {
+  color: var(--fwlb-text-muted);
+  white-space: nowrap;
+}
+
+.value {
+  min-width: 0;
+  color: inherit;
+  font-weight: 800;
+}

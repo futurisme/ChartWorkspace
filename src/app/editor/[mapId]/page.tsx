@@ -5,6 +5,8 @@ import dynamic from 'next/dynamic';
 import { useParams } from 'next/navigation';
 import { PresenceBar } from '@/components/PresenceBar';
 import { BroadcastRefreshSettings } from '@/components/BroadcastRefreshSettings';
+import { ActionGroup, HeaderShell, StatusChip } from '@/lib/fadhilweblib';
+import { Button } from '@/lib/fadhilweblib/client';
 
 const RealtimeProvider = dynamic(
   () => import('@/components/RealtimeProvider').then((module) => module.RealtimeProvider),
@@ -60,19 +62,20 @@ function EditorShell({ mapId, title, userId, displayName, showMobileToolsPanel, 
   return (
     <RealtimeProvider mapId={mapId} userId={userId} displayName={displayName} mode={canEdit ? 'edit' : 'view'}>
       <header className="editor-shell-header border-b border-cyan-500/25 bg-slate-950/95 px-2 py-0.5 shadow-[0_3px_10px_rgba(6,182,212,0.12)] backdrop-blur sm:px-2">
-        <div className="flex items-start justify-between gap-1 sm:items-center">
-          <div className="flex min-w-0 flex-1 items-start gap-1.5 leading-tight">
-            <BroadcastRefreshSettings canEdit={canEdit} onEditAccessChange={onEditAccessChange} />
-            <div className="min-w-0">
-              <h1 className="text-[11px] font-semibold tracking-wide text-cyan-100 break-words sm:truncate sm:text-[13px]">{title}</h1>
-              <p className="hidden text-[8px] uppercase tracking-[0.08em] text-cyan-300/65 sm:block">Collaborative concept workspace</p>
-            </div>
-          </div>
-          <div className="ml-1 flex shrink-0 flex-col items-end gap-0.5 sm:ml-0 sm:flex-row sm:items-center sm:gap-1">
-            <div className="shrink-0 rounded border border-cyan-300/30 bg-cyan-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-cyan-100 sm:text-[10px]">
-              {canEdit ? 'Edit' : 'View'} #{mapId}
-            </div>
-            <PresenceBar compact showBorder={false} className="rounded border border-cyan-300/20 bg-slate-900/75" />
+        <div className="flex items-start gap-1.5">
+          <BroadcastRefreshSettings canEdit={canEdit} onEditAccessChange={onEditAccessChange} />
+          <div className="min-w-0 flex-1">
+            <HeaderShell
+              compact
+              title={<span className="break-words sm:truncate">{title}</span>}
+              subtitle={<span className="hidden uppercase tracking-[0.08em] sm:block">Collaborative concept workspace</span>}
+              actions={(
+                <ActionGroup gap="xs" wrap={false} align="center">
+                  <StatusChip tone={canEdit ? 'brand' : 'neutral'} label="mode" value={`${canEdit ? 'Edit' : 'View'} #${mapId}`} />
+                  <PresenceBar compact showBorder={false} className="rounded-full border border-cyan-300/20 bg-slate-900/75" />
+                </ActionGroup>
+              )}
+            />
           </div>
         </div>
       </header>
@@ -215,13 +218,15 @@ function EditorContent() {
                 }
               }}
             />
-            <button
+            <Button
               type="button"
+              tone="brand"
+              fullWidth
+              className="mt-4"
               onClick={handleSubmitName}
-              className="mt-4 w-full rounded-md bg-cyan-500 px-3 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-400"
             >
               Lanjut ke Workspace
-            </button>
+            </Button>
           </div>
         </div>
       )}

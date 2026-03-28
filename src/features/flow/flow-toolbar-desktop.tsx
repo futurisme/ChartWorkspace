@@ -1,3 +1,8 @@
+'use client';
+
+import { Panel, Stack, StatusChip } from '@/lib/fadhilweblib';
+import { Button } from '@/lib/fadhilweblib/client';
+
 interface FlowToolbarDesktopProps {
   showControlsPanel: boolean;
   showStatusPanel: boolean;
@@ -23,50 +28,6 @@ interface FlowToolbarDesktopProps {
   onUnconnectStart: () => void;
   onExportWorkspace: () => void;
   onImportWorkspace: () => void;
-}
-
-function ActionButton({
-  label,
-  onClick,
-  disabled,
-  tone = 'neutral',
-}: {
-  label: string;
-  onClick: () => void;
-  disabled?: boolean;
-  tone?: 'neutral' | 'brand' | 'warning' | 'danger' | 'info' | 'success';
-}) {
-  const toneClass =
-    tone === 'brand'
-      ? 'border-cyan-300 bg-cyan-600 text-white hover:bg-cyan-500'
-      : tone === 'warning'
-        ? 'border-amber-300 bg-amber-500 text-slate-950 hover:bg-amber-400'
-        : tone === 'danger'
-          ? 'border-red-300 bg-red-600 text-white hover:bg-red-500'
-          : tone === 'info'
-            ? 'border-violet-300 bg-violet-600 text-white hover:bg-violet-500'
-            : tone === 'success'
-              ? 'border-emerald-300 bg-emerald-600 text-white hover:bg-emerald-500'
-              : 'border-slate-300 bg-slate-600 text-white hover:bg-slate-500';
-
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className={`rounded-md border px-2 py-1 text-[10px] font-semibold tracking-wide transition-colors ${toneClass} disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-800 disabled:text-slate-500`}
-    >
-      {label}
-    </button>
-  );
-}
-
-function StatusItem({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded-md border border-cyan-500/15 bg-slate-900/65 px-1.5 py-1 text-[10px] text-slate-200">
-      <span className="mr-1 text-cyan-200/75">{label}:</span>
-      <span className="font-semibold text-slate-50">{value}</span>
-    </div>
-  );
 }
 
 export function FlowToolbarDesktop({
@@ -99,50 +60,56 @@ export function FlowToolbarDesktop({
     <>
       {showControlsPanel && (
         <div className="pointer-events-none absolute left-2 top-2 z-30 hidden w-[196px] lg:block">
-          <div className="pointer-events-auto rounded-lg border border-cyan-500/25 bg-slate-950/82 p-1.5 shadow-[0_10px_26px_rgba(34,211,238,0.12)] backdrop-blur">
-            <h2 className="mb-1 text-[10px] font-semibold uppercase tracking-[0.13em] text-cyan-100">Tools</h2>
+          <Panel density="compact" className="pointer-events-auto">
+            <h2 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.13em] text-cyan-100">Tools</h2>
             <div className="grid grid-cols-2 gap-1">
-              <ActionButton label="Add" onClick={onAddNode} tone="brand" />
-              <ActionButton
-                label={isConnectArmed ? 'Connecting…' : 'Connect'}
+              <Button tone="brand" size="xs" fullWidth onClick={onAddNode}>Add</Button>
+              <Button
+                tone={isConnectArmed ? 'success' : 'info'}
+                size="xs"
+                fullWidth
                 onClick={onConnectStart}
                 disabled={!selectedNodeId}
-                tone={isConnectArmed ? 'success' : 'info'}
-              />
-              <ActionButton
-                label={isUnconnectArmed ? 'Unconnecting…' : 'Unconnect'}
+              >
+                {isConnectArmed ? 'Connecting...' : 'Connect'}
+              </Button>
+              <Button
+                tone="warning"
+                size="xs"
+                fullWidth
                 onClick={onUnconnectStart}
                 disabled={!selectedNodeId}
-                tone={isUnconnectArmed ? 'warning' : 'warning'}
-              />
-              <ActionButton label="Rename" onClick={onRename} disabled={!selectedNodeId} tone="info" />
-              <ActionButton label="Undo" onClick={onUndo} disabled={!canUndo} tone="warning" />
-              <ActionButton label="Redo" onClick={onRedo} disabled={!canRedo} tone="warning" />
-              <ActionButton label="Export" onClick={onExportWorkspace} tone="success" />
-              <ActionButton label="Import" onClick={onImportWorkspace} tone="info" />
-              <ActionButton label="Delete" onClick={onDelete} disabled={!selectedNodeId} tone="danger" />
+              >
+                {isUnconnectArmed ? 'Unconnecting...' : 'Unconnect'}
+              </Button>
+              <Button tone="info" size="xs" fullWidth onClick={onRename} disabled={!selectedNodeId}>Rename</Button>
+              <Button tone="warning" size="xs" fullWidth onClick={onUndo} disabled={!canUndo}>Undo</Button>
+              <Button tone="warning" size="xs" fullWidth onClick={onRedo} disabled={!canRedo}>Redo</Button>
+              <Button tone="success" size="xs" fullWidth onClick={onExportWorkspace}>Export</Button>
+              <Button tone="info" size="xs" fullWidth onClick={onImportWorkspace}>Import</Button>
+              <Button tone="danger" size="xs" fullWidth onClick={onDelete} disabled={!selectedNodeId}>Delete</Button>
             </div>
-          </div>
+          </Panel>
         </div>
       )}
 
       {showStatusPanel && (
         <div className="pointer-events-none absolute right-2 top-2 z-30 hidden w-[196px] lg:block">
-          <div className="pointer-events-auto rounded-lg border border-cyan-500/25 bg-slate-950/82 p-1.5 shadow-[0_10px_26px_rgba(34,211,238,0.12)] backdrop-blur">
-            <h2 className="mb-1 text-[10px] font-semibold uppercase tracking-[0.13em] text-cyan-100">Status</h2>
-            <div className="space-y-1">
-              <StatusItem label="Selection" value={selectedNodeId ? selectedNodeLabel ?? selectedNodeId : 'None'} />
-              <StatusItem label="Parent" value={selectedParentId ?? '-'} />
-              <StatusItem label="Children" value={selectedNodeId ? selectedChildCount : 0} />
-              <StatusItem label="Position" value={selectedPosition ? `${selectedPosition.x}, ${selectedPosition.y}` : '-'} />
-              <StatusItem label="Connect" value={isConnectArmed ? 'Select target node' : 'Idle'} />
-              <StatusItem label="Unconnect" value={isUnconnectArmed ? 'Select target node' : 'Idle'} />
-              <StatusItem label="Snap" value={snapEnabled ? 'ON' : 'OFF'} />
-              <StatusItem label="Connection" value={isConnected ? 'Online' : 'Offline'} />
-              <StatusItem label="Collaborators" value={remoteUsersCount + 1} />
-              <StatusItem label="Save warnings" value={saveErrorCount} />
-            </div>
-          </div>
+          <Panel density="compact" className="pointer-events-auto">
+            <h2 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.13em] text-cyan-100">Status</h2>
+            <Stack gap="xs">
+              <StatusChip className="w-full justify-between rounded-md" label="Selection" value={selectedNodeId ? selectedNodeLabel ?? selectedNodeId : 'None'} />
+              <StatusChip className="w-full justify-between rounded-md" label="Parent" value={selectedParentId ?? '-'} />
+              <StatusChip className="w-full justify-between rounded-md" label="Children" value={selectedNodeId ? selectedChildCount : 0} />
+              <StatusChip className="w-full justify-between rounded-md" label="Position" value={selectedPosition ? `${selectedPosition.x}, ${selectedPosition.y}` : '-'} />
+              <StatusChip className="w-full justify-between rounded-md" label="Connect" value={isConnectArmed ? 'Select target node' : 'Idle'} tone={isConnectArmed ? 'success' : 'neutral'} />
+              <StatusChip className="w-full justify-between rounded-md" label="Unconnect" value={isUnconnectArmed ? 'Select target node' : 'Idle'} tone={isUnconnectArmed ? 'warning' : 'neutral'} />
+              <StatusChip className="w-full justify-between rounded-md" label="Snap" value={snapEnabled ? 'ON' : 'OFF'} tone={snapEnabled ? 'brand' : 'warning'} />
+              <StatusChip className="w-full justify-between rounded-md" label="Connection" value={isConnected ? 'Online' : 'Offline'} tone={isConnected ? 'success' : 'danger'} />
+              <StatusChip className="w-full justify-between rounded-md" label="Collaborators" value={remoteUsersCount + 1} tone="info" />
+              <StatusChip className="w-full justify-between rounded-md" label="Save warnings" value={saveErrorCount} tone={saveErrorCount > 0 ? 'warning' : 'success'} />
+            </Stack>
+          </Panel>
         </div>
       )}
     </>
