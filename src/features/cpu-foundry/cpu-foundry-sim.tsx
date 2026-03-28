@@ -589,6 +589,8 @@ export function CpuFoundrySim() {
               decisionDay: request.decisionDay ?? null,
               revenueShare: clamp(request.revenueShare ?? 0.2, 0.1, 0.36),
               monthlyDownloads: Math.max(0, request.monthlyDownloads ?? 0),
+              publishedReleaseCount: Math.max(0, request.publishedReleaseCount ?? 0),
+              lastPublishedDay: request.lastPublishedDay ?? null,
               note: request.note ?? '',
             }))
           : [],
@@ -824,14 +826,27 @@ export function CpuFoundrySim() {
   const focusedAppStoreListings = useMemo(() => {
     if (!game || !focusedCompany || focusedCompany.field !== 'software' || focusedCompany.softwareSpecialization !== 'app-store') return [];
     const approved = game.appStoreLicenseRequests
-      .filter((request) => request.softwareCompanyKey === focusedCompany.key && request.status === 'approved')
-      .sort((left, right) => (right.decisionDay ?? 0) - (left.decisionDay ?? 0));
+      .filter((request) => (
+        request.softwareCompanyKey === focusedCompany.key
+        && request.status === 'approved'
+        && (
+          request.publishedReleaseCount > 0
+          || game.companies[request.gameCompanyKey].releaseCount > 0
+        )
+      ))
+      .sort((left, right) => (
+        (right.lastPublishedDay ?? right.decisionDay ?? 0) - (left.lastPublishedDay ?? left.decisionDay ?? 0)
+      ));
     return approved.map((request, index) => {
       const gameCompany = game.companies[request.gameCompanyKey];
       const seeded = createSeededRandom(`${focusedCompany.key}-appstore-${request.id}-${index}`);
       const icon = APPSTORE_ICON_SET[Math.floor(seeded() * APPSTORE_ICON_SET.length)] ?? '🎮';
       const datasetEntry = GAME_NAME_DATASET[Math.floor(seeded() * GAME_NAME_DATASET.length)] ?? GAME_NAME_DATASET[0];
-      const estimatedDownloads = Math.max(120, gameCompany.marketShare * 140 + gameCompany.reputation * 110 + gameCompany.releaseCount * 90);
+      const estimatedDownloads = Math.max(
+        120,
+        request.monthlyDownloads,
+        gameCompany.marketShare * 140 + gameCompany.reputation * 110 + gameCompany.releaseCount * 90
+      );
       const releaseCard: GameReleaseCard = {
         id: `${request.id}-partner-game`,
         name: `${datasetEntry.name} ${Math.max(1, gameCompany.releaseCount)}`,
@@ -1546,6 +1561,26 @@ export function CpuFoundrySim() {
     const reputationGain = Math.max(0.8, (activeCpuScore / 240 + activeCompany.teams.marketing.count * 0.7 + activePricePreset.reputationBonus) * releaseRating.reputationMultiplier);
     const marketShareGain = Math.min(5.5, (activeCpuScore / 500 + activeCompany.teams.fabrication.count * 0.16 + activePricePreset.marketBonus) * releaseRating.marketShareMultiplier);
 
+    const nextReleaseCount = activeCompany.releaseCount + 1;
+    const appStoreLicenseRequests = selectedReleaseStore
+      ? game.appStoreLicenseRequests.map((request) => {
+        if (
+          request.gameCompanyKey !== activeCompany.key
+          || request.softwareCompanyKey !== selectedReleaseStore.key
+          || request.status !== 'approved'
+        ) return request;
+        const estimatedMonthlyDownloads = Math.max(
+          request.monthlyDownloads,
+          Math.round(clamp(baseLaunchRevenue * 0.9 + activeCpuScore * 9 + activeCompany.marketShare * 130, 220, 250000))
+        );
+        return {
+          ...request,
+          monthlyDownloads: estimatedMonthlyDownloads,
+          publishedReleaseCount: Math.max(request.publishedReleaseCount, nextReleaseCount),
+          lastPublishedDay: game.elapsedDays,
+        };
+      })
+      : game.appStoreLicenseRequests;
     const next = resolveGovernance({
       ...game,
       companies: {
@@ -1571,6 +1606,7 @@ export function CpuFoundrySim() {
           }
           : {}),
       },
+      appStoreLicenseRequests,
       activityFeed: addFeedEntry(
         game.activityFeed,
         `${formatDateFromDays(game.elapsedDays)}: ${activeCompany.name} merilis ${series} ${cpuName} (rating ${formatNumber(releaseRating.rating, 1)})${selectedReleaseStore ? ` via ${selectedReleaseStore.name}` : ''} dan membukukan $${formatMoneyCompact(launchRevenue - storeLaunchFee)}.`

@@ -98,6 +98,8 @@ export type AppStoreLicenseRequest = {
   decisionDay: number | null;
   revenueShare: number;
   monthlyDownloads: number;
+  publishedReleaseCount: number;
+  lastPublishedDay: number | null;
   note: string;
 };
 
@@ -339,6 +341,7 @@ export const SHARE_SHEET_OPTIONS = [100, 500, 1000] as const;
 export const SHARE_SHEET_COOLDOWN_DAYS = 240;
 export const INVESTOR_TAX_INTERVAL_DAYS = 30;
 export const TOTAL_SHARES = 1000;
+export const DOMINANT_HOLDER_THRESHOLD_PERCENT = 40;
 export const INITIAL_FOUNDER_OWNERSHIP_RATIO = 0.52;
 export const COMPANY_TRADE_FEE_RATE = 0.018;
 export const HOLDER_TRADE_FEE_RATE = 0.052;
@@ -779,7 +782,11 @@ export function getCompanyInvestmentTotal(company: CompanyState) {
 
 export function getSharePrice(company: CompanyState) {
   const valuation = getCompanyValuation(company);
-  return Math.max(0.08, valuation / company.sharesOutstanding);
+  const base = valuation / Math.max(1, company.sharesOutstanding);
+  const shareStructureNormalization = clamp(Math.sqrt(TOTAL_SHARES / Math.max(100, company.sharesOutstanding)), 0.72, 1.32);
+  const freeFloatRatio = clamp(company.marketPoolShares / Math.max(1, company.sharesOutstanding), 0.05, 0.95);
+  const liquidityAdjustment = clamp(0.9 + freeFloatRatio * 0.26, 0.86, 1.16);
+  return Math.max(0.08, base * shareStructureNormalization * liquidityAdjustment);
 }
 
 export function getCompanyResearchAssetValue(company: CompanyState) {
@@ -818,6 +825,11 @@ export function getOwnershipPercent(company: CompanyState, investorId: string) {
   return shares / company.sharesOutstanding * 100;
 }
 
+export function isDominantIndividualHolder(company: CompanyState, investorId: string) {
+  if (!isHumanExecutiveCandidateId(investorId)) return false;
+  return getOwnershipPercent(company, investorId) >= DOMINANT_HOLDER_THRESHOLD_PERCENT;
+}
+
 export function pickShareSheetTotal(seedCapital: number): number {
   if (seedCapital >= 120) return 1000;
   if (seedCapital >= 52) return 500;
@@ -825,6 +837,7 @@ export function pickShareSheetTotal(seedCapital: number): number {
 }
 
 export function canChangeShareSheetTotal(company: CompanyState, nextTotal: number, currentDay: number) {
+  const dominantCeo = isDominantIndividualHolder(company, company.ceoId);
   if (!SHARE_SHEET_OPTIONS.includes(nextTotal as (typeof SHARE_SHEET_OPTIONS)[number])) {
     return { ok: false, reason: 'Opsi share sheets hanya 100 / 500 / 1000.' };
   }
@@ -832,10 +845,11 @@ export function canChangeShareSheetTotal(company: CompanyState, nextTotal: numbe
     return { ok: false, reason: 'Jumlah share sheets sama dengan konfigurasi saat ini.' };
   }
   const elapsed = currentDay - (company.lastShareSheetChangeDay ?? 0);
-  if (elapsed < SHARE_SHEET_COOLDOWN_DAYS) {
-    return { ok: false, reason: `Perubahan share sheets masih cooldown ${formatNumber(SHARE_SHEET_COOLDOWN_DAYS - elapsed)} hari.` };
+  const cooldownDays = dominantCeo ? Math.round(SHARE_SHEET_COOLDOWN_DAYS * 0.25) : SHARE_SHEET_COOLDOWN_DAYS;
+  if (elapsed < cooldownDays) {
+    return { ok: false, reason: `Perubahan share sheets masih cooldown ${formatNumber(cooldownDays - elapsed)} hari.` };
   }
-  if (nextTotal < company.sharesOutstanding) {
+  if (nextTotal < company.sharesOutstanding && !dominantCeo) {
     const sortedTotals = [...SHARE_SHEET_OPTIONS].sort((a, b) => a - b);
     const currentIndex = sortedTotals.findIndex((value) => value === company.sharesOutstanding);
     const targetIndex = sortedTotals.findIndex((value) => value === nextTotal);
@@ -1236,7 +1250,20 @@ export function getExecutiveAiActor(game: GameState, company: CompanyState, inve
   const existingNpc = getNpcById(game, investorId);
   if (existingNpc) return existingNpc;
   const isFounder = investorId.startsWith('founder_');
-  const founderStrategy: StrategyStyle = company.marketShare > 20 ? 'balanced' : company.cash < 24 ? 'growth' : 'value';
+  const founderStrategy: StrategyStyle = company.field === 'game'
+    ? (company.marketShare > 18 ? 'growth' : 'balanced')
+    : company.field === 'software'
+      ? (company.softwareSpecialization === 'app-store' ? 'balanced' : 'growth')
+      : company.marketShare > 20
+        ? 'balanced'
+        : company.cash < 24
+          ? 'growth'
+          : 'value';
+  const intelligenceBase = company.field === 'software' && company.softwareSpecialization === 'app-store'
+    ? 0.86
+    : company.field === 'semiconductor'
+      ? 0.82
+      : 0.8;
   return {
     id: investorId,
     name: investorDisplayName(game, investorId),
@@ -1244,11 +1271,11 @@ export function getExecutiveAiActor(game: GameState, company: CompanyState, inve
     strategy: investorId === game.player.id ? 'balanced' : founderStrategy,
     cash: getInvestorCash(game, investorId),
     focusCompany: company.key,
-    boldness: isFounder ? 0.7 : 0.62,
-    patience: isFounder ? 0.74 : 0.68,
+    boldness: isFounder ? 0.7 : company.field === 'game' ? 0.66 : 0.6,
+    patience: isFounder ? 0.74 : company.field === 'software' ? 0.72 : 0.68,
     horizonDays: isFounder ? 420 : 320,
     reserveRatio: 0.24,
-    intelligence: isFounder ? 0.84 : 0.8,
+    intelligence: isFounder ? Math.max(0.84, intelligenceBase) : intelligenceBase,
     analysisNote: `${investorDisplayName(game, investorId)} menjalankan fallback AI management untuk menjaga kesinambungan aksi.`,
     active: true,
   };
@@ -1866,7 +1893,7 @@ export function createCompany(config: {
 
 export function getRealInvestorCandidates(company: CompanyState) {
   return Object.entries(company.investors)
-    .filter(([, shares]) => shares > 0.01)
+    .filter(([investorId, shares]) => shares > 0.01 && isHumanExecutiveCandidateId(investorId))
     .sort(([, left], [, right]) => right - left)
     .map(([investorId]) => investorId);
 }
@@ -1986,7 +2013,28 @@ export function resolveGovernance(game: GameState) {
         boardMembers.push(createIndependentBoardMember(company, boardMembers.length % 2));
       }
 
-      const candidateIds = Array.from(new Set([company.ceoId, ...getRealInvestorCandidates(company).slice(0, 4)]));
+      const corporateControllerCandidates = ranked
+        .map(([investorId, shares]) => ({ investorId, shares, companyKey: getCompanyKeyFromCorporateInvestorId(investorId) }))
+        .filter((entry): entry is { investorId: string; shares: number; companyKey: CompanyKey } => Boolean(entry.companyKey))
+        .map((entry) => {
+          const parent = game.companies[entry.companyKey];
+          return {
+            candidateId: parent?.ceoId ?? '',
+            weightedShares: entry.shares,
+          };
+        })
+        .filter((entry) => entry.candidateId && isHumanExecutiveCandidateId(entry.candidateId));
+      const candidateIds = Array.from(new Set([
+        ...(isHumanExecutiveCandidateId(company.ceoId) ? [company.ceoId] : []),
+        ...getRealInvestorCandidates(company).slice(0, 4),
+        ...corporateControllerCandidates
+          .sort((left, right) => right.weightedShares - left.weightedShares)
+          .map((entry) => entry.candidateId)
+          .slice(0, 2),
+      ]));
+      if (candidateIds.length === 0) {
+        candidateIds.push(company.founderInvestorId);
+      }
       const boardVotes = new Map<string, number>();
 
       boardMembers.forEach((member) => {
@@ -1995,12 +2043,21 @@ export function resolveGovernance(game: GameState) {
 
         candidateIds.forEach((candidateId) => {
           const baseScore = getCandidateLeadershipScore(company, candidateId, company.ceoId);
+          const corporateInfluenceBoost = ranked
+            .filter(([investorId]) => getCompanyKeyFromCorporateInvestorId(investorId) !== null)
+            .reduce((sum, [investorId, shares]) => {
+              const sourceCompanyKey = getCompanyKeyFromCorporateInvestorId(investorId);
+              if (!sourceCompanyKey) return sum;
+              const sourceCompany = game.companies[sourceCompanyKey];
+              if (!sourceCompany || sourceCompany.ceoId !== candidateId) return sum;
+              return sum + (shares / Math.max(1, company.sharesOutstanding)) * 120;
+            }, 0);
           const ownership = getOwnershipPercent(company, candidateId);
           const stewardship = company.boardMood * 6 + company.reputation * 0.06 + company.marketShare * 0.05;
           const governanceFit = member.seatType === 'independent' || member.seatType === 'employee'
             ? stewardship + Math.min(ownership, 24) * 0.3
             : stewardship + ownership * 0.65;
-          const score = baseScore + governanceFit;
+          const score = baseScore + governanceFit + corporateInfluenceBoost;
           if (score > chosenScore) {
             chosenScore = score;
             chosenCandidate = candidateId;
@@ -2649,6 +2706,8 @@ export function requestAppStoreLicense(
     decisionDay: null,
     revenueShare: clamp(0.17 + softwareCompany.reputation / 520, 0.12, 0.34),
     monthlyDownloads: 0,
+    publishedReleaseCount: 0,
+    lastPublishedDay: null,
     note,
   };
 
@@ -3933,7 +3992,19 @@ export function applyNpcCompanyAction(game: GameState, companyKey: CompanyKey, a
     const pricePreset = PRICE_PRESETS[priceIndex];
     const cpuScore = calculateCpuScore(company.upgrades);
     const releaseRating = evaluateCpuReleaseRating(game, company, priceIndex, cpuScore);
-    const launchRevenue = calculateLaunchRevenue(cpuScore, company.teams, company.marketShare, company.reputation, pricePreset.factor) * releaseRating.salesMultiplier;
+    const rawLaunchRevenue = calculateLaunchRevenue(cpuScore, company.teams, company.marketShare, company.reputation, pricePreset.factor) * releaseRating.salesMultiplier;
+    const approvedStoreLicenses = company.field === 'game'
+      ? game.appStoreLicenseRequests
+        .filter((request) => request.gameCompanyKey === companyKey && request.status === 'approved')
+        .sort((left, right) => {
+          const leftFreshness = (left.lastPublishedDay ?? left.decisionDay ?? left.requestedDay);
+          const rightFreshness = (right.lastPublishedDay ?? right.decisionDay ?? right.requestedDay);
+          return rightFreshness - leftFreshness;
+        })
+      : [];
+    const selectedStoreLicense = approvedStoreLicenses[0] ?? null;
+    const storeFee = selectedStoreLicense ? rawLaunchRevenue * selectedStoreLicense.revenueShare : 0;
+    const launchRevenue = rawLaunchRevenue - storeFee;
     const wasCashCritical = company.cash <= 0.5;
     const isEmergencyRelease = action.forceImmediate && company.cash < 10;
     const nextCash = company.cash + launchRevenue;
@@ -3963,6 +4034,21 @@ export function applyNpcCompanyAction(game: GameState, companyKey: CompanyKey, a
           : `CPU G${company.releaseCount + 1}`
     );
     const productLabel = company.field === 'game' ? 'game' : company.field === 'software' ? 'software' : 'CPU';
+    const nextLicenseRequests = selectedStoreLicense
+      ? game.appStoreLicenseRequests.map((request) => {
+        if (request.id !== selectedStoreLicense.id) return request;
+        const estimatedDownloads = Math.max(
+          request.monthlyDownloads,
+          Math.round(clamp(rawLaunchRevenue * 0.9 + releaseRating.rating * 70 + company.marketShare * 120, 200, 200000))
+        );
+        return {
+          ...request,
+          monthlyDownloads: estimatedDownloads,
+          publishedReleaseCount: request.publishedReleaseCount + 1,
+          lastPublishedDay: game.elapsedDays,
+        };
+      })
+      : game.appStoreLicenseRequests;
     return {
       ...game,
       companies: {
@@ -3980,12 +4066,21 @@ export function applyNpcCompanyAction(game: GameState, companyKey: CompanyKey, a
           emergencyReleaseAnchorDay: emergencyAnchorDay,
           emergencyReleaseCount: emergencyReleaseCount,
           lastEmergencyReleaseDay: lastEmergencyReleaseDay,
-          lastRelease: `${series} ${cpuName} rilis ${formatDateFromDays(game.elapsedDays)} (${pricePreset.label.toLowerCase()}) · ${releaseRating.summary}`,
+          lastRelease: `${series} ${cpuName} rilis ${formatDateFromDays(game.elapsedDays)} (${pricePreset.label.toLowerCase()})${selectedStoreLicense ? ` via ${game.companies[selectedStoreLicense.softwareCompanyKey].name}` : ''} · ${releaseRating.summary}`,
         },
+        ...(selectedStoreLicense
+          ? {
+            [selectedStoreLicense.softwareCompanyKey]: {
+              ...game.companies[selectedStoreLicense.softwareCompanyKey],
+              cash: game.companies[selectedStoreLicense.softwareCompanyKey].cash + storeFee,
+            },
+          }
+          : {}),
       },
+      appStoreLicenseRequests: nextLicenseRequests,
       activityFeed: addFeedEntry(
         game.activityFeed,
-        `${formatDateFromDays(game.elapsedDays)}: ${wasCashCritical ? '🚨 RILIS DARURAT' : 'Update produk'} — ${company.name} merilis ${productLabel} ${series} ${cpuName} (rating ${formatNumber(releaseRating.rating, 1)}) dan membukukan $${formatMoneyCompact(launchRevenue)}.`
+        `${formatDateFromDays(game.elapsedDays)}: ${wasCashCritical ? '🚨 RILIS DARURAT' : 'Update produk'} — ${company.name} merilis ${productLabel} ${series} ${cpuName} (rating ${formatNumber(releaseRating.rating, 1)})${selectedStoreLicense ? ` via ${game.companies[selectedStoreLicense.softwareCompanyKey].name}` : ''} dan membukukan $${formatMoneyCompact(launchRevenue)}.`
       ),
     };
   }
@@ -4131,9 +4226,12 @@ export function applyNpcManagementAction(game: GameState, companyKey: CompanyKey
 
 export function getNpcManagementActionCapacity(company: CompanyState, ceoNpc: NpcInvestor, domain: ExecutiveDomain | 'general') {
   const management = getManagementResourceContext(company);
-  if (domain === 'technology') return clamp(Math.round(1 + management.researchOverflow * 1.8 + management.researchUrgency * 0.45 + ceoNpc.intelligence * 1.6), 1, 6);
-  if (domain === 'operations') return clamp(Math.round(1 + management.cashOverflow * 1.2 + management.cashUrgency * 0.35 + ceoNpc.intelligence * 1.1), 1, 4);
-  if (domain === 'marketing') return clamp(Math.round(1 + management.cashOverflow * 1 + management.monthlyRevenue / 150 + ceoNpc.boldness), 1, 4);
+  const techFieldBias = company.field === 'semiconductor' ? 0.4 : company.field === 'software' ? 0.26 : 0.18;
+  const marketingFieldBias = company.field === 'game' ? 0.45 : company.field === 'software' ? 0.3 : 0.12;
+  const operationsFieldBias = company.field === 'software' && company.softwareSpecialization === 'app-store' ? 0.35 : 0.2;
+  if (domain === 'technology') return clamp(Math.round(1 + management.researchOverflow * 1.8 + management.researchUrgency * 0.45 + ceoNpc.intelligence * (1.4 + techFieldBias)), 1, 6);
+  if (domain === 'operations') return clamp(Math.round(1 + management.cashOverflow * 1.2 + management.cashUrgency * 0.35 + ceoNpc.intelligence * (1 + operationsFieldBias)), 1, 4);
+  if (domain === 'marketing') return clamp(Math.round(1 + management.cashOverflow * 1 + management.monthlyRevenue / 150 + ceoNpc.boldness + marketingFieldBias), 1, 4);
   if (domain === 'finance') return clamp(Math.round(1 + management.cashOverflow * 0.5 + getCompanyStressLevel(company)), 1, 2);
   return clamp(Math.round(1 + management.managementIntensity * 1.4 + ceoNpc.intelligence), 1, 4);
 }
@@ -4157,10 +4255,21 @@ function runNpcAppStoreLicensing(game: GameState, company: CompanyState, ceoNpc:
         }
         return true;
       })
-      .sort((left, right) => (
-        (right.reputation + right.marketShare * 0.8 + right.cash * 0.015)
-        - (left.reputation + left.marketShare * 0.8 + left.cash * 0.015)
-      ));
+      .sort((left, right) => {
+        const leftScore = left.reputation * 0.42
+          + left.marketShare * 0.44
+          + left.appStoreProfile.discovery * 12
+          + left.appStoreProfile.infrastructure * 9
+          + left.appStoreProfile.trust * 8
+          + left.cash * 0.012;
+        const rightScore = right.reputation * 0.42
+          + right.marketShare * 0.44
+          + right.appStoreProfile.discovery * 12
+          + right.appStoreProfile.infrastructure * 9
+          + right.appStoreProfile.trust * 8
+          + right.cash * 0.012;
+        return rightScore - leftScore;
+      });
     const target = candidates[0];
     if (target) {
       next = requestAppStoreLicense(
@@ -4180,10 +4289,12 @@ function runNpcAppStoreLicensing(game: GameState, company: CompanyState, ceoNpc:
     const request = pending[0];
     if (request) {
       const gameCompany = next.companies[request.gameCompanyKey];
+      const recentPublishingSignal = clamp((gameCompany.lastReleaseDay === 0 ? 0 : (next.elapsedDays - gameCompany.lastReleaseDay <= 45 ? 1 : 0)) * 10, 0, 10);
       const qualitySignal =
         gameCompany.reputation * 0.34
         + gameCompany.marketShare * 0.58
         + gameCompany.releaseCount * 3.8
+        + recentPublishingSignal
         + ceoNpc.intelligence * 24
         + ceoNpc.boldness * 11;
       const approved = qualitySignal >= 35;
