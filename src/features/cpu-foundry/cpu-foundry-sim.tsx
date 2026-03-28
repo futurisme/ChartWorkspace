@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import styles from './cpu-foundry-sim.module.css';
+import { APPSTORE_ICON_SET, GAME_NAME_DATASET, type GameReleaseCard } from './appstore-catalog';
+import { ThinFrameHeader } from './thin-frame-header';
 import * as Engine from '@/features/gameplay/simulation-engine';
 import type {
   UpgradeKey,
@@ -199,7 +201,6 @@ const STATISTICS_COLORS = ['#0ea5e9', '#38bdf8', '#6366f1', '#8b5cf6', '#ec4899'
 
 type StatisticsTab = 'wealth' | 'investments' | 'ownership';
 type PieSlice = { label: string; value: number; color: string };
-type GameReleaseCard = { id: string; name: string; genre: string; releaseDate: string; popularity: number; communities: string[] };
 type LocalUiState = {
   openPanels: Record<PanelKey, boolean>;
   companyDetailPanels: Record<CompanyDetailPanelKey, boolean>;
@@ -220,26 +221,6 @@ const SOFTWARE_SPECIALIZATIONS: Array<{ key: SoftwareSpecialization; label: stri
   { key: 'entertainment-apps', label: 'Entertainment Apps', description: 'Aplikasi video, sosial, dan consumer engagement.' },
   { key: 'utility-apps', label: 'Utility Apps', description: 'Produktivitas dan utilitas harian untuk pengguna massal.' },
 ];
-
-const GAME_NAME_DATASET: Array<{ name: string; genre: string; era: string; theme: string }> = [
-  { name: 'Neon Drift 2088', genre: 'Cyberpunk Racing', era: 'Future', theme: 'Urban Neon' },
-  { name: 'Kingdoms of Emberfall', genre: 'Strategy RPG', era: 'Medieval', theme: 'High Fantasy' },
-  { name: 'Project Tundra Zero', genre: 'Survival Shooter', era: 'Modern', theme: 'Arctic Conflict' },
-  { name: 'Lotus Blade Chronicle', genre: 'Action Adventure', era: 'Feudal', theme: 'Mythic East' },
-  { name: 'Astrolane Command', genre: '4X Grand Strategy', era: 'Space Age', theme: 'Galactic Empire' },
-  { name: 'Pixel Harbor Stories', genre: 'Life Simulation', era: 'Retro', theme: 'Coastal Town' },
-  { name: 'Eclipse Protocol', genre: 'Stealth Thriller', era: 'Near Future', theme: 'Corporate Espionage' },
-  { name: 'Runes of Asteria', genre: 'MMO RPG', era: 'Ancient', theme: 'Arcane Civilizations' },
-  { name: 'Velocity Kart Legends', genre: 'Arcade Racing', era: 'Contemporary', theme: 'Global Circuits' },
-  { name: 'Ghostline Frontier', genre: 'Open World', era: 'Post-Apocalypse', theme: 'Wasteland Rebuild' },
-  { name: 'Verdant Colony', genre: 'City Builder', era: 'Solarpunk', theme: 'Eco Megacity' },
-  { name: 'Iron Arena Genesis', genre: 'Competitive Arena', era: 'Sci-Fi', theme: 'Mech Combat' },
-  { name: 'Saffron Detective Files', genre: 'Narrative Mystery', era: '1990s', theme: 'Noir Metropolis' },
-  { name: 'Crimson Tide Armada', genre: 'Naval Strategy', era: 'Industrial', theme: 'Ocean Warfare' },
-  { name: 'Fable Circuit', genre: 'Co-op Puzzle', era: 'Timeless', theme: 'Whimsical Tech' },
-  { name: 'Orbital Cricket League', genre: 'Sports Sim', era: 'Future', theme: 'Interplanetary Tournament' },
-];
-const APPSTORE_ICON_SET = ['🎮', '🕹️', '🏎️', '⚔️', '🧩', '🚀', '🏰', '🌌', '🐉', '🤖', '🏟️', '🎯'];
 
 const getSoftwareSpecializationLabel = (value?: SoftwareSpecialization | null) => (
   SOFTWARE_SPECIALIZATIONS.find((entry) => entry.key === value)?.label ?? 'Utility Apps'
@@ -307,30 +288,6 @@ function ReusablePieDiagram({ title, slices }: { title: string; slices: PieSlice
           );
         })}
       </div>
-    </div>
-  );
-}
-
-function ThinFrameHeader({
-  frameName,
-  subtitle,
-  onBack,
-  backLabel,
-}: {
-  frameName: string;
-  subtitle: string;
-  onBack: () => void;
-  backLabel: string;
-}) {
-  return (
-    <div className={styles.screenFrameHeader}>
-      <div className={styles.frameHeading}>
-        <strong className={styles.frameName}>{frameName}</strong>
-        <p className={styles.frameSubName}>{subtitle}</p>
-      </div>
-      <button type="button" className={styles.closeButton} onClick={onBack} aria-label={backLabel}>
-        ←
-      </button>
     </div>
   );
 }
