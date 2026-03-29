@@ -1,0 +1,123 @@
+.root {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: var(--fwlb-space-3);
+  min-width: 0;
+  color: var(--fwlb-text-soft);
+  cursor: pointer;
+}
+
+.root[data-disabled='true'] {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.control {
+  position: relative;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  border: 1px solid var(--fwlb-border-strong);
+  border-radius: 0.38rem;
+  background: var(--fwlb-control-bg);
+  box-shadow: var(--fwlb-control-shadow);
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.control::after {
+  content: '';
+  width: 0.52rem;
+  height: 0.52rem;
+  border-radius: 0.18rem;
+  background: var(--fwlb-tone-brand-bg);
+  transform: scale(0);
+  transition: transform 140ms ease;
+}
+
+.root[data-checked='true'] .control {
+  border-color: var(--fwlb-tone-brand-border);
+}
+
+.root[data-checked='true'] .control::after {
+  transform: scale(1);
+}
+
+.switchTrack {
+  position: relative;
+  flex-shrink: 0;
+  width: 2.5rem;
+  height: 1.35rem;
+  border: 1px solid var(--fwlb-border-strong);
+  border-radius: 999px;
+  background: var(--fwlb-surface-sunken);
+  transition:
+    background 160ms ease,
+    border-color 160ms ease;
+}
+
+.switchThumb {
+  position: absolute;
+  top: 0.12rem;
+  left: 0.14rem;
+  width: 0.95rem;
+  height: 0.95rem;
+  border-radius: 999px;
+  background: var(--fwlb-tone-neutral-bg);
+  box-shadow: var(--fwlb-shadow-soft);
+  transition: transform 160ms ease;
+}
+
+.root[data-checked='true'] .switchTrack {
+  border-color: var(--fwlb-tone-brand-border);
+  background: color-mix(in oklab, var(--fwlb-tone-brand-bg) 28%, var(--fwlb-surface-sunken));
+}
+
+.root[data-checked='true'] .switchThumb {
+  transform: translateX(1.08rem);
+  background: var(--fwlb-tone-brand-bg);
+}
+
+.content {
+  display: grid;
+  gap: 0.18rem;
+  min-width: 0;
+}
+
+.label {
+  font-size: 0.84rem;
+  line-height: 1.35;
+  font-weight: 700;
+}
+
+.description {
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--fwlb-text-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .control,
+  .control::after,
+  .switchTrack,
+  .switchThumb {
+    transition-duration: 1ms;
+  }
+}

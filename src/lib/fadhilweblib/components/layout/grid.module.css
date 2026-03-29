@@ -1,0 +1,37 @@
+.root {
+  display: grid;
+  min-width: 0;
+  gap: var(--fwlb-gap, var(--fwlb-space-4));
+}
+
+.root[data-align='start'] {
+  align-items: start;
+}
+
+.root[data-align='center'] {
+  align-items: center;
+}
+
+.root[data-align='end'] {
+  align-items: end;
+}
+
+.root[data-align='stretch'] {
+  align-items: stretch;
+}
+
+.root[data-justify='start'] {
+  justify-items: start;
+}
+
+.root[data-justify='center'] {
+  justify-items: center;
+}
+
+.root[data-justify='end'] {
+  justify-items: end;
+}
+
+.root[data-justify='between'] {
+  justify-content: space-between;
+}

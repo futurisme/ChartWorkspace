@@ -1,6 +1,21 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { compileSyntax, composeSyntax, defineSyntax, mergeSyntax, parseSyntaxInput, resolveSyntax } from './syntax';
+import { FadhilWebSyntaxError, compileSyntax, composeSyntax, defineSyntax, mergeSyntax, parseSyntaxInput, resolveSyntax } from './syntax';
+
+function expectSyntaxError(callback: () => unknown, pattern: RegExp) {
+  let thrown: unknown;
+
+  try {
+    callback();
+  } catch (error) {
+    thrown = error;
+  }
+
+  assert.ok(thrown instanceof FadhilWebSyntaxError);
+  assert.match(thrown.message, pattern);
+
+  return thrown;
+}
 
 test('parseSyntaxInput parses semicolon syntax declarations', () => {
   const parsed = parseSyntaxInput('tone:brand; size:lg; px:20; py:12; bg:#08111d; wrap:on;');
@@ -92,6 +107,7 @@ test('compileSyntax supports advanced containment and typography properties', ()
     aspect: '16 / 9',
   });
 
+  assert.equal(compiled.__fwlbType, 'compiled-syntax');
   const resolved = resolveSyntax(compiled);
 
   assert.equal(resolved.style.contain, 'layout paint style');
@@ -102,4 +118,117 @@ test('compileSyntax supports advanced containment and typography properties', ()
   assert.equal(resolved.style.fontFamily, 'IBM Plex Sans, sans-serif');
   assert.equal(resolved.style.gridTemplateColumns, 'repeat(3, minmax(0, 1fr))');
   assert.equal(resolved.style.aspectRatio, '16 / 9');
+});
+
+test('parseSyntaxInput supports grouped namespace syntax and escape hatches', () => {
+  const parsed = parseSyntaxInput(
+    'layout(display:grid, cols:1.4fr 1fr, gap:lg, templateAreas:"hero stats", sticky:12); spacing(px:20, py:14); surface(bg:surface(base), border:tone(brand, border), radius:24); text(fs:18, weight:700, clamp:2); fx(duration:180, ease:cubic-bezier(0.2,0.8,0.2,1), translateY:-1); logic(open:true, focusable:true); attrs(draggable:true, title:Workspace card); aria(label:Workspace card); data(track:hero); vars(card-shadow:shadow(panel)); css(scrollbar-gutter:stable both-edges, grid-template-columns:subgrid);',
+  );
+
+  assert.equal(parsed.display, 'grid');
+  assert.equal(parsed.cols, '1.4fr 1fr');
+  assert.equal(parsed.templateAreas, '"hero stats"');
+  assert.equal(parsed.sticky, '12');
+  assert.equal(parsed.px, '20');
+  assert.equal(parsed.py, '14');
+  assert.equal(parsed.bg, 'surface(base)');
+  assert.equal(parsed.border, 'tone(brand, border)');
+  assert.equal(parsed.radius, '24');
+  assert.equal(parsed.fontSize, '18');
+  assert.equal(parsed.weight, '700');
+  assert.equal(parsed.clampLines, '2');
+  assert.equal(parsed.duration, '180');
+  assert.equal(parsed.ease, 'cubic-bezier(0.2,0.8,0.2,1)');
+  assert.equal(parsed.translateY, '-1');
+  assert.equal(parsed.open, 'true');
+  assert.equal(parsed.focusable, 'true');
+  assert.equal(parsed.attrs?.draggable, 'true');
+  assert.equal(parsed.attrs?.title, 'Workspace card');
+  assert.equal(parsed.aria?.['aria-label'], 'Workspace card');
+  assert.equal(parsed.data?.['data-track'], 'hero');
+  assert.equal(parsed.vars?.['--card-shadow'], 'shadow(panel)');
+  assert.equal(parsed.css?.['scrollbar-gutter'], 'stable both-edges');
+  assert.equal(parsed.css?.['grid-template-columns'], 'subgrid');
+});
+
+test('resolveSyntax supports grouped object syntax and css overrides', () => {
+  const resolved = resolveSyntax({
+    layout: {
+      display: 'grid',
+      cols: '1fr 320px',
+      gap: 'lg',
+      scrollbarGutter: 'stable both-edges',
+      scrollBehavior: 'smooth',
+    },
+    surface: {
+      bg: 'surface(base)',
+      border: 'tone(brand, border)',
+      radius: 24,
+    },
+    text: {
+      fontSize: 18,
+      clampLines: 2,
+    },
+    fx: {
+      translateY: -2,
+      duration: 180,
+    },
+    logic: {
+      open: true,
+      focusable: true,
+    },
+    attrs: {
+      draggable: true,
+    },
+    css: {
+      gridTemplateAreas: '"main aside"',
+      WebkitMaskImage: 'linear-gradient(black, transparent)',
+    },
+  });
+
+  assert.equal(resolved.style.display, 'grid');
+  assert.equal(resolved.style.gridTemplateColumns, '1fr 320px');
+  assert.equal(resolved.style.gap, 'var(--fwlb-space-4)');
+  assert.equal((resolved.style as Record<string, string>)['scrollbarGutter'], 'stable both-edges');
+  assert.equal((resolved.style as Record<string, string>)['scrollBehavior'], 'smooth');
+  assert.equal(resolved.style.background, 'var(--fwlb-surface-base)');
+  assert.equal(resolved.style.borderColor, 'var(--fwlb-tone-brand-border)');
+  assert.equal(resolved.style.borderRadius, '24px');
+  assert.equal(resolved.style.fontSize, '18px');
+  assert.equal((resolved.style as Record<string, string | number>).WebkitLineClamp, 2);
+  assert.equal(resolved.style.transform, 'translateY(-2px)');
+  assert.equal(resolved.style.transitionDuration, '180ms');
+  assert.equal((resolved.style as Record<string, string>)['gridTemplateAreas'], '"main aside"');
+  assert.equal((resolved.style as Record<string, string>)['WebkitMaskImage'], 'linear-gradient(black, transparent)');
+  assert.equal(resolved.logic.open, true);
+  assert.equal(resolved.logic.focusable, true);
+  assert.equal(resolved.attrs.tabIndex, 0);
+  assert.equal(resolved.attrs.draggable, true);
+});
+
+test('resolveSyntax supports positioning, truncation, and visually-hidden behavior helpers', () => {
+  const resolved = resolveSyntax(
+    'layout(pin:full, sticky:24, overscroll:contain, scrollBehavior:smooth); text(truncate:true); logic(interactive:true, visuallyHidden:true); attrs(id:hero-banner);',
+  );
+
+  assert.equal(resolved.style.position, 'absolute');
+  assert.equal(resolved.style.inset, '0px');
+  assert.equal((resolved.style as Record<string, string>).overscrollBehavior, 'contain');
+  assert.equal((resolved.style as Record<string, string>).scrollBehavior, 'smooth');
+  assert.equal(resolved.style.textOverflow, 'ellipsis');
+  assert.equal(resolved.style.whiteSpace, 'nowrap');
+  assert.equal(resolved.style.cursor, 'pointer');
+  assert.equal(resolved.logic.interactive, true);
+  assert.equal(resolved.logic.visuallyHidden, true);
+  assert.equal(resolved.attrs.id, 'hero-banner');
+  assert.equal((resolved.style as Record<string, string>).clip, 'rect(0, 0, 0, 0)');
+});
+
+test('parseSyntaxInput throws on unknown keys and invalid group usage', () => {
+  expectSyntaxError(() => parseSyntaxInput('freedom:full;'), /Unknown syntax key "freedom"/);
+  expectSyntaxError(() => parseSyntaxInput('layout(shadow:shadow\\(panel\\));'), /does not allow key "shadow"/);
+  expectSyntaxError(() => parseSyntaxInput({ layout: 'grid' } as never), /expects an object map/);
+  expectSyntaxError(() => parseSyntaxInput('css();'), /cannot be empty/);
+  expectSyntaxError(() => parseSyntaxInput({ sticky: { top: 0 } } as never), /does not accept nested objects/);
+  expectSyntaxError(() => parseSyntaxInput({ css: { mask: { alpha: true } } } as never), /Syntax group "css" expects scalar values/);
 });

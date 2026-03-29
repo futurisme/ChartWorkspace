@@ -1,0 +1,108 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--fwlb-space-4);
+  background: var(--fwlb-overlay);
+  backdrop-filter: blur(10px);
+}
+
+.dialogPanel,
+.drawerPanel {
+  width: min(100%, 40rem);
+  min-width: 0;
+  border: 1px solid var(--fwlb-border-soft);
+  border-radius: calc(var(--fwlb-radius-panel) + 0.1rem);
+  background: var(--fwlb-surface-elevated);
+  box-shadow: var(--fwlb-shadow-floating);
+  color: var(--fwlb-text-strong);
+}
+
+.dialogPanel[data-size='sm'] {
+  width: min(100%, 28rem);
+}
+
+.dialogPanel[data-size='md'] {
+  width: min(100%, 40rem);
+}
+
+.dialogPanel[data-size='lg'] {
+  width: min(100%, 52rem);
+}
+
+.drawerShell {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+}
+
+.drawerShell[data-side='left'] {
+  justify-content: flex-start;
+}
+
+.drawerShell[data-side='right'] {
+  justify-content: flex-end;
+}
+
+.drawerPanel {
+  width: min(100vw, var(--fwlb-drawer-width, 26rem));
+  height: 100%;
+  border-radius: 0;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--fwlb-space-3);
+  padding: var(--fwlb-space-4) var(--fwlb-space-4) var(--fwlb-space-3);
+}
+
+.titleWrap {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.title {
+  font-size: 1.08rem;
+  line-height: 1.2;
+  font-weight: 800;
+  color: var(--fwlb-text-strong);
+}
+
+.description {
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--fwlb-text-muted);
+}
+
+.closeButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.2rem;
+  height: 2.2rem;
+  border: 1px solid var(--fwlb-border-soft);
+  border-radius: 999px;
+  background: var(--fwlb-surface-muted);
+  color: var(--fwlb-text-soft);
+  cursor: pointer;
+}
+
+.body {
+  min-width: 0;
+  padding: 0 var(--fwlb-space-4) var(--fwlb-space-4);
+}
+
+.actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--fwlb-space-2);
+  flex-wrap: wrap;
+  padding: 0 var(--fwlb-space-4) var(--fwlb-space-4);
+}

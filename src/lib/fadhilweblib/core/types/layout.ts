@@ -1,0 +1,9 @@
+export type ThemeName = 'base' | 'commercial' | 'game' | 'utility' | 'portfolio';
+export type Tone = 'neutral' | 'brand' | 'success' | 'warning' | 'danger' | 'info';
+export type Size = 'xs' | 'sm' | 'md' | 'lg';
+export type Density = 'compact' | 'comfortable' | 'spacious';
+export type LayoutElement = 'div' | 'section' | 'article' | 'aside' | 'header' | 'footer' | 'nav' | 'main' | 'form';
+export type LayoutAlign = 'start' | 'center' | 'end' | 'stretch';
+export type LayoutJustify = 'start' | 'center' | 'end' | 'between';
+export type LayoutGap = Size | number;
+export type PresenceMode = 'keep' | 'lazy' | 'unmount';

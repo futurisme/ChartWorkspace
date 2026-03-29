@@ -1,7 +1,7 @@
 .root {
   --fwlb-collapsible-tone-border: var(--fwlb-border-soft);
   --fwlb-collapsible-tone-accent: var(--fwlb-border-strong);
-  --fwlb-current-background: var(--fwlb-base-background, linear-gradient(180deg, rgba(15, 23, 42, 0.88), rgba(2, 6, 23, 0.84)));
+  --fwlb-current-background: var(--fwlb-base-background, var(--fwlb-surface-base));
   --fwlb-current-background-image: var(--fwlb-base-background-image, none);
   --fwlb-current-background-size: var(--fwlb-base-background-size, auto);
   --fwlb-current-background-position: var(--fwlb-base-background-position, 0% 0%);
@@ -44,7 +44,7 @@
 
 .root[data-state='open'] {
   --fwlb-current-border-color: var(--fwlb-open-border-color, var(--fwlb-collapsible-tone-accent));
-  --fwlb-current-background: var(--fwlb-open-background, var(--fwlb-base-background, linear-gradient(180deg, rgba(15, 23, 42, 0.88), rgba(2, 6, 23, 0.84))));
+  --fwlb-current-background: var(--fwlb-open-background, var(--fwlb-base-background, var(--fwlb-surface-base)));
   --fwlb-current-color: var(--fwlb-open-color, var(--fwlb-base-color, var(--fwlb-text-strong)));
   --fwlb-current-box-shadow: var(--fwlb-open-box-shadow, var(--fwlb-base-box-shadow, var(--fwlb-shadow-panel)));
   --fwlb-current-opacity: var(--fwlb-open-opacity, var(--fwlb-base-opacity, 1));
@@ -82,7 +82,7 @@
 }
 
 .root:hover {
-  --fwlb-current-background: var(--fwlb-hover-background, var(--fwlb-base-background, linear-gradient(180deg, rgba(15, 23, 42, 0.88), rgba(2, 6, 23, 0.84))));
+  --fwlb-current-background: var(--fwlb-hover-background, var(--fwlb-base-background, var(--fwlb-surface-base)));
   --fwlb-current-color: var(--fwlb-hover-color, var(--fwlb-base-color, var(--fwlb-text-strong)));
   --fwlb-current-border-color: var(--fwlb-hover-border-color, var(--fwlb-base-border-color, var(--fwlb-collapsible-tone-border)));
   --fwlb-current-box-shadow: var(--fwlb-hover-box-shadow, var(--fwlb-base-box-shadow, var(--fwlb-shadow-panel)));
@@ -91,7 +91,7 @@
 }
 
 .root:focus-within {
-  --fwlb-current-background: var(--fwlb-focus-background, var(--fwlb-base-background, linear-gradient(180deg, rgba(15, 23, 42, 0.88), rgba(2, 6, 23, 0.84))));
+  --fwlb-current-background: var(--fwlb-focus-background, var(--fwlb-base-background, var(--fwlb-surface-base)));
   --fwlb-current-color: var(--fwlb-focus-color, var(--fwlb-base-color, var(--fwlb-text-strong)));
   --fwlb-current-border-color: var(--fwlb-focus-border-color, var(--fwlb-base-border-color, var(--fwlb-collapsible-tone-border)));
   --fwlb-current-box-shadow: var(--fwlb-focus-box-shadow, var(--fwlb-base-box-shadow, var(--fwlb-shadow-panel)));
@@ -101,14 +101,14 @@
 }
 
 .root[data-current='true'] {
-  --fwlb-current-background: var(--fwlb-current-state-background, var(--fwlb-base-background, linear-gradient(180deg, rgba(15, 23, 42, 0.88), rgba(2, 6, 23, 0.84))));
+  --fwlb-current-background: var(--fwlb-current-state-background, var(--fwlb-base-background, var(--fwlb-surface-base)));
   --fwlb-current-color: var(--fwlb-current-state-color, var(--fwlb-base-color, var(--fwlb-text-strong)));
   --fwlb-current-border-color: var(--fwlb-current-state-border-color, var(--fwlb-base-border-color, var(--fwlb-collapsible-tone-border)));
   --fwlb-current-box-shadow: var(--fwlb-current-state-box-shadow, var(--fwlb-base-box-shadow, var(--fwlb-shadow-panel)));
 }
 
 .root[data-loading='true'] {
-  --fwlb-current-background: var(--fwlb-loading-background, var(--fwlb-base-background, linear-gradient(180deg, rgba(15, 23, 42, 0.88), rgba(2, 6, 23, 0.84))));
+  --fwlb-current-background: var(--fwlb-loading-background, var(--fwlb-base-background, var(--fwlb-surface-base)));
   --fwlb-current-color: var(--fwlb-loading-color, var(--fwlb-base-color, var(--fwlb-text-strong)));
   --fwlb-current-border-color: var(--fwlb-loading-border-color, var(--fwlb-base-border-color, var(--fwlb-collapsible-tone-border)));
   --fwlb-current-box-shadow: var(--fwlb-loading-box-shadow, var(--fwlb-base-box-shadow, var(--fwlb-shadow-panel)));
@@ -117,7 +117,7 @@
 }
 
 .root[data-disabled='true'] {
-  --fwlb-current-background: var(--fwlb-disabled-background, var(--fwlb-base-background, linear-gradient(180deg, rgba(15, 23, 42, 0.88), rgba(2, 6, 23, 0.84))));
+  --fwlb-current-background: var(--fwlb-disabled-background, var(--fwlb-base-background, var(--fwlb-surface-base)));
   --fwlb-current-color: var(--fwlb-disabled-color, var(--fwlb-base-color, var(--fwlb-text-strong)));
   --fwlb-current-border-color: var(--fwlb-disabled-border-color, var(--fwlb-base-border-color, var(--fwlb-collapsible-tone-border)));
   --fwlb-current-box-shadow: var(--fwlb-disabled-box-shadow, var(--fwlb-base-box-shadow, var(--fwlb-shadow-panel)));
@@ -219,7 +219,7 @@
   display: block;
   height: 1px;
   margin-bottom: var(--fwlb-space-3);
-  background: rgba(103, 232, 249, 0.12);
+  background: var(--fwlb-border-soft);
 }
 
 @media (prefers-reduced-motion: reduce) {

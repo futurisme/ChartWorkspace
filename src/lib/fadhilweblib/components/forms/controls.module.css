@@ -1,0 +1,151 @@
+.control {
+  --fwlb-current-background: var(--fwlb-base-background, var(--fwlb-control-bg));
+  --fwlb-current-background-image: var(--fwlb-base-background-image, none);
+  --fwlb-current-background-size: var(--fwlb-base-background-size, auto);
+  --fwlb-current-background-position: var(--fwlb-base-background-position, 0% 0%);
+  --fwlb-current-background-repeat: var(--fwlb-base-background-repeat, repeat);
+  --fwlb-current-color: var(--fwlb-base-color, var(--fwlb-control-text));
+  --fwlb-current-border-color: var(--fwlb-base-border-color, var(--fwlb-control-border));
+  --fwlb-current-border-width: var(--fwlb-base-border-width, 1px);
+  --fwlb-current-border-style: var(--fwlb-base-border-style, solid);
+  --fwlb-current-border-radius: var(--fwlb-base-border-radius, var(--fwlb-radius-control));
+  --fwlb-current-box-shadow: var(--fwlb-base-box-shadow, var(--fwlb-control-shadow));
+  --fwlb-current-opacity: var(--fwlb-base-opacity, 1);
+  --fwlb-current-transform: var(--fwlb-base-transform, none);
+  --fwlb-current-filter: var(--fwlb-base-filter, none);
+  --fwlb-current-backdrop-filter: var(--fwlb-base-backdrop-filter, none);
+  --fwlb-current-outline-color: var(--fwlb-base-outline-color, transparent);
+  --fwlb-current-outline-width: var(--fwlb-base-outline-width, 0);
+  --fwlb-current-outline-offset: var(--fwlb-base-outline-offset, 0);
+  display: block;
+  width: 100%;
+  min-width: 0;
+  border-width: var(--fwlb-current-border-width);
+  border-style: var(--fwlb-current-border-style);
+  border-color: var(--fwlb-current-border-color);
+  border-radius: var(--fwlb-current-border-radius);
+  background: var(--fwlb-current-background);
+  background-image: var(--fwlb-current-background-image);
+  background-size: var(--fwlb-current-background-size);
+  background-position: var(--fwlb-current-background-position);
+  background-repeat: var(--fwlb-current-background-repeat);
+  color: var(--fwlb-current-color);
+  box-shadow: var(--fwlb-current-box-shadow);
+  opacity: var(--fwlb-current-opacity);
+  transform: var(--fwlb-current-transform);
+  filter: var(--fwlb-current-filter);
+  backdrop-filter: var(--fwlb-current-backdrop-filter);
+  outline-color: var(--fwlb-current-outline-color);
+  outline-style: solid;
+  outline-width: var(--fwlb-current-outline-width);
+  outline-offset: var(--fwlb-current-outline-offset);
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    background 160ms ease,
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+.control::placeholder {
+  color: var(--fwlb-control-placeholder);
+}
+
+.control:hover:not(:disabled) {
+  --fwlb-current-background: var(--fwlb-hover-background, var(--fwlb-base-background, var(--fwlb-control-bg-hover)));
+  --fwlb-current-border-color: var(--fwlb-hover-border-color, var(--fwlb-base-border-color, var(--fwlb-control-border)));
+  --fwlb-current-box-shadow: var(--fwlb-hover-box-shadow, var(--fwlb-base-box-shadow, var(--fwlb-control-shadow)));
+}
+
+.control:focus {
+  outline: none;
+}
+
+.control:focus-visible {
+  --fwlb-current-background: var(--fwlb-focus-background, var(--fwlb-base-background, var(--fwlb-control-bg)));
+  --fwlb-current-border-color: var(--fwlb-focus-border-color, var(--fwlb-base-border-color, var(--fwlb-control-border)));
+  --fwlb-current-box-shadow: var(--fwlb-focus-box-shadow, var(--fwlb-base-box-shadow, 0 0 0 3px var(--fwlb-focus-ring)));
+}
+
+.control[data-invalid='true'] {
+  --fwlb-current-border-color: var(--fwlb-base-border-color, rgba(220, 38, 38, 0.42));
+}
+
+.control:disabled,
+.control[data-disabled='true'] {
+  --fwlb-current-opacity: var(--fwlb-disabled-opacity, 0.68);
+  cursor: not-allowed;
+}
+
+.control[data-size='sm'] {
+  min-height: 2.25rem;
+  padding: 0.55rem 0.8rem;
+  font-size: 0.82rem;
+}
+
+.control[data-size='md'] {
+  min-height: 2.75rem;
+  padding: 0.72rem 0.92rem;
+  font-size: 0.92rem;
+}
+
+.control[data-size='lg'] {
+  min-height: 3.15rem;
+  padding: 0.88rem 1rem;
+  font-size: 1rem;
+}
+
+.textarea {
+  min-height: 7rem;
+  resize: vertical;
+}
+
+.select {
+  appearance: none;
+}
+
+.range {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.range::-webkit-slider-runnable-track {
+  height: 0.42rem;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--fwlb-tone-brand-border) 54%, var(--fwlb-surface-sunken));
+}
+
+.range::-webkit-slider-thumb {
+  appearance: none;
+  margin-top: -0.34rem;
+  width: 1.1rem;
+  height: 1.1rem;
+  border: 0;
+  border-radius: 999px;
+  background: var(--fwlb-tone-brand-bg);
+  box-shadow: var(--fwlb-shadow-soft);
+}
+
+.range::-moz-range-track {
+  height: 0.42rem;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--fwlb-tone-brand-border) 54%, var(--fwlb-surface-sunken));
+}
+
+.range::-moz-range-thumb {
+  width: 1.1rem;
+  height: 1.1rem;
+  border: 0;
+  border-radius: 999px;
+  background: var(--fwlb-tone-brand-bg);
+  box-shadow: var(--fwlb-shadow-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .control {
+    transition-duration: 1ms;
+  }
+}

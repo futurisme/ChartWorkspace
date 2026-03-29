@@ -50,27 +50,27 @@
 
 .root[data-tone='brand'] {
   --fwlb-status-tone-border: var(--fwlb-tone-brand-border);
-  --fwlb-status-tone-color: #8ceeff;
+  --fwlb-status-tone-color: var(--fwlb-tone-brand-fg);
 }
 
 .root[data-tone='success'] {
   --fwlb-status-tone-border: var(--fwlb-tone-success-border);
-  --fwlb-status-tone-color: #9df5c4;
+  --fwlb-status-tone-color: var(--fwlb-tone-success-fg);
 }
 
 .root[data-tone='warning'] {
   --fwlb-status-tone-border: var(--fwlb-tone-warning-border);
-  --fwlb-status-tone-color: #ffd37a;
+  --fwlb-status-tone-color: color-mix(in oklab, var(--fwlb-tone-warning-fg) 82%, var(--fwlb-text-soft));
 }
 
 .root[data-tone='danger'] {
   --fwlb-status-tone-border: var(--fwlb-tone-danger-border);
-  --fwlb-status-tone-color: #ffb4b4;
+  --fwlb-status-tone-color: var(--fwlb-tone-danger-fg);
 }
 
 .root[data-tone='info'] {
   --fwlb-status-tone-border: var(--fwlb-tone-info-border);
-  --fwlb-status-tone-color: #c9bbff;
+  --fwlb-status-tone-color: var(--fwlb-tone-info-fg);
 }
 
 .root:hover {
@@ -113,7 +113,7 @@
 }
 
 .label {
-  color: var(--fwlb-text-muted);
+  color: color-mix(in oklab, currentColor 54%, var(--fwlb-text-muted));
   white-space: nowrap;
 }
 

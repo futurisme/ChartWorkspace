@@ -1,188 +1,220 @@
 # fadhilweblib
 
-`fadhilweblib` is the internal web library for repeated UI and behavior patterns in this workspace.
+`fadhilweblib` is the internal, zero-dependency website foundation for this workspace. The library is built for three things:
 
-## Purpose
+1. Fewer repeated lines of UI code.
+2. Full control over markup, state, and visual output.
+3. A syntax layer that stays compact, readable, and strict enough to reject hidden mistakes.
 
-- Reduce repeated button, header, panel, and disclosure code.
-- Centralize repeated UI state like disclosure, selection, stepper, and async-action flows.
-- Keep the library self-authored and lightweight.
-- Separate server-safe visual primitives from client-only interactive helpers.
+## Import Map
 
-## Import Rules
+- `@/lib/fadhilweblib`
+  Server-safe primitives, shared types, theme scope, syntax helpers, recipes, and non-interactive components.
+- `@/lib/fadhilweblib/client`
+  Interactive primitives and hooks.
+- `@/lib/fadhilweblib/presets`
+  Theme-neutral preset packs for `commercial`, `game`, `utility`, and `portfolio`.
 
-- Import server-safe components and shared types from `@/lib/fadhilweblib`.
-- Import disclosure hooks and interactive primitives from `@/lib/fadhilweblib/client`.
-- Do not pull in external UI component libraries or helper packages.
+## Core Principle
 
-## Custom Syntax
+Use semantic primitives first. Use syntax only when you need instance-level control without building a one-off component.
 
-- Use `syntax` on any public component to apply compact per-instance customization.
-- Use `stateSyntax` on supported surfaces to customize hover, active, focus, disabled, loading, open, and current visuals without page-level CSS.
-- Use `slotSyntax` on composite components to target internal slots like `title`, `summary`, `actions`, `label`, or `content`.
-- Use `recipe` when you want a reusable element contract that groups visual syntax, slot syntax, root attributes, and logic defaults.
-- `syntax` accepts either a semicolon-delimited string, a typed object, or a compiled syntax object created with `defineSyntax(...)`.
-- `stateSyntax` accepts a state-to-syntax map and can be compiled with `defineStateSyntax(...)`.
-- `syntax` now resolves root styles, root attributes, and component-friendly logic semantics from the same short declaration.
+- Components handle structure.
+- `syntax` handles root visuals and behavior.
+- `slotSyntax` handles internal element styling.
+- `stateSyntax` handles hover, focus, active, disabled, loading, open, and current visuals.
+- `recipe` packages all of that into one reusable contract.
+
+## Syntax Modes
+
+`fadhilweblib` now supports two first-class syntax authoring modes.
+
+### 1. Grouped Syntax
+
+Use grouped syntax when readability matters.
 
 ```tsx
-const heroButtonRecipe = defineRecipe({
-  syntax: defineSyntax({
-    tone: 'brand',
-    size: 'lg',
-    px: 22,
-    py: 13,
-    radius: 18,
-    shadow: '0 10px 28px rgba(34,211,238,0.22)',
-    contain: 'layout paint style',
-  }),
+const heroSyntax = defineSyntax(`
+  layout(display:grid, cols:1.2fr 0.8fr, gap:lg, templateAreas:"content media");
+  spacing(px:24, py:20);
+  surface(bg:surface(base), border:tone(brand, border), radius:24, shadow:shadow(panel));
+  text(fs:18, clamp:2);
+  fx(duration:180, ease:cubic-bezier(0.2,0.8,0.2,1), translateY:-1);
+  logic(focusable:true, interactive:true);
+  attrs(draggable:true, title:Hero card);
+  data(track:landing-hero);
+`);
+```
+
+Supported grouped namespaces:
+
+- `layout(...)`
+  Flex, grid, positioning, pinning, sticky placement, overflow, and scroll behavior.
+- `spacing(...)` or `space(...)`
+  Margin and padding shorthands.
+- `surface(...)` or `box(...)`
+  Tone, size, density, background, borders, radius, ring, and shadow.
+- `text(...)`
+  Typography, wrapping, truncation, and line clamp.
+- `fx(...)` or `motion(...)`
+  Transform, filter, animation, transition, blend, and low-level display effects.
+- `logic(...)` or `behavior(...)`
+  Role, tab index, loading, disabled, presence, focusability, and visually-hidden behavior.
+- `aria(...)`
+  ARIA attributes without manually typing the `aria-` prefix.
+- `data(...)`
+  Data attributes without manually typing the `data-` prefix.
+- `vars(...)`
+  Custom CSS variables without manually typing the `--` prefix.
+- `css(...)`
+  Direct CSS property escape hatch.
+- `attrs(...)`
+  Direct DOM attribute escape hatch.
+
+### 2. Flat Syntax
+
+Use flat syntax when you want the shortest possible inline fragment.
+
+```tsx
+const chipSyntax = defineSyntax(
+  'tone:info; px:12; py:8; radius:999; border:tone(info, border); shadow:shadow(panel); current:true;'
+);
+```
+
+Flat syntax remains first-class. It is not deprecated. Grouped syntax is the readability path; flat syntax is the terse path.
+
+## Strict Parsing
+
+The syntax engine no longer silently drops malformed input.
+
+- Unknown keys throw `FadhilWebSyntaxError`.
+- Unknown groups throw `FadhilWebSyntaxError`.
+- Keys used in the wrong namespace throw `FadhilWebSyntaxError`.
+- Empty grouped syntax like `css()` throws `FadhilWebSyntaxError`.
+- Object group values must be object maps, not arbitrary nested values.
+- Special maps such as `aria`, `data`, `vars`, `css`, and `attrs` only accept scalar values.
+
+This is deliberate. Hidden syntax mistakes are more expensive than explicit failures.
+
+```tsx
+import { FadhilWebSyntaxError, parseSyntaxInput } from '@/lib/fadhilweblib';
+
+try {
+  parseSyntaxInput('freedom:full;');
+} catch (error) {
+  if (error instanceof FadhilWebSyntaxError) {
+    console.error(error.message);
+  }
+}
+```
+
+## Escape Hatches
+
+`fadhilweblib` is strict about known syntax, but it still leaves room for advanced control when required.
+
+- `vars(...)`
+  Adds CSS custom properties.
+- `css(...)`
+  Writes raw CSS properties directly into the inline style object. Values must stay scalar.
+- `attrs(...)`
+  Writes raw DOM attributes directly into the attribute map. Values must stay scalar.
+
+Example:
+
+```tsx
+defineSyntax(`
+  layout(display:grid, cols:1fr 20rem, gap:lg);
+  surface(bg:surface(base), radius:24);
+  css(grid-template-areas:"main aside", scrollbar-gutter:stable both-edges);
+  attrs(id:workspace-shell, draggable:true);
+`);
+```
+
+## Expression Layer
+
+The syntax DSL stays lightweight by reusing expression helpers instead of creating dozens of one-off tokens.
+
+- `space(md)`
+- `radius(panel)`
+- `surface(base)`
+- `text(muted)`
+- `shadow(floating)`
+- `tone(brand, border)`
+- `alpha($brand-500, 0.24)`
+- `lighten(...)`
+- `darken(...)`
+- `mix(...)`
+- `gradient(...)`
+- `radial(...)`
+- `conic(...)`
+
+## Common Patterns
+
+### Layout Shell
+
+```tsx
+const shellSyntax = defineSyntax(`
+  layout(display:grid, cols:18rem 1fr, gap:lg, minH:100vh);
+  spacing(p:lg);
+  surface(bg:surface(base));
+`);
+```
+
+### Dense Control Panel
+
+```tsx
+const controlSyntax = defineSyntax(`
+  surface(bg:surface(elevated), border:tone(info, border), radius:24, shadow:shadow(panel));
+  spacing(p:lg);
+  fx(backdrop:blur(18px));
+`);
+```
+
+### Logic-Heavy Trigger
+
+```tsx
+const triggerSyntax = defineSyntax(`
+  surface(tone:brand, size:sm, radius:14);
+  spacing(px:14, py:10);
+  logic(current:true, focusable:true, interactive:true);
+`);
+```
+
+## Recipes
+
+Use `recipe` when the same component contract needs to be reused.
+
+```tsx
+const heroRecipe = defineRecipe({
+  syntax: defineSyntax(`
+    surface(bg:surface(base), border:tone(brand, border), radius:24, shadow:shadow(panel));
+    spacing(p:xl);
+  `),
   stateSyntax: defineStateSyntax({
-    hover: 'translateY:-2; shadow:0 18px 36px rgba(34,211,238,0.18);',
-    focus: 'outlineColor:alpha($brand-500, 0.36); outlineWidth:2; outlineOffset:2;',
-    current: 'border:tone(info, border); shadow:shadow(panel);',
+    hover: 'translateY:-1; shadow:shadow(floating);',
+    focus: 'outlineColor:alpha($brand-500, 0.24); outlineWidth:2; outlineOffset:2;',
   }),
   slotSyntax: {
-    label: 'tracking:0.02em;',
-  },
-  attrs: {
-    'data-surface': 'hero-button',
+    title: 'text(fs:24, weight:800);',
+    description: 'text(fg:text(muted));',
   },
 });
-
-<Button recipe={heroButtonRecipe}>Launch</Button>
-
-<Panel
-  syntax="
-    bg:gradient(145deg, alpha(tone(brand, bg), 0.22), darken($info-500, 14%));
-    ring:2;
-    ringColor:alpha($brand-500, 0.34);
-    ringOffset:2;
-    ringOffsetColor:alpha($neutral-950, 0.72);
-    radius:radius(panel);
-    duration:180;
-    ease:cubic-bezier(0.2,0.8,0.2,1);
-    data-surface:hero;
-  "
->
-  ...
-</Panel>
-
-<CollapsiblePanel
-  recipe={defineRecipe({
-    syntax: 'radius:24; border:rgba(129,140,248,0.32); presence:lazy;',
-    slotSyntax: {
-      title: 'fg:#eef2ff; fs:18;',
-      content: 'pt:14; contentVisibility:auto; containIntrinsicSize:260;',
-    },
-    logic: { tone: 'info' },
-  })}
-  title="Options"
-  summary="Closed content is not mounted until first open."
-/>
 ```
 
-- Supported syntax keys include:
-  `tone`, `size`, `density`, `compact`, `full`, `bg`, `gradient`, `gradientText`, `bgImage`, `bgSize`, `bgPosition`, `fg`, `border`, `borderWidth`, `borderStyle`, `shadow`, `ring`, `ringColor`, `ringOffset`, `ringOffsetColor`, `radius`, `outlineColor`, `outlineWidth`, `outlineOffset`, `gap`, `p`, `px`, `py`, `m`, `w`, `h`, `fontSize`, `fontFamily`, `weight`, `lineHeight`, `tracking`, `textAlign`, `textTransform`, `opacity`, `accent`, `caret`, `display`, `direction`, `wrap`, `align`, `justify`, `self`, `grow`, `shrink`, `basis`, `order`, `cols`, `rows`, `autoFlow`, `placeItems`, `placeContent`, `gridColumn`, `gridRow`, `aspect`, `overflow`, `position`, `inset`, `top`, `right`, `bottom`, `left`, `z`, `cursor`, `pointerEvents`, `filter`, `backdrop`, `blend`, `isolation`, `transform`, `transformOrigin`, `transition`, `duration`, `ease`, `delay`, `animation`, `willChange`, `scale`, `rotate`, `translateX`, `translateY`, `blur`, `brightness`, `contrast`, `saturate`, `contain`, `contentVisibility`, `containIntrinsicSize`, `role`, `tabIndex`, `titleText`, `inert`, `loading`, `disabled`, `open`, `hidden`, `current`, `presence`.
-- String syntax also supports:
-  `--name:value;` for CSS variables,
-  `aria-*` and `data-*` attributes,
-  color helpers like `alpha(...)`, `mix(...)`, `lighten(...)`, `darken(...)`,
-  and gradient helpers like `gradient(...)`, `radial(...)`, and `conic(...)`.
-- Token helpers now include:
-  `tone(name, bg|fg|border)`,
-  `surface(name)`,
-  `text(name)`,
-  `shadow(name)`,
-  `radius(name)`,
-  and `space(name)`.
-- Supported `stateSyntax` keys are:
-  `hover`, `active`, `focus`, `disabled`, `loading`, `open`, and `current`.
-- `stateSyntax` currently powers dynamic root-surface styling on `Button`, `IconButton`, `Panel`, `StatusChip`, and `CollapsiblePanel`.
+## Performance Rules
 
-```tsx
-const orbitStates = defineStateSyntax({
-  hover: 'bg:surface(elevated); translateY:-2;',
-  active: 'scale:0.99; translateY:0;',
-  focus: 'outlineColor:alpha($brand-500, 0.34); outlineWidth:2; outlineOffset:2;',
-  current: 'border:tone(info, border); shadow:shadow(panel);',
-});
+- Hoist `defineSyntax(...)`, `defineStateSyntax(...)`, and `defineRecipe(...)` outside render functions when reused.
+- Prefer grouped syntax for long contracts and flat syntax for short contracts.
+- Use `css(...)` and `attrs(...)` only for true edge cases.
+- Use `ThemeScope` for subtree-level visual changes instead of one-off overrides on every child.
+- Prefer recipes for repeated structures instead of re-declaring long syntax strings.
 
-<Button
-  syntax="bg:tone(brand, bg); border:tone(brand, border);"
-  stateSyntax={orbitStates}
->
-  Launch
-</Button>
-```
+## Theme Model
 
-## Recipes And Logic
+- `ThemeScope` activates `base`, `commercial`, `game`, `utility`, or `portfolio` for a subtree.
+- The base theme stays neutral.
+- Theme presets provide direction without changing component contracts.
 
-- `defineSyntax(...)` compiles syntax up front. Hoist these constants to avoid repeat parsing and repeat style-object creation.
-- `defineStateSyntax(...)` compiles dynamic-state syntax up front and reuses the resolved state maps.
-- `defineRecipe(...)` compiles root and slot syntax and keeps logic defaults together.
-- `mergeRecipes(...)` layers recipe fragments so product-specific overrides stay short and predictable.
-- `CollapsiblePanel` supports `presence="keep" | "lazy" | "unmount"`.
-  `keep` keeps content mounted, `lazy` mounts on first open then keeps it, `unmount` removes it whenever closed.
-- `useDisclosure()` now exposes `getTriggerProps(...)` and `getContentProps(...)` so headless usage can merge handlers, classes, styles, and `data-*` attributes without reimplementing disclosure behavior.
-- `useSelectionState()` centralizes repeatable single- and multi-select logic for tabs, filter rows, segmented controls, and toggle groups.
-- `useStepper()` centralizes ordered next/previous/first/last logic for carousels, wizard flows, and sequence navigation.
-- `useRovingFocus()` centralizes roving-tabindex keyboard navigation for toolbars, tab rows, menus, and segmented controls.
-- `useAsyncAction()` standardizes async pending/success/error state so buttons and menus do not keep reimplementing local loading flags.
+## Full Reference
 
-```tsx
-const palette = useSelectionState({
-  defaultValue: ['aurora'],
-  multiple: false,
-});
-
-const deploy = useAsyncAction(async () => {
-  await saveWorkspace();
-  return 'saved';
-});
-
-const toolbar = useRovingFocus({
-  count: 4,
-  orientation: 'horizontal',
-  loop: true,
-});
-
-<Button
-  syntax="loading:true; aria-live:polite;"
-  loading={deploy.pending}
-  onClick={() => void deploy.run()}
->
-  Save
-</Button>
-
-<Inline {...toolbar.getContainerProps({ role: 'toolbar', 'aria-label': 'Editor controls' })}>
-  {['Canvas', 'Layout', 'Theme', 'Publish'].map((item, index) => (
-    <Button key={item} {...toolbar.getItemProps(index)}>
-      {item}
-    </Button>
-  ))}
-</Inline>
-```
-
-## Performance Notes
-
-- Prefer `defineSyntax(...)` or `defineRecipe(...)` for reused syntax fragments. They compile once and reuse frozen resolved output.
-- Prefer `defineStateSyntax(...)` for repeated hover/open/current/focus visual contracts. It compiles once and keeps dynamic visuals in CSS variables instead of runtime style injection.
-- `syntax` expressions are resolved once for compiled syntax objects and cached for repeated string/object inputs.
-- `stateSyntax` is converted into CSS custom properties on supported components, so dynamic states stay zero-dependency and do not require runtime CSS generation.
-- Use `contain`, `contentVisibility`, and `containIntrinsicSize` on larger repeated surfaces when you want opt-in rendering containment.
-- Use `presence="lazy"` or `presence="unmount"` on heavy collapsible content to reduce hidden DOM work.
-- Prefer the headless hooks for repeated state machines instead of duplicating local state plus ad hoc helpers across pages.
-- Prefer `useRovingFocus()` plus `useSelectionState()` when building tabs or segmented controls so keyboard navigation and selection state stay independent and reusable.
-
-## Naming Rules
-
-- Use short, stable component names: `Button`, `Panel`, `HeaderShell`, `StatusChip`, `CollapsiblePanel`.
-- Prefer behavior-first names for hooks: `useDisclosure`, `useSelectionState`, `useStepper`, `useAsyncAction`, `useControllableState`.
-- Keep tone and size props small and explicit.
-
-## Extension Rules
-
-- Add primitives before adding specialized variants.
-- Keep client-only code isolated from server-safe exports.
-- Preserve `className` overrides and `data-*` state attributes on public components.
-- Keep the visual layer portable by avoiding framework-specific dependencies inside the library.
+See [SYNTAX.md](./SYNTAX.md) for the complete grouped namespace reference, flat key catalogue, escape hatch rules, and authoring guidance.

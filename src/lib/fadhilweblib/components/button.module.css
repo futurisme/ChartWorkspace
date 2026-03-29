@@ -12,7 +12,7 @@
   --fwlb-current-border-width: var(--fwlb-base-border-width, 1px);
   --fwlb-current-border-style: var(--fwlb-base-border-style, solid);
   --fwlb-current-border-radius: var(--fwlb-base-border-radius, var(--fwlb-radius-control));
-  --fwlb-current-box-shadow: var(--fwlb-base-box-shadow, inset 0 1px 0 rgba(255, 255, 255, 0.06));
+  --fwlb-current-box-shadow: var(--fwlb-base-box-shadow, var(--fwlb-shadow-soft));
   --fwlb-current-opacity: var(--fwlb-base-opacity, 1);
   --fwlb-current-transform: var(--fwlb-base-transform, none);
   --fwlb-current-filter: var(--fwlb-base-filter, none);
@@ -72,7 +72,7 @@
   --fwlb-current-border-width: var(--fwlb-hover-border-width, var(--fwlb-base-border-width, 1px));
   --fwlb-current-border-style: var(--fwlb-hover-border-style, var(--fwlb-base-border-style, solid));
   --fwlb-current-border-radius: var(--fwlb-hover-border-radius, var(--fwlb-base-border-radius, var(--fwlb-radius-control)));
-  --fwlb-current-box-shadow: var(--fwlb-hover-box-shadow, var(--fwlb-base-box-shadow, inset 0 1px 0 rgba(255, 255, 255, 0.06)));
+  --fwlb-current-box-shadow: var(--fwlb-hover-box-shadow, var(--fwlb-base-box-shadow, var(--fwlb-shadow-soft)));
   --fwlb-current-opacity: var(--fwlb-hover-opacity, var(--fwlb-base-opacity, 1));
   --fwlb-current-transform: var(--fwlb-hover-transform, var(--fwlb-base-transform, translateY(-1px)));
   --fwlb-current-filter: var(--fwlb-hover-filter, var(--fwlb-base-filter, none));
@@ -95,7 +95,7 @@
   --fwlb-current-border-width: var(--fwlb-active-border-width, var(--fwlb-base-border-width, 1px));
   --fwlb-current-border-style: var(--fwlb-active-border-style, var(--fwlb-base-border-style, solid));
   --fwlb-current-border-radius: var(--fwlb-active-border-radius, var(--fwlb-base-border-radius, var(--fwlb-radius-control)));
-  --fwlb-current-box-shadow: var(--fwlb-active-box-shadow, var(--fwlb-base-box-shadow, inset 0 1px 0 rgba(255, 255, 255, 0.06)));
+  --fwlb-current-box-shadow: var(--fwlb-active-box-shadow, var(--fwlb-base-box-shadow, var(--fwlb-shadow-soft)));
   --fwlb-current-opacity: var(--fwlb-active-opacity, var(--fwlb-base-opacity, 1));
   --fwlb-current-transform: var(--fwlb-active-transform, var(--fwlb-base-transform, translateY(0)));
   --fwlb-current-filter: var(--fwlb-active-filter, var(--fwlb-base-filter, none));
@@ -119,7 +119,7 @@
   --fwlb-current-border-width: var(--fwlb-focus-border-width, var(--fwlb-base-border-width, 1px));
   --fwlb-current-border-style: var(--fwlb-focus-border-style, var(--fwlb-base-border-style, solid));
   --fwlb-current-border-radius: var(--fwlb-focus-border-radius, var(--fwlb-base-border-radius, var(--fwlb-radius-control)));
-  --fwlb-current-box-shadow: var(--fwlb-focus-box-shadow, inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 0 0 3px var(--fwlb-focus-ring-color, var(--fwlb-focus-ring)));
+  --fwlb-current-box-shadow: var(--fwlb-focus-box-shadow, var(--fwlb-base-box-shadow, var(--fwlb-shadow-soft)), 0 0 0 3px var(--fwlb-focus-ring-color, var(--fwlb-focus-ring)));
   --fwlb-current-opacity: var(--fwlb-focus-opacity, var(--fwlb-base-opacity, 1));
   --fwlb-current-transform: var(--fwlb-focus-transform, var(--fwlb-base-transform, none));
   --fwlb-current-filter: var(--fwlb-focus-filter, var(--fwlb-base-filter, none));
@@ -142,7 +142,7 @@
   --fwlb-current-border-width: var(--fwlb-open-border-width, var(--fwlb-base-border-width, 1px));
   --fwlb-current-border-style: var(--fwlb-open-border-style, var(--fwlb-base-border-style, solid));
   --fwlb-current-border-radius: var(--fwlb-open-border-radius, var(--fwlb-base-border-radius, var(--fwlb-radius-control)));
-  --fwlb-current-box-shadow: var(--fwlb-open-box-shadow, var(--fwlb-base-box-shadow, inset 0 1px 0 rgba(255, 255, 255, 0.06)));
+  --fwlb-current-box-shadow: var(--fwlb-open-box-shadow, var(--fwlb-base-box-shadow, var(--fwlb-shadow-soft)));
   --fwlb-current-opacity: var(--fwlb-open-opacity, var(--fwlb-base-opacity, 1));
   --fwlb-current-transform: var(--fwlb-open-transform, var(--fwlb-base-transform, none));
   --fwlb-current-filter: var(--fwlb-open-filter, var(--fwlb-base-filter, none));
@@ -160,7 +160,7 @@
   --fwlb-current-border-width: var(--fwlb-current-state-border-width, var(--fwlb-base-border-width, 1px));
   --fwlb-current-border-style: var(--fwlb-current-state-border-style, var(--fwlb-base-border-style, solid));
   --fwlb-current-border-radius: var(--fwlb-current-state-border-radius, var(--fwlb-base-border-radius, var(--fwlb-radius-control)));
-  --fwlb-current-box-shadow: var(--fwlb-current-state-box-shadow, var(--fwlb-base-box-shadow, inset 0 1px 0 rgba(255, 255, 255, 0.06)));
+  --fwlb-current-box-shadow: var(--fwlb-current-state-box-shadow, var(--fwlb-base-box-shadow, var(--fwlb-shadow-soft)));
   --fwlb-current-opacity: var(--fwlb-current-state-opacity, var(--fwlb-base-opacity, 1));
   --fwlb-current-transform: var(--fwlb-current-state-transform, var(--fwlb-base-transform, none));
   --fwlb-current-filter: var(--fwlb-current-state-filter, var(--fwlb-base-filter, none));
@@ -178,7 +178,7 @@
   --fwlb-current-border-width: var(--fwlb-loading-border-width, var(--fwlb-base-border-width, 1px));
   --fwlb-current-border-style: var(--fwlb-loading-border-style, var(--fwlb-base-border-style, solid));
   --fwlb-current-border-radius: var(--fwlb-loading-border-radius, var(--fwlb-base-border-radius, var(--fwlb-radius-control)));
-  --fwlb-current-box-shadow: var(--fwlb-loading-box-shadow, var(--fwlb-base-box-shadow, inset 0 1px 0 rgba(255, 255, 255, 0.06)));
+  --fwlb-current-box-shadow: var(--fwlb-loading-box-shadow, var(--fwlb-base-box-shadow, var(--fwlb-shadow-soft)));
   --fwlb-current-opacity: var(--fwlb-loading-opacity, var(--fwlb-base-opacity, 1));
   --fwlb-current-transform: var(--fwlb-loading-transform, var(--fwlb-base-transform, none));
   --fwlb-current-filter: var(--fwlb-loading-filter, var(--fwlb-base-filter, none));
@@ -199,7 +199,7 @@
   --fwlb-current-border-width: var(--fwlb-disabled-border-width, var(--fwlb-base-border-width, 1px));
   --fwlb-current-border-style: var(--fwlb-disabled-border-style, var(--fwlb-base-border-style, solid));
   --fwlb-current-border-radius: var(--fwlb-disabled-border-radius, var(--fwlb-base-border-radius, var(--fwlb-radius-control)));
-  --fwlb-current-box-shadow: var(--fwlb-disabled-box-shadow, var(--fwlb-base-box-shadow, inset 0 1px 0 rgba(255, 255, 255, 0.06)));
+  --fwlb-current-box-shadow: var(--fwlb-disabled-box-shadow, var(--fwlb-base-box-shadow, var(--fwlb-shadow-soft)));
   --fwlb-current-opacity: var(--fwlb-disabled-opacity, 0.56);
   --fwlb-current-transform: var(--fwlb-disabled-transform, var(--fwlb-base-transform, none));
   --fwlb-current-filter: var(--fwlb-disabled-filter, var(--fwlb-base-filter, none));

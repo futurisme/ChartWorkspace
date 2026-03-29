@@ -1,0 +1,8 @@
+.root {
+  width: min(100%, var(--fwlb-container-max, 72rem));
+  min-width: 0;
+}
+
+.root[data-centered='true'] {
+  margin-inline: auto;
+}

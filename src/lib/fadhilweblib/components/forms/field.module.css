@@ -1,0 +1,56 @@
+.root {
+  display: grid;
+  gap: var(--fwlb-space-2);
+  min-width: 0;
+}
+
+.header {
+  display: grid;
+  gap: 0.32rem;
+}
+
+.labelRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fwlb-space-2);
+}
+
+.label {
+  font-size: 0.82rem;
+  line-height: 1.35;
+  font-weight: 700;
+  color: var(--fwlb-text-soft);
+}
+
+.meta {
+  font-size: 0.72rem;
+  line-height: 1.2;
+  color: var(--fwlb-text-muted);
+}
+
+.description {
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--fwlb-text-muted);
+}
+
+.content {
+  min-width: 0;
+}
+
+.hint {
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--fwlb-text-muted);
+}
+
+.error {
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: #dc2626;
+}
+
+.root[data-invalid='true'] .label {
+  color: #b91c1c;
+}

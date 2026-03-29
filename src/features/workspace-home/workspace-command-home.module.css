@@ -1,0 +1,72 @@
+.shell {
+  min-height: 100dvh;
+  padding:
+    calc(env(safe-area-inset-top) + 0.95rem)
+    0.9rem
+    calc(env(safe-area-inset-bottom) + 1rem);
+  background:
+    radial-gradient(circle at 14% 10%, rgba(249, 115, 22, 0.14), transparent 26rem),
+    radial-gradient(circle at 88% 12%, rgba(14, 165, 233, 0.14), transparent 26rem),
+    linear-gradient(180deg, rgba(248, 250, 252, 1), rgba(241, 245, 249, 0.96));
+}
+
+.stack {
+  display: grid;
+  gap: 0.95rem;
+}
+
+.hero {
+  position: sticky;
+  top: calc(env(safe-area-inset-top) + 0.35rem);
+  z-index: 20;
+}
+
+.resultStack {
+  display: grid;
+  gap: 0.7rem;
+  max-height: 29rem;
+  overflow: auto;
+  padding-right: 0.15rem;
+}
+
+.resultButton {
+  width: 100%;
+  text-align: left;
+}
+
+.resultLabel {
+  display: grid;
+  gap: 0.18rem;
+  min-width: 0;
+}
+
+.utilityGrid {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.stickyDock {
+  position: sticky;
+  bottom: calc(env(safe-area-inset-bottom) + 0.35rem);
+  z-index: 18;
+}
+
+.dockRow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.subtle {
+  opacity: 0.74;
+}
+
+@media (min-width: 768px) {
+  .shell {
+    padding-inline: 1.2rem;
+  }
+
+  .utilityGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
