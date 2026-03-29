@@ -323,7 +323,7 @@ export type CpuReleaseRating = {
   summary: string;
 };
 
-export const STORAGE_KEY = 'career-simulator-profile-sim-v11';
+export const STORAGE_KEY = 'career-simulator-profile-sim-v12';
 export const TICK_MS = 200;
 export const START_DATE_UTC = Date.UTC(2000, 0, 1);
 export const NPC_ACTION_EVERY_TICKS = 10;

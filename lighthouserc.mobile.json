@@ -3,15 +3,16 @@
     "collect": {
       "numberOfRuns": 1,
       "startServerCommand": "npm run start",
-      "startServerReadyPattern": "- ready",
-      "startServerReadyTimeout": 120000,
+      "startServerReadyPattern": "Ready in|started server on|Local:",
+      "startServerReadyTimeout": 180000,
       "url": [
         "http://localhost:3000/",
         "http://localhost:3000/editor/0001",
-        "http://localhost:3000/view/0001"
+        "http://localhost:3000/view/0001",
+        "http://localhost:3000/game"
       ],
       "settings": {
-        "preset": "mobile",
+        "preset": "perf",
         "budgets": [
           {
             "path": "/*",

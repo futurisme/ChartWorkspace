@@ -1,0 +1,118 @@
+.shell {
+  min-height: 100dvh;
+  padding:
+    calc(env(safe-area-inset-top) + 0.85rem)
+    0.85rem
+    calc(env(safe-area-inset-bottom) + 1rem);
+  background:
+    radial-gradient(circle at top, rgba(56, 189, 248, 0.16), transparent 28rem),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.92), rgba(2, 6, 23, 1));
+}
+
+.stack {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.stickyHeader {
+  position: sticky;
+  top: calc(env(safe-area-inset-top) + 0.35rem);
+  z-index: 30;
+}
+
+.metricGrid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(9.8rem, 1fr));
+}
+
+.panelGrid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.cardList {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.compactScroll {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+  scrollbar-width: thin;
+}
+
+.companyButton {
+  width: 100%;
+  text-align: left;
+}
+
+.barShell {
+  height: 0.55rem;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(148, 163, 184, 0.22);
+}
+
+.barFill {
+  height: 100%;
+  border-radius: inherit;
+}
+
+.messageList {
+  display: grid;
+  gap: 0.55rem;
+  max-height: 18rem;
+  overflow: auto;
+}
+
+.messageBubble {
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 16px;
+  padding: 0.75rem 0.85rem;
+  background: rgba(15, 23, 42, 0.38);
+}
+
+.stickyDock {
+  position: sticky;
+  bottom: calc(env(safe-area-inset-bottom) + 0.35rem);
+  z-index: 25;
+}
+
+.dockRow {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.drawerList {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.fieldGrid {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.inlineActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.subtleText {
+  opacity: 0.78;
+}
+
+@media (min-width: 768px) {
+  .shell {
+    padding-inline: 1.25rem;
+  }
+
+  .panelGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
