@@ -6,13 +6,14 @@ const WorkspaceCommandHome = dynamic(
   {
     ssr: false,
     loading: () => (
-      <ThemeScope theme="game" style={{ minHeight: '100dvh', padding: '1rem', background: '#030816' }}>
-        <Container maxWidth="sm">
+      <ThemeScope theme="game" style={{ minHeight: '100dvh', padding: '0.75rem', background: '#030816' }}>
+        <Container maxWidth="26rem">
           <Section
             surface
             eyebrow="/workspace"
-            title="Loading workspace home"
-            description="Initializing the command-home runtime."
+            density="compact"
+            title="Loading Android workspace deck"
+            description="Initializing the compact phone layout."
           />
         </Container>
       </ThemeScope>
