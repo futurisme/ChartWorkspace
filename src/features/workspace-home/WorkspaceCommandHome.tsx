@@ -18,10 +18,9 @@ import {
   Section,
   Stack,
   StatusChip,
-  Surface,
   ThemeScope,
 } from '@/lib/fadhilweblib';
-import { Button, Dialog, Drawer, IconButton, Tabs } from '@/lib/fadhilweblib/client';
+import { Button, Drawer, IconButton } from '@/lib/fadhilweblib/client';
 import { useWorkspaceSearch } from './use-workspace-search';
 import type { MapSearchItem } from './types';
 import {
@@ -34,7 +33,27 @@ import styles from './workspace-command-home.module.css';
 
 function formatWorkspaceTime(value: string) {
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function focusInput(inputId: string) {
+  if (typeof document === 'undefined') {
+    return;
+  }
+
+  const element = document.getElementById(inputId);
+  if (element instanceof HTMLElement) {
+    element.focus();
+  }
 }
 
 type WorkspaceResultListProps = {
@@ -61,16 +80,17 @@ function WorkspaceResultList({
           key={map.id}
           type="button"
           tone="neutral"
+          size="sm"
           fullWidth
           className={styles.resultButton}
           onClick={() => onOpen(map.id)}
-          syntax="justify:between; align:start; border:rgba(148,163,184,0.24); bg:surface(base);"
+          syntax="justify:between; align:start; border:rgba(148,163,184,0.22); bg:surface(base);"
           slotSyntax={{ label: 'grow:1; textAlign:left;' }}
-          trailingVisual={<span className={styles.subtle}>{formatWorkspaceTime(map.updatedAt)}</span>}
+          trailingVisual={<span className={styles.resultMeta}>{formatWorkspaceTime(map.updatedAt)}</span>}
         >
           <span className={styles.resultLabel}>
-            <span>{map.title}</span>
-            <span className={styles.subtle}>#{map.id}</span>
+            <span className={styles.resultTitle}>{map.title}</span>
+            <span className={styles.resultMeta}>#{map.id}</span>
           </span>
         </Button>
       ))}
@@ -78,25 +98,21 @@ function WorkspaceResultList({
   );
 }
 
-type UtilityCardProps = {
-  eyebrow: string;
+type CompactRouteTileProps = {
   title: string;
-  description: string;
   action: string;
   tone: 'brand' | 'info' | 'success' | 'warning';
   onClick: () => void;
 };
 
-function UtilityCard({ eyebrow, title, description, action, tone, onClick }: UtilityCardProps) {
+function CompactRouteTile({ title, action, tone, onClick }: CompactRouteTileProps) {
   return (
-    <Panel recipe={workspaceTileRecipe}>
-      <Stack gap="md">
-        <HeaderShell compact eyebrow={eyebrow} title={title} subtitle={description} />
-        <ActionGroup gap="sm" wrap>
-          <Button tone={tone} onClick={onClick}>
-            {action}
-          </Button>
-        </ActionGroup>
+    <Panel recipe={workspaceTileRecipe} className={styles.utilityTile}>
+      <Stack gap="sm">
+        <HeaderShell compact title={title} />
+        <Button tone={tone} size="sm" onClick={onClick}>
+          {action}
+        </Button>
       </Stack>
     </Panel>
   );
@@ -110,7 +126,6 @@ export function WorkspaceCommandHome() {
   const [lastMapId, setLastMapId] = useState<string | null>(null);
   const [lastMapTitle, setLastMapTitle] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isRecentDrawerOpen, setIsRecentDrawerOpen] = useState(false);
 
   const { searchResults, isSearching, searchError, searchReady } = useWorkspaceSearch(searchQuery);
@@ -133,7 +148,7 @@ export function WorkspaceCommandHome() {
     };
   }, [isSearching, lastMapId, searchReady, searchResults.length]);
 
-  const recentResults = useMemo(() => searchResults.slice(0, 8), [searchResults]);
+  const recentResults = useMemo(() => searchResults.slice(0, 6), [searchResults]);
 
   const openWorkspace = (mapId: string) => {
     router.push(`/editor/${mapId}`);
@@ -160,11 +175,16 @@ export function WorkspaceCommandHome() {
         throw new Error('Failed to create map.');
       }
 
+      const nextTitle = mapTitle.trim();
       const { id } = (await response.json()) as { id: string };
+
       if (typeof window !== 'undefined') {
         window.localStorage.setItem('lastMapId', id);
-        window.localStorage.setItem('lastMapTitle', mapTitle.trim());
+        window.localStorage.setItem('lastMapTitle', nextTitle);
       }
+
+      setLastMapId(id);
+      setLastMapTitle(nextTitle);
       router.push(`/editor/${id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create map.');
@@ -180,368 +200,300 @@ export function WorkspaceCommandHome() {
     router.push(`/editor/${lastMapId}`);
   };
 
-  const createStatusNotice = error
-    ? { tone: 'danger' as const, title: 'Creation blocked', description: error }
+  const createNotice = error
+    ? {
+        tone: 'danger' as const,
+        title: 'Creation blocked',
+        description: error,
+      }
     : isCreating
-      ? { tone: 'info' as const, title: 'Creating workspace', description: 'Provisioning a new map and routing the editor session.' }
-      : { tone: 'success' as const, title: 'Ready to launch', description: 'Create a new map or resume the last workspace without leaving the deck.' };
+      ? {
+          tone: 'info' as const,
+          title: 'Creating workspace',
+          description: 'Provisioning the map and opening the editor.',
+        }
+      : null;
+
+  const searchNotice = searchError
+    ? {
+        tone: 'danger' as const,
+        title: 'Search error',
+        description: searchError,
+      }
+    : !searchReady
+      ? {
+          tone: 'warning' as const,
+          title: 'Preparing search',
+          description: 'The workspace index is warming up.',
+        }
+      : isSearching
+        ? {
+            tone: 'info' as const,
+            title: 'Loading results',
+            description: 'Fetching the latest workspace matches.',
+          }
+        : null;
 
   return (
-    <ThemeScope as="main" theme="utility" className={styles.shell}>
-      <Container maxWidth="xl">
-        <Stack gap="lg" className={styles.stack}>
+    <ThemeScope as="main" theme="game" className={styles.shell}>
+      <Container maxWidth="sm" className={styles.container}>
+        <Stack gap="md" className={styles.pageStack}>
           <Section
-            className={styles.hero}
+            className={styles.heroSection}
             surface
+            density="compact"
             recipe={workspaceHeroRecipe}
-            eyebrow="ChartWorkspace"
-            title="Workspace Command Home"
-            description="Create, resume, search, and route into the next editor session from a fully library-driven control surface."
+            eyebrow="/workspace"
+            title="Launch Control"
+            description="Mobile-first workspace home."
             meta={<StatusChip tone={isCreating ? 'warning' : 'brand'} label="state" value={isCreating ? 'creating' : quickStats.searchState} />}
             actions={(
-              <ActionGroup gap="sm" wrap>
-                <IconButton icon="::" label="Open recent workspaces" tone="neutral" onClick={() => setIsRecentDrawerOpen(true)} />
-                <Button tone="brand" onClick={() => setIsCreateDialogOpen(true)}>
-                  New workspace
+              <ActionGroup gap="xs" wrap>
+                <IconButton
+                  icon="::"
+                  label="Browse recent workspaces"
+                  tone="neutral"
+                  size="sm"
+                  onClick={() => setIsRecentDrawerOpen(true)}
+                />
+                <Button tone="brand" size="sm" onClick={() => focusInput('workspace-title')}>
+                  New
                 </Button>
-                <Button tone="neutral" onClick={handleLoadLast} disabled={!lastMapId}>
-                  Resume last
+                <Button tone="neutral" size="sm" onClick={handleLoadLast} disabled={!lastMapId}>
+                  Resume
                 </Button>
               </ActionGroup>
             )}
           >
-            <Stack gap="lg">
-              <Inline gap="sm" wrap>
-                <StatusChip tone="brand" label="launch" value="fadhilweblib" />
-                <StatusChip tone="info" label="search" value={searchReady ? 'indexed' : 'warming'} />
-                <StatusChip tone={quickStats.hasRecent ? 'success' : 'warning'} label="recent" value={quickStats.hasRecent ? 'available' : 'empty'} />
+            <Stack gap="md">
+              <Inline gap="xs" wrap>
+                <StatusChip tone="brand" label="launch" value="fast" />
+                <StatusChip tone="info" label="mobile" value="compact" />
+                <StatusChip tone={quickStats.hasRecent ? 'success' : 'warning'} label="recent" value={quickStats.hasRecent ? 'ready' : 'empty'} />
               </Inline>
 
-              <Grid minItemWidth="10rem" gap="md">
-                <Metric label="Search results" value={quickStats.resultsCount} />
-                <Metric label="Recent workspace" value={lastMapId ? '1 cached' : 'none'} />
-                <Metric label="Create route" value="/api/maps" description="Creates a map and opens `/editor/[id]`." />
-                <Metric label="Runtime" value="Client-first" description="Search and resume state stay responsive on mobile." />
+              <Grid minItemWidth="7.5rem" gap="sm" className={styles.metricGrid}>
+                <Metric label="Results" value={quickStats.resultsCount} />
+                <Metric label="Recent" value={lastMapId ? '1 cached' : 'none'} />
+                <Metric label="Create" value="/api/maps" />
+                <Metric label="Runtime" value="Client" />
               </Grid>
-
-              <Notice
-                tone={createStatusNotice.tone}
-                title={createStatusNotice.title}
-                description={createStatusNotice.description}
-                actions={(
-                  <ActionGroup gap="sm" wrap>
-                    <Button recipe={workspaceButtonRecipe} onClick={() => setIsCreateDialogOpen(true)}>
-                      Open create dialog
-                    </Button>
-                    <Button recipe={workspaceButtonRecipe} onClick={() => setIsRecentDrawerOpen(true)}>
-                      Browse recent
-                    </Button>
-                  </ActionGroup>
-                )}
-              />
             </Stack>
           </Section>
 
-          <Tabs
-            tone="info"
-            keepMounted={false}
-            items={[
-              {
-                value: 'launch',
-                label: 'Launch',
-                content: (
-                  <Grid minItemWidth="16rem" gap="md">
-                    <Panel recipe={workspacePanelRecipe}>
-                      <Stack gap="md">
-                        <HeaderShell
-                          compact
-                          eyebrow="Launch"
-                          title="Create or resume"
-                          subtitle="Keep the primary workflow compact, direct, and easy to repeat on mobile."
-                        />
-                        <KeyValueList
-                          items={[
-                            { label: 'Last workspace', value: lastMapTitle || 'No recent workspace' },
-                            { label: 'Last id', value: lastMapId ?? 'Unavailable' },
-                            { label: 'Search mode', value: searchReady ? 'Ready' : 'Preparing index' },
-                            { label: 'Map title draft', value: mapTitle || 'Untitled' },
-                          ]}
-                        />
-                        <ActionGroup gap="sm" wrap>
-                          <Button tone="brand" onClick={() => setIsCreateDialogOpen(true)}>
-                            Create workspace
-                          </Button>
-                          <Button recipe={workspaceButtonRecipe} onClick={handleLoadLast} disabled={!lastMapId}>
-                            Resume cached
-                          </Button>
-                        </ActionGroup>
-                      </Stack>
-                    </Panel>
+          <Panel recipe={workspacePanelRecipe} className={styles.formPanel}>
+            <Stack gap="sm">
+              <HeaderShell
+                compact
+                eyebrow="Create"
+                title="New workspace"
+                subtitle="Direct launch lane for Android."
+              />
+              <form onSubmit={handleCreate}>
+                <Stack gap="sm">
+                  <Field
+                    htmlFor="workspace-title"
+                    label="Map name"
+                    description="Keep the title short and clear."
+                    required
+                  >
+                    <Input
+                      id="workspace-title"
+                      value={mapTitle}
+                      onChange={(event) => {
+                        setMapTitle(event.target.value);
+                        setError('');
+                      }}
+                      placeholder="National Strategy 2040"
+                    />
+                  </Field>
 
-                    <Panel recipe={workspacePanelRecipe}>
-                      <Stack gap="md">
-                        <HeaderShell
-                          compact
-                          eyebrow="Shortcuts"
-                          title="Utility routing"
-                          subtitle="Jump into adjacent tools without leaving the workspace shell."
-                        />
-                        <div className={styles.utilityGrid}>
-                          <UtilityCard
-                            eyebrow="Archive"
-                            title="FadhilLabEncrypt"
-                            description="Open the archive laboratory beta surface."
-                            action="Open archive lab"
-                            tone="info"
-                            onClick={() => router.push('/archive-lab')}
-                          />
-                          <UtilityCard
-                            eyebrow="Ideas"
-                            title="FeatureLib"
-                            description="Browse game and feature ideas in the shared library."
-                            action="Open FeatureLib"
-                            tone="success"
-                            onClick={() => router.push('/game-ideas')}
-                          />
-                          <UtilityCard
-                            eyebrow="Play"
-                            title="Game deck"
-                            description="Jump into the `/game` command deck from the workspace home."
-                            action="Open /game"
-                            tone="warning"
-                            onClick={() => router.push('/game')}
-                          />
-                          <UtilityCard
-                            eyebrow="Library"
-                            title="fadhilweblib showcase"
-                            description="Inspect the component library showcase route."
-                            action="Open showcase"
-                            tone="brand"
-                            onClick={() => router.push('/fadhilweblib')}
-                          />
-                        </div>
-                      </Stack>
-                    </Panel>
+                  {createNotice ? (
+                    <Notice
+                      tone={createNotice.tone}
+                      title={createNotice.title}
+                      description={createNotice.description}
+                    />
+                  ) : null}
+
+                  <Grid minItemWidth="8.25rem" gap="sm" className={styles.actionGrid}>
+                    <Button
+                      type="submit"
+                      tone="brand"
+                      size="sm"
+                      fullWidth
+                      loading={isCreating}
+                    >
+                      {isCreating ? 'Creating...' : 'Open editor'}
+                    </Button>
+                    <Button
+                      type="button"
+                      tone="neutral"
+                      size="sm"
+                      fullWidth
+                      disabled={!lastMapId}
+                      onClick={handleLoadLast}
+                    >
+                      Resume last
+                    </Button>
+                    <Button
+                      type="button"
+                      tone="info"
+                      size="sm"
+                      fullWidth
+                      onClick={() => setIsRecentDrawerOpen(true)}
+                    >
+                      Recent list
+                    </Button>
+                    <Button
+                      type="button"
+                      tone="success"
+                      size="sm"
+                      fullWidth
+                      onClick={() => focusInput('workspace-search')}
+                    >
+                      Find map
+                    </Button>
                   </Grid>
-                ),
-              },
-              {
-                value: 'search',
-                label: 'Search',
-                badge: String(quickStats.resultsCount),
-                content: (
-                  <Panel recipe={workspacePanelRecipe}>
-                    <Stack gap="md">
-                      <HeaderShell
-                        compact
-                        eyebrow="Search"
-                        title="Workspace index"
-                        subtitle={searchReady ? 'Search by title and open a result directly into the editor.' : 'Preparing the local search index.'}
-                      />
-                      <Field htmlFor="workspace-search" label="Find a workspace" description="Leave the query empty to browse recent matches from the API.">
-                        <Input
-                          id="workspace-search"
-                          value={searchQuery}
-                          onChange={(event) => setSearchQuery(event.target.value)}
-                          placeholder="Search by title..."
-                        />
-                      </Field>
-                      {searchError ? <Notice tone="danger" title="Search error" description={searchError} /> : null}
-                      {searchReady && isSearching ? (
-                        <Notice tone="info" title="Searching" description="Fetching workspace results..." />
-                      ) : null}
-                      {!searchError && !isSearching ? (
-                        <WorkspaceResultList
-                          results={searchResults}
-                          onOpen={openWorkspace}
-                          emptyTitle="No workspace found"
-                          emptyDescription="Try a different title fragment or create a new workspace from the launch tab."
-                        />
-                      ) : null}
-                    </Stack>
-                  </Panel>
-                ),
-              },
-              {
-                value: 'recent',
-                label: 'Recent',
-                content: (
-                  <Grid minItemWidth="16rem" gap="md">
-                    <Panel recipe={workspacePanelRecipe}>
-                      <Stack gap="md">
-                        <HeaderShell
-                          compact
-                          eyebrow="Recent"
-                          title={lastMapTitle || 'No cached workspace'}
-                          subtitle={lastMapId ? `Last known workspace id #${lastMapId}` : 'The most recent workspace will appear here after an editor session is stored locally.'}
-                        />
-                        <ActionGroup gap="sm" wrap>
-                          <Button tone="brand" onClick={handleLoadLast} disabled={!lastMapId}>
-                            Resume last workspace
-                          </Button>
-                          <Button recipe={workspaceButtonRecipe} onClick={() => setIsRecentDrawerOpen(true)}>
-                            Open recent drawer
-                          </Button>
-                        </ActionGroup>
-                      </Stack>
-                    </Panel>
 
-                    <Panel recipe={workspacePanelRecipe}>
-                      <Stack gap="md">
-                        <HeaderShell
-                          compact
-                          eyebrow="Results"
-                          title="Recent workspace list"
-                          subtitle="A compact list of the latest results currently loaded by the search hook."
-                        />
-                        <WorkspaceResultList
-                          results={recentResults}
-                          onOpen={openWorkspace}
-                          emptyTitle="No recent workspaces"
-                          emptyDescription="Open the search tab or create a new workspace to seed the recent list."
-                        />
-                      </Stack>
-                    </Panel>
-                  </Grid>
-                ),
-              },
-              {
-                value: 'overview',
-                label: 'Overview',
-                content: (
-                  <Grid minItemWidth="16rem" gap="md">
-                    <Panel recipe={workspacePanelRecipe}>
-                      <Stack gap="md">
-                        <HeaderShell
-                          compact
-                          eyebrow="Overview"
-                          title="Workspace system state"
-                          subtitle="A compact snapshot of the route without dropping into the editor."
-                        />
-                        <KeyValueList
-                          items={[
-                            { label: 'Search ready', value: searchReady ? 'Yes' : 'No' },
-                            { label: 'Search query', value: searchQuery || 'Recent listing' },
-                            { label: 'Recent id', value: lastMapId ?? 'Unavailable' },
-                            { label: 'Recent title', value: lastMapTitle ?? 'Unavailable' },
-                          ]}
-                        />
-                      </Stack>
-                    </Panel>
+                  {lastMapId ? (
+                    <Inline gap="xs" wrap className={styles.inlineMeta}>
+                      <span>Last:</span>
+                      <span>{lastMapTitle || 'Untitled Map'}</span>
+                      <span>(#{lastMapId})</span>
+                    </Inline>
+                  ) : null}
+                </Stack>
+              </form>
+            </Stack>
+          </Panel>
 
-                    <Panel recipe={workspacePanelRecipe}>
-                      <Stack gap="md">
-                        <HeaderShell
-                          compact
-                          eyebrow="Flow"
-                          title="Workflow lanes"
-                          subtitle="The route now uses library-native sections, panels, tabs, drawers, and dialogs instead of raw layout classes."
-                        />
-                        <Inline gap="sm" wrap>
-                          <StatusChip tone="brand" label="shell" value="ThemeScope" />
-                          <StatusChip tone="info" label="navigation" value="Tabs" />
-                          <StatusChip tone="success" label="dialogs" value="Dialog + Drawer" />
-                          <StatusChip tone="warning" label="density" value="compact" />
-                        </Inline>
-                      </Stack>
-                    </Panel>
-                  </Grid>
-                ),
-              },
-            ]}
-            defaultValue="launch"
-          />
+          <Section
+            className={styles.searchSection}
+            surface
+            density="compact"
+            recipe={workspacePanelRecipe}
+            eyebrow="Search"
+            title="Workspace Search"
+            description={searchReady ? 'Fast local lookup.' : 'Index warming up.'}
+            meta={<StatusChip tone="info" label="top" value={String(quickStats.resultsCount)} />}
+          >
+            <Stack gap="sm">
+              <Field
+                htmlFor="workspace-search"
+                label="Find a workspace"
+                description="Search by title and open it directly."
+              >
+                <Input
+                  id="workspace-search"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="Search by title..."
+                />
+              </Field>
 
-          <Surface variant="elevated" density="compact" className={styles.stickyDock}>
-            <div className={styles.dockRow}>
-              <Button tone="brand" onClick={() => setIsCreateDialogOpen(true)}>
-                Create
-              </Button>
-              <Button tone="neutral" onClick={handleLoadLast} disabled={!lastMapId}>
-                Resume
-              </Button>
-              <Button tone="info" onClick={() => setIsRecentDrawerOpen(true)}>
-                Recent
-              </Button>
-            </div>
-          </Surface>
+              {searchNotice ? (
+                <Notice
+                  tone={searchNotice.tone}
+                  title={searchNotice.title}
+                  description={searchNotice.description}
+                />
+              ) : null}
+
+              {!searchError && !isSearching && searchReady ? (
+                <WorkspaceResultList
+                  results={searchResults}
+                  onOpen={openWorkspace}
+                  emptyTitle="No workspace found"
+                  emptyDescription="Try a different title fragment or create a new workspace above."
+                />
+              ) : null}
+            </Stack>
+          </Section>
+
+          <Panel recipe={workspaceTileRecipe} className={styles.resumePanel}>
+            <Stack gap="sm">
+              <HeaderShell
+                compact
+                eyebrow="Resume"
+                title={lastMapTitle || 'No cached workspace'}
+                subtitle={lastMapId ? `Workspace #${lastMapId}` : 'The next cached workspace will appear here.'}
+              />
+              <KeyValueList
+                items={[
+                  { label: 'Cached id', value: lastMapId ?? 'Unavailable' },
+                  { label: 'Search state', value: quickStats.searchState },
+                  { label: 'Results', value: `${recentResults.length} loaded` },
+                ]}
+              />
+              <ActionGroup gap="xs" wrap>
+                <Button tone="brand" size="sm" onClick={handleLoadLast} disabled={!lastMapId}>
+                  Resume last
+                </Button>
+                <Button tone="info" size="sm" onClick={() => setIsRecentDrawerOpen(true)}>
+                  Recent list
+                </Button>
+                <Button recipe={workspaceButtonRecipe} onClick={() => router.push('/fadhilweblib')}>
+                  Showcase
+                </Button>
+              </ActionGroup>
+            </Stack>
+          </Panel>
+
+          <Panel recipe={workspacePanelRecipe} className={styles.toolsPanel}>
+            <Stack gap="sm">
+              <HeaderShell
+                compact
+                eyebrow="Tools"
+                title="Quick routes"
+                subtitle="Small utility jumps."
+              />
+              <Grid minItemWidth="8rem" gap="sm">
+                <CompactRouteTile title="Archive Lab" action="Open" tone="info" onClick={() => router.push('/archive-lab')} />
+                <CompactRouteTile title="FeatureLib" action="Open" tone="success" onClick={() => router.push('/game-ideas')} />
+                <CompactRouteTile title="Game Deck" action="Open" tone="warning" onClick={() => router.push('/game')} />
+                <CompactRouteTile title="fadhilweblib" action="Open" tone="brand" onClick={() => router.push('/fadhilweblib')} />
+              </Grid>
+            </Stack>
+          </Panel>
         </Stack>
       </Container>
-
-      <Dialog
-        open={isCreateDialogOpen}
-        onOpenChange={setIsCreateDialogOpen}
-        title="Create a new workspace"
-        description="Provision a new map and route directly into the editor session."
-        size="md"
-      >
-        <form onSubmit={handleCreate}>
-          <Stack gap="lg">
-            <Field
-              htmlFor="workspace-title"
-              label="Map title"
-              description="Use a concrete title so the next editor session stays easy to identify."
-              required
-            >
-              <Input
-                id="workspace-title"
-                value={mapTitle}
-                onChange={(event) => {
-                  setMapTitle(event.target.value);
-                  setError('');
-                }}
-                placeholder="National Strategy 2040"
-              />
-            </Field>
-            <Notice
-              tone={createStatusNotice.tone}
-              title={createStatusNotice.title}
-              description={createStatusNotice.description}
-            />
-            <ActionGroup gap="sm" wrap>
-              <Button type="submit" tone="brand" loading={isCreating}>
-                {isCreating ? 'Creating...' : 'Open new editor'}
-              </Button>
-              <Button type="button" recipe={workspaceButtonRecipe} onClick={() => setIsCreateDialogOpen(false)} disabled={isCreating}>
-                Cancel
-              </Button>
-            </ActionGroup>
-          </Stack>
-        </form>
-      </Dialog>
 
       <Drawer
         open={isRecentDrawerOpen}
         onOpenChange={setIsRecentDrawerOpen}
         title="Recent workspaces"
-        description="Quick access to cached and recently searched workspaces."
+        description="Quick access to the cached workspace and the latest search results."
         side="right"
-        width="24rem"
+        width="min(100vw, 20rem)"
       >
-        <Stack gap="lg">
+        <Stack gap="md">
           <Panel recipe={workspaceTileRecipe}>
-            <Stack gap="md">
+            <Stack gap="sm">
               <HeaderShell
                 compact
                 eyebrow="Cached"
                 title={lastMapTitle || 'No cached workspace'}
-                subtitle={lastMapId ? `Workspace #${lastMapId}` : 'No workspace id is stored locally yet.'}
+                subtitle={lastMapId ? `Workspace #${lastMapId}` : 'No workspace id stored locally yet.'}
               />
-              <ActionGroup gap="sm" wrap>
-                <Button tone="brand" onClick={handleLoadLast} disabled={!lastMapId}>
+              <ActionGroup gap="xs" wrap>
+                <Button tone="brand" size="sm" onClick={handleLoadLast} disabled={!lastMapId}>
                   Resume cached
+                </Button>
+                <Button recipe={workspaceButtonRecipe} onClick={() => focusInput('workspace-title')}>
+                  New
                 </Button>
               </ActionGroup>
             </Stack>
           </Panel>
 
           <Panel recipe={workspaceTileRecipe}>
-            <Stack gap="md">
+            <Stack gap="sm">
               <HeaderShell
                 compact
                 eyebrow="Results"
                 title="Open a workspace"
-                subtitle="The drawer mirrors the latest search results so you can resume quickly."
+                subtitle="The drawer mirrors the latest search results."
               />
               <WorkspaceResultList
                 results={recentResults}

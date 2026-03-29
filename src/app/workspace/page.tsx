@@ -6,7 +6,7 @@ const WorkspaceCommandHome = dynamic(
   {
     ssr: false,
     loading: () => (
-      <ThemeScope theme="utility" style={{ minHeight: '100dvh', padding: '1rem' }}>
+      <ThemeScope theme="game" style={{ minHeight: '100dvh', padding: '1rem', background: '#030816' }}>
         <Container maxWidth="sm">
           <Section
             surface

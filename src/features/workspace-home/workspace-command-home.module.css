@@ -1,72 +1,122 @@
 .shell {
+  position: relative;
   min-height: 100dvh;
+  overflow-x: hidden;
   padding:
-    calc(env(safe-area-inset-top) + 0.95rem)
-    0.9rem
-    calc(env(safe-area-inset-bottom) + 1rem);
+    calc(env(safe-area-inset-top) + 0.7rem)
+    0.7rem
+    calc(env(safe-area-inset-bottom) + 0.9rem);
   background:
-    radial-gradient(circle at 14% 10%, rgba(249, 115, 22, 0.14), transparent 26rem),
-    radial-gradient(circle at 88% 12%, rgba(14, 165, 233, 0.14), transparent 26rem),
-    linear-gradient(180deg, rgba(248, 250, 252, 1), rgba(241, 245, 249, 0.96));
+    radial-gradient(circle at 16% 8%, rgba(34, 211, 238, 0.16), transparent 20rem),
+    radial-gradient(circle at 84% 10%, rgba(129, 140, 248, 0.14), transparent 22rem),
+    linear-gradient(180deg, #030816 0%, #020617 52%, #04101d 100%);
 }
 
-.stack {
+.shell::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(rgba(148, 163, 184, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.03) 1px, transparent 1px);
+  background-size: 5rem 5rem;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.26), transparent 82%);
+  pointer-events: none;
+}
+
+.container {
+  position: relative;
+  z-index: 1;
+}
+
+.pageStack {
   display: grid;
-  gap: 0.95rem;
+  gap: 0.75rem;
+  padding-bottom: 0.1rem;
 }
 
-.hero {
-  position: sticky;
-  top: calc(env(safe-area-inset-top) + 0.35rem);
-  z-index: 20;
+.heroSection,
+.formPanel,
+.searchSection,
+.resumePanel,
+.toolsPanel,
+.utilityTile {
+  position: relative;
+  overflow: hidden;
+}
+
+.heroSection::after {
+  content: '';
+  position: absolute;
+  right: -7rem;
+  bottom: -8rem;
+  width: 14rem;
+  height: 14rem;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(34, 211, 238, 0.16), transparent 70%);
+  pointer-events: none;
+}
+
+.metricGrid {
+  position: relative;
+  z-index: 1;
+}
+
+.formPanel,
+.searchSection,
+.resumePanel,
+.toolsPanel {
+  border-radius: 20px;
+}
+
+.actionGrid {
+  position: relative;
+  z-index: 1;
+}
+
+.inlineMeta {
+  color: var(--fwlb-text-muted);
+  font-size: 0.76rem;
 }
 
 .resultStack {
   display: grid;
-  gap: 0.7rem;
-  max-height: 29rem;
-  overflow: auto;
-  padding-right: 0.15rem;
+  gap: 0.45rem;
 }
 
 .resultButton {
   width: 100%;
+  min-height: 3.35rem;
   text-align: left;
 }
 
 .resultLabel {
   display: grid;
-  gap: 0.18rem;
+  gap: 0.12rem;
   min-width: 0;
 }
 
-.utilityGrid {
-  display: grid;
-  gap: 0.8rem;
+.resultTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.92rem;
+  font-weight: 600;
+  line-height: 1.2;
 }
 
-.stickyDock {
-  position: sticky;
-  bottom: calc(env(safe-area-inset-bottom) + 0.35rem);
-  z-index: 18;
+.resultMeta {
+  color: var(--fwlb-text-muted);
+  font-size: 0.72rem;
+  line-height: 1.15;
 }
 
-.dockRow {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.55rem;
+.utilityTile {
+  min-height: 100%;
 }
 
-.subtle {
-  opacity: 0.74;
-}
-
-@media (min-width: 768px) {
+@media (min-width: 480px) {
   .shell {
-    padding-inline: 1.2rem;
-  }
-
-  .utilityGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding-inline: 0.85rem;
   }
 }

@@ -9,7 +9,8 @@
         "http://localhost:3000/",
         "http://localhost:3000/editor/0001",
         "http://localhost:3000/view/0001",
-        "http://localhost:3000/game"
+        "http://localhost:3000/game",
+        "http://localhost:3000/workspace"
       ],
       "settings": {
         "preset": "perf",
